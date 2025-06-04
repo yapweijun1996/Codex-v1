@@ -53,9 +53,10 @@
 							<option value="close">Close</option>
 						</select>
 					</label><br>
-					<label><input type="checkbox" id="chkBackground"> Background Artifact Removal</label><br>
-					<label>Boldness: <input type="range" id="boldnessRange" min="-2" max="2" value="0"></label>
-				</div>
+                                        <label><input type="checkbox" id="chkBackground"> Background Artifact Removal</label><br>
+                                        <label>Boldness: <input type="range" id="boldnessRange" min="-2" max="2" value="0"></label><br>
+                                        <label><input type="checkbox" id="chkNoOverride" checked> Never override imported row item data</label>
+                                </div>
 				<button id="runOCRModal" type="button">Run OCR</button>
 			</div>
 		</div>
@@ -86,8 +87,9 @@
 			let sharpen_image_yn = "y"; // Sharpen Image
 			let morpho_yn = "n"; // Morphological Operation
 			let morpho_type = "dilate"; // dilate, erode, open, close
-			let background_removal_yn = "n"; // Background Artifact Removal
-			let boldness_level = 0; // -2 to 2, 0 = no change
+                        let background_removal_yn = "n"; // Background Artifact Removal
+                        let boldness_level = 0; // -2 to 2, 0 = no change
+                        let keep_items_yn = "y"; // keep imported row items when running OCR again
 			
 			// Debug: log preprocessing settings
 			console.log('Compression enabled:', img_compress_yn === 'y', 'max size:', img_max_file_size_for_compress);
@@ -100,8 +102,9 @@
 			console.log('Sharpen image:', sharpen_image_yn === 'y');
 			console.log('Morphological operation:', morpho_yn === 'y');
 			console.log('Morphological type:', morpho_type);
-			console.log('Background removal:', background_removal_yn === 'y');
-			console.log('Boldness level:', boldness_level);
+                        console.log('Background removal:', background_removal_yn === 'y');
+                        console.log('Boldness level:', boldness_level);
+                        console.log('Keep items across OCR runs:', keep_items_yn === 'y');
 			
 			function compressImage(file, quality=0.8){
 				return new Promise((resolve,reject)=>{
@@ -142,23 +145,38 @@
 				}
 				return newFile;
 			}
-			function addItemRow(item={}){
-				const tbody=document.querySelector('#itemsTable tbody');
-				const row=document.createElement('tr');
-				['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
-					const td=document.createElement('td');
-					td.innerHTML=`<input type="text" class="${key}" value="${item[key]||''}">`;
-					row.appendChild(td);
-				});
-				tbody.appendChild(row);
-			}
+                        function addItemRow(item={}){
+                                const tbody=document.querySelector('#itemsTable tbody');
+                                const row=document.createElement('tr');
+                                ['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
+                                        const td=document.createElement('td');
+                                        td.innerHTML=`<input type="text" class="${key}" value="${item[key]||''}">`;
+                                        row.appendChild(td);
+                                });
+                                tbody.appendChild(row);
+                        }
+
+                        function getItemsFromTable(){
+                                const rows=document.querySelectorAll('#itemsTable tbody tr');
+                                return Array.from(rows).map(r=>{
+                                        const get=(cls)=>r.querySelector('.'+cls)?.value||'';
+                                        return {
+                                                stock_code:get('stock_code'),
+                                                desc:get('desc'),
+                                                remark:get('remark'),
+                                                qty:get('qty'),
+                                                unit_price:get('unit_price'),
+                                                total:get('total')
+                                        };
+                                });
+                        }
 			function populateFormFromJSON(data){
 				if(!data) return;
 				document.getElementById('to').value=data.to||'';
 				document.getElementById('from').value=data.from||'';
-				const tbody=document.querySelector('#itemsTable tbody');
-				tbody.innerHTML='';
-				if(Array.isArray(data.items)) data.items.forEach(addItemRow);
+                                const tbody=document.querySelector('#itemsTable tbody');
+                                if(keep_items_yn!=='y') tbody.innerHTML='';
+                                if(Array.isArray(data.items)) data.items.forEach(addItemRow);
 			}
 			function fileToBase64(file){
 				return new Promise((resolve,reject)=>{
@@ -615,6 +633,9 @@
                                 loader.classList.add('show');
                                 try{
                                         let combined={to:'',from:'',items:[]};
+                                        if(keep_items_yn==='y'){
+                                                combined.items=getItemsFromTable();
+                                        }
                                         let index=0;
                                         for(const f of files){
                                                 loader.textContent=`Processing ${++index}/${files.length}...`;
@@ -647,8 +668,9 @@
 				document.getElementById('chkSharpen').checked = sharpen_image_yn==='y';
 				document.getElementById('chkMorpho').checked = morpho_yn==='y';
 				document.getElementById('selectMorphoType').value = morpho_type;
-				document.getElementById('chkBackground').checked = background_removal_yn==='y';
-				document.getElementById('boldnessRange').value = boldness_level;
+                                document.getElementById('chkBackground').checked = background_removal_yn==='y';
+                                document.getElementById('boldnessRange').value = boldness_level;
+                                document.getElementById('chkNoOverride').checked = keep_items_yn==='y';
 			}
 			
 			function applyCheckboxes(){
@@ -661,8 +683,9 @@
 				sharpen_image_yn = document.getElementById('chkSharpen').checked?'y':'n';
 				morpho_yn = document.getElementById('chkMorpho').checked?'y':'n';
 				morpho_type = document.getElementById('selectMorphoType').value;
-				background_removal_yn = document.getElementById('chkBackground').checked?'y':'n';
-				boldness_level = parseInt(document.getElementById('boldnessRange').value,10);
+                                background_removal_yn = document.getElementById('chkBackground').checked?'y':'n';
+                                boldness_level = parseInt(document.getElementById('boldnessRange').value,10);
+                                keep_items_yn = document.getElementById('chkNoOverride').checked?'y':'n';
 			}
 			
 			async function showPreview(){
@@ -685,7 +708,7 @@
 				}
 			};
 			
-			['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange','selectMorphoType']
+                        ['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange','selectMorphoType','chkNoOverride']
 			.forEach(id=>{
 				document.getElementById(id).addEventListener('change',()=>{
 					applyCheckboxes();
