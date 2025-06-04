@@ -112,10 +112,39 @@
 			</div>
 		</div>
 		<form id="orderForm" onsubmit="return false;">
-			<div>
-				<label>To: <input type="text" id="to"></label>
-				<label>From: <input type="text" id="from"></label>
-			</div>
+                        <div>
+                                <label>To: <input type="text" id="to"></label>
+                                <label>From: <input type="text" id="from"></label>
+                                <label>CUSTOMER: <input type="text" id="customer"></label>
+                                <label>ADDR LINE1: <input type="text" id="addr_line1"></label>
+                                <label>ADDR LINE2: <input type="text" id="addr_line2"></label>
+                                <label>BILL TO NAME: <input type="text" id="bill_to_name"></label>
+                                <label>COUNTRY: <input type="text" id="country"></label>
+                                <label>ATTENTION: <input type="text" id="attention"></label>
+                                <label>SALES EXEC: <input type="text" id="sales_exec"></label>
+                                <label>REFERENCE NUM: <input type="text" id="reference_num"></label>
+                                <label>TRN DATE: <input type="text" id="trn_date"></label>
+                                <label>PAYM MTD: <input type="text" id="paym_mtd"></label>
+                                <label>POST CODE: <input type="text" id="post_code"></label>
+                                <label>CC TO: <input type="text" id="cc_to"></label>
+                                <label>Biz Unit [B]: <input type="text" id="biz_unit"></label>
+                                <label>LOGISTICS LOGS: <input type="text" id="logistics_logs"></label>
+                                <label>MASTER NUM: <input type="text" id="master_num"></label>
+                                <label>SHP DATE [R C]: <input type="text" id="shp_date"></label>
+                                <label>DELIVERY MODE: <input type="text" id="delivery_mode"></label>
+                                <label>CURRENCY: <input type="text" id="currency"></label>
+                                <label>Currency Rate: <input type="text" id="currency_rate"></label>
+                                <label>CITY: <input type="text" id="city"></label>
+                                <label>STATE: <input type="text" id="state"></label>
+                                <label>TELEPHONE: <input type="text" id="telephone"></label>
+                                <label>EMAIL: <input type="text" id="email"></label>
+                                <label>LOCATION [L]: <input type="text" id="location"></label>
+                                <label>CUST P/O NO. [N]: <input type="text" id="cust_po_no"></label>
+                                <label>CREDIT TERMS: <input type="text" id="credit_terms"></label>
+                                <label>PROJECT [P]: <input type="text" id="project"></label>
+                                <label>SOE05306: <input type="text" id="soe05306"></label>
+                                <label>REMARKS: <input type="text" id="remarks"></label>
+                        </div>
 			<button type="button" onclick="addItemRow()">Add Item</button>
 			<div style="max-height: 400px; overflow: auto; border: 1px solid #ccc; margin-top: 10px;">
 				<table id="itemsTable" cellpadding="0" cellspacing="0">
@@ -254,8 +283,37 @@
 			}
 			function populateFormFromJSON(data){
 				if(!data) return;
-				document.getElementById('to').value=data.to||'';
-				document.getElementById('from').value=data.from||'';
+                                document.getElementById('to').value=data.to||'';
+                                document.getElementById('from').value=data.from||'';
+                                document.getElementById('customer').value=data.customer||'';
+                                document.getElementById('addr_line1').value=data.addr_line1||'';
+                                document.getElementById('addr_line2').value=data.addr_line2||'';
+                                document.getElementById('bill_to_name').value=data.bill_to_name||'';
+                                document.getElementById('country').value=data.country||'';
+                                document.getElementById('attention').value=data.attention||'';
+                                document.getElementById('sales_exec').value=data.sales_exec||'';
+                                document.getElementById('reference_num').value=data.reference_num||'';
+                                document.getElementById('trn_date').value=data.trn_date||'';
+                                document.getElementById('paym_mtd').value=data.paym_mtd||'';
+                                document.getElementById('post_code').value=data.post_code||'';
+                                document.getElementById('cc_to').value=data.cc_to||'';
+                                document.getElementById('biz_unit').value=data.biz_unit||'';
+                                document.getElementById('logistics_logs').value=data.logistics_logs||'';
+                                document.getElementById('master_num').value=data.master_num||'';
+                                document.getElementById('shp_date').value=data.shp_date||'';
+                                document.getElementById('delivery_mode').value=data.delivery_mode||'';
+                                document.getElementById('currency').value=data.currency||'';
+                                document.getElementById('currency_rate').value=data.currency_rate||'';
+                                document.getElementById('city').value=data.city||'';
+                                document.getElementById('state').value=data.state||'';
+                                document.getElementById('telephone').value=data.telephone||'';
+                                document.getElementById('email').value=data.email||'';
+                                document.getElementById('location').value=data.location||'';
+                                document.getElementById('cust_po_no').value=data.cust_po_no||'';
+                                document.getElementById('credit_terms').value=data.credit_terms||'';
+                                document.getElementById('project').value=data.project||'';
+                                document.getElementById('soe05306').value=data.soe05306||'';
+                                document.getElementById('remarks').value=data.remarks||'';
 				const tbody=document.querySelector('#itemsTable tbody');
 				if(keep_items_yn!=='y'){
 					tbody.innerHTML='';
@@ -569,23 +627,52 @@
 			}
 			
 			
-			const prompt = `
-			Extract sales order fields as JSON with the following structure:
-			
-			{
-				"to": "<Name only>",
-				"from": "<Name only>",
-				"items": [
-					{
-						"stock_code": "<string>",
-						"desc": "<string>",
-						"remark": "<string>",
-						"qty": <number>,
-						"unit_price": <number>,
-						"total": <number>
-					}
-				]
-			}
+                        const prompt = `
+                        Extract sales order fields as JSON with the following structure:
+
+                        {
+                                "to": "<Name only>",
+                                "from": "<Name only>",
+                                "customer": "<string>",
+                                "addr_line1": "<string>",
+                                "addr_line2": "<string>",
+                                "bill_to_name": "<string>",
+                                "country": "<string>",
+                                "attention": "<string>",
+                                "sales_exec": "<string>",
+                                "reference_num": "<string>",
+                                "trn_date": "<string>",
+                                "paym_mtd": "<string>",
+                                "post_code": "<string>",
+                                "cc_to": "<string>",
+                                "biz_unit": "<string>",
+                                "logistics_logs": "<string>",
+                                "master_num": "<string>",
+                                "shp_date": "<string>",
+                                "delivery_mode": "<string>",
+                                "currency": "<string>",
+                                "currency_rate": <number>,
+                                "city": "<string>",
+                                "state": "<string>",
+                                "telephone": "<string>",
+                                "email": "<string>",
+                                "location": "<string>",
+                                "cust_po_no": "<string>",
+                                "credit_terms": "<string>",
+                                "project": "<string>",
+                                "soe05306": "<string>",
+                                "remarks": "<string>",
+                                "items": [
+                                        {
+                                                "stock_code": "<string>",
+                                                "desc": "<string>",
+                                                "remark": "<string>",
+                                                "qty": <number>,
+                                                "unit_price": <number>,
+                                                "total": <number>
+                                        }
+                                ]
+                        }
 			
 			For each 'item', read the table **column by column only**.
 			- Do not cross or mix columns, and do not guess or make up values from other columns.
@@ -729,21 +816,25 @@
 				const files=document.getElementById('imageInput').files;
 				loader.textContent=`Reading image with AI 0/${files.length}...`;
 				loader.classList.add('show');
-				try{
-					let combined={to:'',from:'',items:[]};
-					if(keep_items_yn==='y'){
-						combined.items=getItemsFromTable();
-					}
+                                try{
+                                        let combined={to:'',from:'',customer:'',addr_line1:'',addr_line2:'',bill_to_name:'',country:'',attention:'',sales_exec:'',reference_num:'',trn_date:'',paym_mtd:'',post_code:'',cc_to:'',biz_unit:'',logistics_logs:'',master_num:'',shp_date:'',delivery_mode:'',currency:'',currency_rate:'',city:'',state:'',telephone:'',email:'',location:'',cust_po_no:'',credit_terms:'',project:'',soe05306:'',remarks:'',items:[]};
+                                        if(keep_items_yn==='y'){
+                                                combined.items=getItemsFromTable();
+                                        }
 					let index=0;
 					for(const f of files){
 						loader.textContent=`Reading image with AI ${++index}/${files.length}...`;
 						try{
 							const pre=await preprocessImage(f);
 							const file=await compressIfNeeded(pre);
-							const json=await sendOCR(file);
-							if(json.to) combined.to=json.to;
-							if(json.from) combined.from=json.from;
-							if(Array.isArray(json.items)) combined.items.push(...json.items);
+                                                        const json=await sendOCR(file);
+                                                        for(const [k,v] of Object.entries(json||{})){
+                                                                if(k==='items' && Array.isArray(v)){
+                                                                        combined.items.push(...v);
+                                                                }else if(v){
+                                                                        combined[k]=v;
+                                                                }
+                                                        }
 						}catch(err){
 							alert(err.message);
 						}
