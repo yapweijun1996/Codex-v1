@@ -12,9 +12,11 @@
                         pre{background:#f4f4f4;padding:10px}
                         #loader{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);text-align:center;padding-top:40vh;font-size:1.5em}
                         #loader.show{display:block}
-                        .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;overflow:auto;background:rgba(0,0,0,.4)}
-                        .modal.show{display:block}
-                        .modal-content{background:#fff;margin:10% auto;padding:20px;border:1px solid #888;width:90%;max-width:500px}
+                        .modal{display:none;position:fixed;z-index:1000;inset:0;background:rgba(0,0,0,.4);overflow:auto}
+                        .modal.show{display:flex;align-items:center;justify-content:center}
+                        .modal-content{background:#fff;margin:auto;padding:20px;border:1px solid #888;width:90%;max-width:500px;animation:fadeIn .2s ease}
+                        .close{float:right;cursor:pointer;font-size:1.2em}
+                        @keyframes fadeIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
                         #imagePreview img{max-width:100%;height:auto;display:block;margin-bottom:10px}
                         @media(max-width:600px){body{margin:.5em}#itemsTable{font-size:12px}}
                 </style>
@@ -28,9 +30,9 @@
                         <button id="openModalBtn" type="button">Preview / Options</button>
                 </div>
 
-                <div id="preprocessModal" class="modal">
+                <div id="preprocessModal" class="modal" aria-hidden="true">
                         <div class="modal-content">
-                                <span id="closeModal" style="float:right;cursor:pointer">&times;</span>
+                                <span id="closeModal" class="close">&times;</span>
                                 <h2>Preview &amp; Pre-processing</h2>
                                 <div id="imagePreview"></div>
                                 <div id="preprocessOptions">
@@ -674,20 +676,27 @@ async function showPreview(){
                                 });
 
                         const modal=document.getElementById('preprocessModal');
-                        document.getElementById('openModalBtn').addEventListener('click',()=>{
+
+                        function openModal(){
                                 updateCheckboxes();
                                 showPreview();
                                 modal.classList.add('show');
-                        });
-                        document.getElementById('closeModal').addEventListener('click',()=>{
+                                modal.setAttribute('aria-hidden','false');
+                                document.body.style.overflow='hidden';
+                        }
+
+                        function closeModal(){
                                 applyCheckboxes();
                                 modal.classList.remove('show');
-                        });
-                        document.getElementById('runOCRModal').addEventListener('click',()=>{
-                                applyCheckboxes();
-                                modal.classList.remove('show');
-                                runOCR();
-                        });
+                                modal.setAttribute('aria-hidden','true');
+                                document.body.style.overflow='';
+                        }
+
+                        document.getElementById('openModalBtn').addEventListener('click',openModal);
+                        document.getElementById('closeModal').addEventListener('click',closeModal);
+                        modal.addEventListener('click',e=>{if(e.target===modal)closeModal();});
+                        document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modal.classList.contains('show'))closeModal();});
+                        document.getElementById('runOCRModal').addEventListener('click',()=>{closeModal();runOCR();});
 
                         document.getElementById('ocrBtn').addEventListener('click',()=>{
                                 applyCheckboxes();
