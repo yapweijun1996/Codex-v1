@@ -106,7 +106,8 @@
 					<label><input type="checkbox" id="chkBackground"> Background Artifact Removal</label>
 					<label>Boldness: <input type="range" id="boldnessRange" min="-2" max="2" value="0"></label>
                                         <label><input type="checkbox" id="chkNoOverride"> Override imported row item data</label>
-					<label><input type="checkbox" id="chkShowJson"> Show JSON Output</label>
+                                        <label><input type="checkbox" id="chkHdrOverride"> Override imported header data</label>
+                                        <label><input type="checkbox" id="chkShowJson"> Show JSON Output</label>
 				</div>
 				<button id="runOCRModal" type="button">Run OCR</button>
 			</div>
@@ -185,6 +186,7 @@
 			let background_removal_yn = "n"; // Background Artifact Removal
 			let boldness_level = 0; // -2 to 2, 0 = no change
                         let override_items_yn = "n"; // override imported row item data when running OCR again
+                        let override_header_yn = "n"; // override imported header data when running OCR again
 			let llm_model = "gemini-2.5-flash-preview-05-20"; // selected language model
 			let show_json_output_yn = "n"; // show JSON output area
 			
@@ -202,7 +204,8 @@
 			console.log('Background removal:', background_removal_yn === 'y');
                         console.log('Boldness level:', boldness_level);
                         console.log('Override items across OCR runs:', override_items_yn === 'y');
-			console.log('Selected model:', llm_model);
+                        console.log('Override headers across OCR runs:', override_header_yn === 'y');
+                        console.log('Selected model:', llm_model);
 			
 			function updateJsonOutputVisibility(){
 				const pre=document.getElementById('jsonOutput');
@@ -267,21 +270,58 @@
 				tbody.appendChild(row);
 			}
 			
-			function getItemsFromTable(){
-				const rows=document.querySelectorAll('#itemsTable tbody tr');
-				return Array.from(rows).map(r=>{
-					const get=(cls)=>r.querySelector('.'+cls)?.value||'';
-					return {
-						stock_code:get('stock_code'),
-						desc:get('desc'),
-						remark:get('remark'),
-						qty:get('qty'),
-						unit_price:get('unit_price'),
-						total:get('total')
-					};
-				});
-			}
-			function populateFormFromJSON(data){
+                        function getItemsFromTable(){
+                                const rows=document.querySelectorAll('#itemsTable tbody tr');
+                                return Array.from(rows).map(r=>{
+                                        const get=(cls)=>r.querySelector('.'+cls)?.value||'';
+                                        return {
+                                                stock_code:get('stock_code'),
+                                                desc:get('desc'),
+                                                remark:get('remark'),
+                                                qty:get('qty'),
+                                                unit_price:get('unit_price'),
+                                                total:get('total')
+                                        };
+                                });
+                        }
+
+                        function getHeadersFromForm(){
+                                const get=id=>document.getElementById(id)?.value||'';
+                                return {
+                                        to:get('to'),
+                                        from:get('from'),
+                                        customer:get('customer'),
+                                        addr_line1:get('addr_line1'),
+                                        addr_line2:get('addr_line2'),
+                                        bill_to_name:get('bill_to_name'),
+                                        country:get('country'),
+                                        attention:get('attention'),
+                                        sales_exec:get('sales_exec'),
+                                        reference_num:get('reference_num'),
+                                        trn_date:get('trn_date'),
+                                        paym_mtd:get('paym_mtd'),
+                                        post_code:get('post_code'),
+                                        cc_to:get('cc_to'),
+                                        biz_unit:get('biz_unit'),
+                                        logistics_logs:get('logistics_logs'),
+                                        master_num:get('master_num'),
+                                        shp_date:get('shp_date'),
+                                        delivery_mode:get('delivery_mode'),
+                                        currency:get('currency'),
+                                        currency_rate:get('currency_rate'),
+                                        city:get('city'),
+                                        state:get('state'),
+                                        telephone:get('telephone'),
+                                        email:get('email'),
+                                        location:get('location'),
+                                        cust_po_no:get('cust_po_no'),
+                                        credit_terms:get('credit_terms'),
+                                        project:get('project'),
+                                        document_number:get('document_number'),
+                                        remarks:get('remarks')
+                                };
+                        }
+                        function populateFormFromJSON(data){
 				if(!data) return;
                                 document.getElementById('to').value=data.to||'';
                                 document.getElementById('from').value=data.from||'';
@@ -821,10 +861,13 @@
                                         if(override_items_yn!=='y'){
                                                 combined.items=getItemsFromTable();
                                         }
-					let index=0;
-					for(const f of files){
-						loader.textContent=`Reading image with AI ${++index}/${files.length}...`;
-						try{
+                                        if(override_header_yn!=='y'){
+                                                Object.assign(combined,getHeadersFromForm());
+                                        }
+                                        let index=0;
+                                        for(const f of files){
+                                                loader.textContent=`Reading image with AI ${++index}/${files.length}...`;
+                                                try{
 							const pre=await preprocessImage(f);
 							const file=await compressIfNeeded(pre);
                                                         const json=await sendOCR(file);
@@ -832,7 +875,9 @@
                                                                 if(k==='items' && Array.isArray(v)){
                                                                         combined.items.push(...v);
                                                                 }else if(v){
-                                                                        combined[k]=v;
+                                                                        if(override_header_yn==='y' || !combined[k]){
+                                                                                combined[k]=v;
+                                                                        }
                                                                 }
                                                         }
 						}catch(err){
@@ -861,6 +906,7 @@
 				document.getElementById('chkBackground').checked = background_removal_yn==='y';
 				document.getElementById('boldnessRange').value = boldness_level;
                                 document.getElementById('chkNoOverride').checked = override_items_yn==='y';
+                                document.getElementById('chkHdrOverride').checked = override_header_yn==='y';
 				document.getElementById('modelSelect').value = llm_model;
 				document.getElementById('chkShowJson').checked = show_json_output_yn==='y';
 			}
@@ -878,6 +924,7 @@
 				background_removal_yn = document.getElementById('chkBackground').checked?'y':'n';
 				boldness_level = parseInt(document.getElementById('boldnessRange').value,10);
                                 override_items_yn = document.getElementById('chkNoOverride').checked?'y':'n';
+                                override_header_yn = document.getElementById('chkHdrOverride').checked?'y':'n';
 				llm_model = document.getElementById('modelSelect').value;
 				show_json_output_yn = document.getElementById('chkShowJson').checked?'y':'n';
 			}
@@ -902,7 +949,7 @@
 				}
 			};
 			
-			['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange','selectMorphoType','chkNoOverride','modelSelect','chkShowJson']
+                        ['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange','selectMorphoType','chkNoOverride','chkHdrOverride','modelSelect','chkShowJson']
 			.forEach(id=>{
 				document.getElementById(id).addEventListener('change',()=>{
 					applyCheckboxes();
