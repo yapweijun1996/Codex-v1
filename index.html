@@ -555,14 +555,20 @@
                                 showPreview();
                                 modal.classList.add('show');
                         });
-                        document.getElementById('closeModal').addEventListener('click',()=>modal.classList.remove('show'));
+                        document.getElementById('closeModal').addEventListener('click',()=>{
+                                applyCheckboxes();
+                                modal.classList.remove('show');
+                        });
                         document.getElementById('runOCRModal').addEventListener('click',()=>{
                                 applyCheckboxes();
                                 modal.classList.remove('show');
                                 runOCR();
                         });
 
-                        document.getElementById('ocrBtn').addEventListener('click',runOCR);
+                        document.getElementById('ocrBtn').addEventListener('click',()=>{
+                                applyCheckboxes();
+                                runOCR();
+                        });
                         addItemRow();
 		</script>
 	</body>
