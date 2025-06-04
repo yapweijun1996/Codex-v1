@@ -2,17 +2,22 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sales Order OCR</title>
 <style>
-body { font-family: Arial, sans-serif; margin: 20px; }
-#itemsTable { border-collapse: collapse; width: 100%; margin-top: 10px; }
-#itemsTable th, #itemsTable td { border: 1px solid #ccc; padding: 5px; }
-#itemsTable input { width: 100%; box-sizing: border-box; }
-pre { background: #f4f4f4; padding: 10px; }
+body{font-family:Arial,sans-serif;margin:1em}
+#itemsTable{border-collapse:collapse;width:100%;margin-top:10px}
+#itemsTable th,#itemsTable td{border:1px solid #ccc;padding:5px}
+#itemsTable input{width:100%;box-sizing:border-box}
+pre{background:#f4f4f4;padding:10px}
+#loader{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);text-align:center;padding-top:40vh;font-size:1.5em}
+#loader.show{display:block}
+@media(max-width:600px){body{margin:.5em}#itemsTable{font-size:12px}}
 </style>
 </head>
 <body>
 <h1>Sales Order</h1>
+<div id="loader">Processing...</div>
 <div>
 <input id="imageInput" type="file" accept="image/*" multiple>
 <button id="ocrBtn" type="button">Upload & OCR</button>
@@ -151,22 +156,28 @@ console.log('Extracted JSON:', objText);
  return sanitizeData(json);
 }
 async function runOCR(){
- const files=document.getElementById('imageInput').files;
- let combined={to:'',from:'',items:[]};
- for(const f of files){
-  try{
-   const file=await compressIfNeeded(f);
-   const json=await sendOCR(file);
-   if(json.to) combined.to=json.to;
-   if(json.from) combined.from=json.from;
-   if(Array.isArray(json.items)) combined.items.push(...json.items);
- }catch(err){
-  alert(err.message);
+ const loader=document.getElementById('loader');
+ loader.classList.add('show');
+ try{
+  const files=document.getElementById('imageInput').files;
+  let combined={to:'',from:'',items:[]};
+  for(const f of files){
+   try{
+    const file=await compressIfNeeded(f);
+    const json=await sendOCR(file);
+    if(json.to) combined.to=json.to;
+    if(json.from) combined.from=json.from;
+    if(Array.isArray(json.items)) combined.items.push(...json.items);
+   }catch(err){
+    alert(err.message);
+   }
+  }
+  combined=sanitizeData(combined);
+  document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
+  populateFormFromJSON(combined);
+ }finally{
+  loader.classList.remove('show');
  }
-}
- combined=sanitizeData(combined);
- document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
- populateFormFromJSON(combined);
 }
 document.getElementById('ocrBtn').addEventListener('click',runOCR);
 addItemRow();
