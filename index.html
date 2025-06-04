@@ -105,7 +105,7 @@
 					</label>
 					<label><input type="checkbox" id="chkBackground"> Background Artifact Removal</label>
 					<label>Boldness: <input type="range" id="boldnessRange" min="-2" max="2" value="0"></label>
-					<label><input type="checkbox" id="chkNoOverride" checked> Never override imported row item data</label>
+                                        <label><input type="checkbox" id="chkNoOverride"> Override imported row item data</label>
 					<label><input type="checkbox" id="chkShowJson"> Show JSON Output</label>
 				</div>
 				<button id="runOCRModal" type="button">Run OCR</button>
@@ -184,7 +184,7 @@
 			let morpho_type = "dilate"; // dilate, erode, open, close
 			let background_removal_yn = "n"; // Background Artifact Removal
 			let boldness_level = 0; // -2 to 2, 0 = no change
-			let keep_items_yn = "y"; // keep imported row items when running OCR again
+                        let override_items_yn = "n"; // override imported row item data when running OCR again
 			let llm_model = "gemini-2.5-flash-preview-05-20"; // selected language model
 			let show_json_output_yn = "n"; // show JSON output area
 			
@@ -200,8 +200,8 @@
 			console.log('Morphological operation:', morpho_yn === 'y');
 			console.log('Morphological type:', morpho_type);
 			console.log('Background removal:', background_removal_yn === 'y');
-			console.log('Boldness level:', boldness_level);
-			console.log('Keep items across OCR runs:', keep_items_yn === 'y');
+                        console.log('Boldness level:', boldness_level);
+                        console.log('Override items across OCR runs:', override_items_yn === 'y');
 			console.log('Selected model:', llm_model);
 			
 			function updateJsonOutputVisibility(){
@@ -315,11 +315,11 @@
                                 document.getElementById('document_number').value=data.document_number||'';
                                 document.getElementById('remarks').value=data.remarks||'';
 				const tbody=document.querySelector('#itemsTable tbody');
-				if(keep_items_yn!=='y'){
-					tbody.innerHTML='';
-					if(Array.isArray(data.items)) data.items.forEach(addItemRow);
-					return;
-				}
+                                if(override_items_yn==='y'){
+                                        tbody.innerHTML='';
+                                        if(Array.isArray(data.items)) data.items.forEach(addItemRow);
+                                        return;
+                                }
 				if(!Array.isArray(data.items)) return;
 				const rows=tbody.querySelectorAll('tr');
 				data.items.forEach((item,idx)=>{
@@ -818,7 +818,7 @@
 				loader.classList.add('show');
                                 try{
                                         let combined={to:'',from:'',customer:'',addr_line1:'',addr_line2:'',bill_to_name:'',country:'',attention:'',sales_exec:'',reference_num:'',trn_date:'',paym_mtd:'',post_code:'',cc_to:'',biz_unit:'',logistics_logs:'',master_num:'',shp_date:'',delivery_mode:'',currency:'',currency_rate:'',city:'',state:'',telephone:'',email:'',location:'',cust_po_no:'',credit_terms:'',project:'',document_number:'',remarks:'',items:[]};
-                                        if(keep_items_yn==='y'){
+                                        if(override_items_yn!=='y'){
                                                 combined.items=getItemsFromTable();
                                         }
 					let index=0;
@@ -860,7 +860,7 @@
 				document.getElementById('selectMorphoType').value = morpho_type;
 				document.getElementById('chkBackground').checked = background_removal_yn==='y';
 				document.getElementById('boldnessRange').value = boldness_level;
-				document.getElementById('chkNoOverride').checked = keep_items_yn==='y';
+                                document.getElementById('chkNoOverride').checked = override_items_yn==='y';
 				document.getElementById('modelSelect').value = llm_model;
 				document.getElementById('chkShowJson').checked = show_json_output_yn==='y';
 			}
@@ -877,7 +877,7 @@
 				morpho_type = document.getElementById('selectMorphoType').value;
 				background_removal_yn = document.getElementById('chkBackground').checked?'y':'n';
 				boldness_level = parseInt(document.getElementById('boldnessRange').value,10);
-				keep_items_yn = document.getElementById('chkNoOverride').checked?'y':'n';
+                                override_items_yn = document.getElementById('chkNoOverride').checked?'y':'n';
 				llm_model = document.getElementById('modelSelect').value;
 				show_json_output_yn = document.getElementById('chkShowJson').checked?'y':'n';
 			}
