@@ -101,202 +101,203 @@
 			
 			// Extract the first JSON object found in the given text
 			function extractJSON(text){
-				const start=text.indexOf('{');
-					if(start===-1) throw new Error('No JSON found in response');
-					let depth=0;
-					for(let i=start;i<text.length;i++){
-						if(text[i]==='{') depth++;
-							else if(text[i]==='}'){
-								depth--;
-								if(depth===0) return text.slice(start,i+1);
-							}
-						}
-						throw new Error('Incomplete JSON in response');
+				const start=text.indexOf('{'); // start from {....} json
+				if(start===-1){ throw new Error('No JSON found in response');}
+				let depth=0;
+				for(let i=start;i<text.length;i++){
+					if(text[i]==='{'){
+						depth++;
 					}
-					
-					
-					const prompt = `
-					Extract sales order fields as JSON with the following structure:
-					
+					else if(text[i]==='}'){
+						depth--;
+						if(depth===0) return text.slice(start,i+1);
+					}
+				}
+				throw new Error('Incomplete JSON in response');
+			}
+			
+			
+			const prompt = `
+			Extract sales order fields as JSON with the following structure:
+			
+			{
+				"to": "<Name only>",
+				"from": "<Name only>",
+				"items": [
 					{
-						"to": "<Name only>",
-						"from": "<Name only>",
-						"items": [
-							{
-								"stock_code": "<string>",
-								"desc": "<string>",
-								"remark": "<string>",
-								"qty": <number>,
-								"unit_price": <number>,
-								"total": <number>
-							}
-						]
+						"stock_code": "<string>",
+						"desc": "<string>",
+						"remark": "<string>",
+						"qty": <number>,
+						"unit_price": <number>,
+						"total": <number>
 					}
-					
-					For each 'item', read the table **column by column only**.
-					- Do not cross or mix columns, and do not guess or make up values from other columns.
-					- If a column or cell is missing or blank, output "" (empty string) or null for that field in the JSON.
-					
-					For 'qty', 'unit_price', and 'total':
-					- Remove any commas in the numbers.
-					- Output as integer or decimal only, not as a string.
-					
-					**Example:**
-					If a row is:
-					2 | BATTERY | BATTERY |         | 100 | UNIT | 29.00 | 2,900.00
-					
-					Output:
-					{
-						"stock_code": "BATTERY",
-						"desc": "BATTERY",
-						"remark": "",
-						"qty": 100,
-						"unit_price": 29.00,
-						"total": 2900.00
-					}
-					
-					Return ONLY the JSON object in your response.
-					If you are not sure about a value or if a value is missing, leave it as "" or null.
-					`;
-					
-					async function sendOCR(file) {
-						if (!apiKey) {
-							alert('Please provide API key');
-							throw new Error('No API key');
-						}
-						
-						let base64;
-						try {
-							base64 = await fileToBase64(file);
-							console.log('Base64 length:', base64.length);
-						} catch (err) {
-							console.error('Failed to convert file to Base64', err);
-							alert('File conversion error');
-							throw err;
-						}
-						
-						
-						
-						const body = {
-							contents: [
+				]
+			}
+			
+			For each 'item', read the table **column by column only**.
+			- Do not cross or mix columns, and do not guess or make up values from other columns.
+			- If a column or cell is missing or blank, output "" (empty string) or null for that field in the JSON.
+			
+			For 'qty', 'unit_price', and 'total':
+			- Remove any commas in the numbers.
+			- Output as integer or decimal only, not as a string.
+			
+			**Example:**
+			If a row is:
+			2 | BATTERY | BATTERY |         | 100 | UNIT | 29.00 | 2,900.00
+			
+			Output:
+			{
+				"stock_code": "BATTERY",
+				"desc": "BATTERY",
+				"remark": "",
+				"qty": 100,
+				"unit_price": 29.00,
+				"total": 2900.00
+			}
+			
+			Return ONLY the JSON object in your response.
+			If you are not sure about a value or if a value is missing, leave it as "" or null.
+			`;
+			
+			async function sendOCR(file) {
+				if (!apiKey) {
+					alert('Please provide API key');
+					throw new Error('No API key');
+				}
+				
+				let base64;
+				try {
+					base64 = await fileToBase64(file);
+					console.log('Base64 length:', base64.length);
+				} catch (err) {
+					console.error('Failed to convert file to Base64', err);
+					alert('File conversion error');
+					throw err;
+				}
+				
+				
+				
+				const body = {
+					contents: [
+						{
+							role: 'user',
+							parts: [
 								{
-									role: 'user',
-									parts: [
-										{
-											text: prompt
-										},
-										{
-											inline_data: { data: base64, mime_type: file.type }
-										}
-									]
+									text: prompt
+								},
+								{
+									inline_data: { data: base64, mime_type: file.type }
 								}
-							],
-							generationConfig: {
-								temperature: 0.3,
-								maxOutputTokens: 8192,
-								topP: 0.95,
-								responseMimeType: "text/plain"
-							}
-						};
-						
-						console.log('Request body:', body);
-						
-						let res;
-						try {
-							res = await fetch(
-							`https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`,
-							{
-								method: 'POST',
-								headers: { 'Content-Type': 'application/json' },
-								body: JSON.stringify(body)
-							}
-							);
-							console.log('Fetch response:', res);
-						} catch (err) {
-							console.error('Fetch failed:', err);
-							alert('API fetch failed');
-							throw err;
+							]
 						}
-						
-						if (!res.ok) {
-							const errorText = await res.text();
-							console.error('API error', res.status, errorText);
-							alert(`API error: ${res.status}`);
-							throw new Error(`API error ${res.status}: ${errorText}`);
-						}
-						
-						let data;
-						try {
-							data = await res.json();
-							console.log('Raw API JSON:', data);
-						} catch (err) {
-							console.error('Failed to parse API response as JSON:', err);
-							alert('Response parsing error');
-							throw err;
-						}
-						
-						// Defensive: check for candidates and content parts
-						const candidate = data?.candidates?.[0];
-						if (!candidate?.content?.parts) {
-							console.error('No candidates or content parts in API response', data);
-							alert('Invalid API response: no data');
-							throw new Error('Invalid API response: missing candidates');
-						}
-						
-						const llmText = candidate.content.parts.map(p => p.text || '').join('');
-						console.log('LLM response:', llmText);
-						
-						// Try to extract JSON from LLM response
-						let jsonText;
-						try {
-							jsonText = extractJSON(llmText);
-							console.log('Extracted JSON:', jsonText);
-						} catch (err) {
-							console.error('JSON extraction failed', err, 'LLM text:', llmText);
-							alert('Failed to extract JSON');
-							throw err;
-						}
-						
-						let jsonObj;
-						try {
-							jsonObj = JSON.parse(jsonText);
-							console.log('Parsed JSON:', jsonObj);
-						} catch (err) {
-							console.error('JSON.parse failed:', err, 'Extracted:', jsonText);
-							alert('Failed to parse JSON');
-							throw err;
-						}
-						
-						return jsonObj;
+					],
+					generationConfig: {
+						temperature: 0.3,
+						maxOutputTokens: 8192,
+						topP: 0.95,
+						responseMimeType: "text/plain"
 					}
-					
-					async function runOCR(){
-						const loader=document.getElementById('loader');
-						loader.classList.add('show');
+				};
+				
+				console.log('Request body:', body);
+				
+				let res;
+				try {
+					res = await fetch(
+					`https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`,
+					{
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(body)
+					}
+					);
+					console.log('Fetch response:', res);
+				} catch (err) {
+					console.error('Fetch failed:', err);
+					alert('API fetch failed');
+					throw err;
+				}
+				
+				if (!res.ok) {
+					const errorText = await res.text();
+					console.error('API error', res.status, errorText);
+					alert(`API error: ${res.status}`);
+					throw new Error(`API error ${res.status}: ${errorText}`);
+				}
+				
+				let data;
+				try {
+					data = await res.json();
+					console.log('Raw API JSON:', data);
+				} catch (err) {
+					console.error('Failed to parse API response as JSON:', err);
+					alert('Response parsing error');
+					throw err;
+				}
+				
+				// Defensive: check for candidates and content parts
+				const candidate = data?.candidates?.[0];
+				if (!candidate?.content?.parts) {
+					console.error('No candidates or content parts in API response', data);
+					alert('Invalid API response: no data');
+					throw new Error('Invalid API response: missing candidates');
+				}
+				
+				const llmText = candidate.content.parts.map(p => p.text || '').join('');
+				console.log('LLM response:', llmText);
+				
+				// Try to extract JSON from LLM response
+				let jsonText;
+				try {
+					jsonText = extractJSON(llmText);
+					console.log('Extracted JSON:', jsonText);
+				} catch (err) {
+					console.error('JSON extraction failed', err, 'LLM text:', llmText);
+					alert('Failed to extract JSON');
+					throw err;
+				}
+				
+				let jsonObj;
+				try {
+					jsonObj = JSON.parse(jsonText);
+					console.log('Parsed JSON:', jsonObj);
+				} catch (err) {
+					console.error('JSON.parse failed:', err, 'Extracted:', jsonText);
+					alert('Failed to parse JSON');
+					throw err;
+				}
+				
+				return jsonObj;
+			}
+			
+			async function runOCR(){
+				const loader=document.getElementById('loader');
+				loader.classList.add('show');
+				try{
+					const files=document.getElementById('imageInput').files;
+					let combined={to:'',from:'',items:[]};
+					for(const f of files){
 						try{
-							const files=document.getElementById('imageInput').files;
-							let combined={to:'',from:'',items:[]};
-							for(const f of files){
-								try{
-									const file=await compressIfNeeded(f);
-									const json=await sendOCR(file);
-									if(json.to) combined.to=json.to;
-									if(json.from) combined.from=json.from;
-									if(Array.isArray(json.items)) combined.items.push(...json.items);
-								}catch(err){
-									alert(err.message);
-								}
-							}
-							// Results should already be sanitized by the language model
-							document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
-							populateFormFromJSON(combined);
-						}finally{
-							loader.classList.remove('show');
+							const file=await compressIfNeeded(f);
+							const json=await sendOCR(file);
+							if(json.to) combined.to=json.to;
+							if(json.from) combined.from=json.from;
+							if(Array.isArray(json.items)) combined.items.push(...json.items);
+						}catch(err){
+							alert(err.message);
 						}
 					}
-					document.getElementById('ocrBtn').addEventListener('click',runOCR);
-					addItemRow();
-				</script>
-			</body>
-		</html>
-		
+					// Results should already be sanitized by the language model
+					document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
+					populateFormFromJSON(combined);
+				}finally{
+					loader.classList.remove('show');
+				}
+			}
+			document.getElementById('ocrBtn').addEventListener('click',runOCR);
+			addItemRow();
+		</script>
+	</body>
+</html>
