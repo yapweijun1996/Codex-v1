@@ -9,19 +9,42 @@
 			#itemsTable{border-collapse:collapse;width:100%;margin-top:10px}
 			#itemsTable th,#itemsTable td{border:1px solid #ccc;padding:5px}
 			#itemsTable input{width:100%;box-sizing:border-box}
-			pre{background:#f4f4f4;padding:10px}
-			#loader{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);text-align:center;padding-top:40vh;font-size:1.5em}
-			#loader.show{display:block}
-			@media(max-width:600px){body{margin:.5em}#itemsTable{font-size:12px}}
-		</style>
+                        pre{background:#f4f4f4;padding:10px}
+                        #loader{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);text-align:center;padding-top:40vh;font-size:1.5em}
+                        #loader.show{display:block}
+                        .modal{display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;overflow:auto;background:rgba(0,0,0,.4)}
+                        .modal.show{display:block}
+                        .modal-content{background:#fff;margin:10% auto;padding:20px;border:1px solid #888;width:90%;max-width:500px}
+                        #imagePreview img{max-width:100%;height:auto;display:block;margin-bottom:10px}
+                        @media(max-width:600px){body{margin:.5em}#itemsTable{font-size:12px}}
+                </style>
 	</head>
 	<body>
 		<h1>Sales Order</h1>
 		<div id="loader">Processing...</div>
-		<div>
-			<input id="imageInput" type="file" accept="image/*" multiple>
-			<button id="ocrBtn" type="button">Upload & OCR</button>
-		</div>
+                <div>
+                        <input id="imageInput" type="file" accept="image/*" multiple>
+                        <button id="ocrBtn" type="button">Upload & OCR</button>
+                        <button id="openModalBtn" type="button">Preview / Options</button>
+                </div>
+
+                <div id="preprocessModal" class="modal">
+                        <div class="modal-content">
+                                <span id="closeModal" style="float:right;cursor:pointer">&times;</span>
+                                <h2>Preview &amp; Pre-processing</h2>
+                                <div id="imagePreview"></div>
+                                <div id="preprocessOptions">
+                                        <label><input type="checkbox" id="chkIncrease"> Increase Resolution</label><br>
+                                        <label><input type="checkbox" id="chkContrast"> Contrast Enhance</label><br>
+                                        <label><input type="checkbox" id="chkAdaptive"> Adaptive Threshold</label><br>
+                                        <label><input type="checkbox" id="chkDeskew"> Deskew</label><br>
+                                        <label><input type="checkbox" id="chkMedian"> Median Noise Reduction</label><br>
+                                        <label><input type="checkbox" id="chkGaussian"> Gaussian Noise Reduction</label><br>
+                                        <label><input type="checkbox" id="chkSharpen"> Sharpen Image</label>
+                                </div>
+                                <button id="runOCRModal" type="button">Run OCR</button>
+                        </div>
+                </div>
 		<form id="orderForm" onsubmit="return false;">
 			<div>
 				<label>To: <input type="text" id="to"></label>
@@ -491,8 +514,56 @@
 					loader.classList.remove('show');
 				}
 			}
-			document.getElementById('ocrBtn').addEventListener('click',runOCR);
-			addItemRow();
+                        function updateCheckboxes(){
+                                document.getElementById('chkIncrease').checked = increase_resolution_yn==='y';
+                                document.getElementById('chkContrast').checked = contrast_enhance_yn==='y';
+                                document.getElementById('chkAdaptive').checked = adaptive_threshold_yn==='y';
+                                document.getElementById('chkDeskew').checked = deskew_yn==='y';
+                                document.getElementById('chkMedian').checked = noise_median_yn==='y';
+                                document.getElementById('chkGaussian').checked = noise_gaussian_yn==='y';
+                                document.getElementById('chkSharpen').checked = sharpen_image_yn==='y';
+                        }
+
+                        function applyCheckboxes(){
+                                increase_resolution_yn = document.getElementById('chkIncrease').checked?'y':'n';
+                                contrast_enhance_yn = document.getElementById('chkContrast').checked?'y':'n';
+                                adaptive_threshold_yn = document.getElementById('chkAdaptive').checked?'y':'n';
+                                deskew_yn = document.getElementById('chkDeskew').checked?'y':'n';
+                                noise_median_yn = document.getElementById('chkMedian').checked?'y':'n';
+                                noise_gaussian_yn = document.getElementById('chkGaussian').checked?'y':'n';
+                                sharpen_image_yn = document.getElementById('chkSharpen').checked?'y':'n';
+                        }
+
+                        function showPreview(){
+                                const preview=document.getElementById('imagePreview');
+                                preview.innerHTML='';
+                                const files=document.getElementById('imageInput').files;
+                                Array.from(files).forEach(f=>{
+                                        const reader=new FileReader();
+                                        reader.onload=e=>{
+                                                const img=document.createElement('img');
+                                                img.src=e.target.result;
+                                                preview.appendChild(img);
+                                        };
+                                        reader.readAsDataURL(f);
+                                });
+                        }
+
+                        const modal=document.getElementById('preprocessModal');
+                        document.getElementById('openModalBtn').addEventListener('click',()=>{
+                                updateCheckboxes();
+                                showPreview();
+                                modal.classList.add('show');
+                        });
+                        document.getElementById('closeModal').addEventListener('click',()=>modal.classList.remove('show'));
+                        document.getElementById('runOCRModal').addEventListener('click',()=>{
+                                applyCheckboxes();
+                                modal.classList.remove('show');
+                                runOCR();
+                        });
+
+                        document.getElementById('ocrBtn').addEventListener('click',runOCR);
+                        addItemRow();
 		</script>
 	</body>
 </html>
