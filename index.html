@@ -14,7 +14,8 @@
                         #itemsTable tr{display:grid;grid-template-columns:auto 1fr 2fr 2fr 1fr 1fr 1fr;gap:.5em}
                         #itemsTable thead tr{background:#f0f0f0;font-weight:bold}
                         #itemsTable input{width:100%;box-sizing:border-box}
-                        #orderForm>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5em;margin-bottom:1em}
+                        #headerFields input,#headerFields select,#headerFields textarea{width:100%;box-sizing:border-box}
+                        #headerFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5em;margin-bottom:1em}
                         #preprocessOptions{display:grid;grid-template-columns:1fr 1fr;gap:.5em}
                         #preprocessOptions label{display:block}
                         pre{background:#f4f4f4;padding:10px}
@@ -82,11 +83,40 @@
 				<button id="runOCRModal" type="button">Run OCR</button>
 			</div>
 		</div>
-		<form id="orderForm" onsubmit="return false;">
-			<div>
-				<label>To: <input type="text" id="to"></label>
-				<label>From: <input type="text" id="from"></label>
-			</div>
+                <form id="orderForm" onsubmit="return false;">
+                        <div id="headerFields">
+                                <label>To: <input type="text" id="to"></label>
+                                <label>From: <input type="text" id="from"></label>
+                                <label>CUSTOMER: <input type="text" id="customer"></label>
+                                <label>ADDR LINE1: <input type="text" id="addr_line1"></label>
+                                <label>ADDR LINE2: <input type="text" id="addr_line2"></label>
+                                <label>BILL TO NAME: <input type="text" id="bill_to_name"></label>
+                                <label>COUNTRY: <input type="text" id="country"></label>
+                                <label>ATTENTION: <input type="text" id="attention"></label>
+                                <label>SALES EXEC: <input type="text" id="sales_exec"></label>
+                                <label>REFERENCE NUM: <input type="text" id="reference_num"></label>
+                                <label>TRN DATE: <input type="date" id="trn_date"></label>
+                                <label>PAYM MTD: <input type="text" id="paym_mtd"></label>
+                                <label>POST CODE: <input type="text" id="post_code"></label>
+                                <label>CC TO: <input type="text" id="cc_to"></label>
+                                <label>Biz Unit [B]: <input type="text" id="biz_unit"></label>
+                                <label>LOGISTICS LOGS: <input type="text" id="logistics_logs"></label>
+                                <label>MASTER NUM: <input type="text" id="master_num"></label>
+                                <label>SHP DATE [R C]: <input type="date" id="shp_date"></label>
+                                <label>DELIVERY MODE: <input type="text" id="delivery_mode"></label>
+                                <label>CURRENCY: <input type="text" id="currency"></label>
+                                <label>Currency Rate: <input type="number" step="any" id="currency_rate"></label>
+                                <label>CITY: <input type="text" id="city"></label>
+                                <label>STATE: <input type="text" id="state"></label>
+                                <label>TELEPHONE: <input type="text" id="telephone"></label>
+                                <label>EMAIL: <input type="email" id="email"></label>
+                                <label>LOCATION [L]: <input type="text" id="location"></label>
+                                <label>CUST P/O NO. [N]: <input type="text" id="cust_po_no"></label>
+                                <label>CREDIT TERMS: <input type="text" id="credit_terms"></label>
+                                <label>PROJECT [P]: <input type="text" id="project"></label>
+                                <label>SOE05306: <input type="text" id="soe05306"></label>
+                                <label>REMARKS:<br><textarea id="remarks"></textarea></label>
+                        </div>
                         <table id="itemsTable">
                                 <thead><tr><th>-DEL</th><th>Stock Code</th><th>Description</th><th>Remark</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
                                 <tbody></tbody>
