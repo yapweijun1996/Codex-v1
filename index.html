@@ -534,20 +534,25 @@
                                 sharpen_image_yn = document.getElementById('chkSharpen').checked?'y':'n';
                         }
 
-                        function showPreview(){
-                                const preview=document.getElementById('imagePreview');
-                                preview.innerHTML='';
-                                const files=document.getElementById('imageInput').files;
-                                Array.from(files).forEach(f=>{
-                                        const reader=new FileReader();
-                                        reader.onload=e=>{
-                                                const img=document.createElement('img');
-                                                img.src=e.target.result;
-                                                preview.appendChild(img);
-                                        };
-                                        reader.readAsDataURL(f);
-                                });
-                        }
+                        async function showPreview(){
+    const preview=document.getElementById("imagePreview");
+    preview.innerHTML="";
+    const files=document.getElementById("imageInput").files;
+    for(const f of files){
+        try{
+            const processed=await preprocessImage(f);
+            const r=new FileReader();
+            r.onload=e=>{
+                const img=document.createElement("img");
+                img.src=e.target.result;
+                preview.appendChild(img);
+            };
+            r.readAsDataURL(processed);
+        }catch(err){
+            console.error("Preview processing failed", err);
+        }
+    }
+};
 
                         const modal=document.getElementById('preprocessModal');
                         document.getElementById('openModalBtn').addEventListener('click',()=>{
