@@ -47,6 +47,16 @@
                         let noise_median_yn = "y"; // Noise Reduction (Median)
                         let noise_gaussian_yn = "y"; // Noise Reduction (Gaussian)
                         let sharpen_image_yn = "y"; // Sharpen Image
+
+                        // Debug: log preprocessing settings
+                        console.log('Compression enabled:', img_compress_yn === 'y', 'max size:', img_max_file_size_for_compress);
+                        console.log('Increase resolution:', increase_resolution_yn === 'y');
+                        console.log('Contrast enhance:', contrast_enhance_yn === 'y');
+                        console.log('Adaptive threshold:', adaptive_threshold_yn === 'y');
+                        console.log('Deskew:', deskew_yn === 'y');
+                        console.log('Median noise reduction:', noise_median_yn === 'y');
+                        console.log('Gaussian noise reduction:', noise_gaussian_yn === 'y');
+                        console.log('Sharpen image:', sharpen_image_yn === 'y');
 			
 			function compressImage(file, quality=0.8){
 				return new Promise((resolve,reject)=>{
@@ -71,16 +81,22 @@
 				});
 			}
 			
-			async function compressIfNeeded(file){
-				if(img_compress_yn!=='y' || file.size<=img_max_file_size_for_compress) return file;
-				let quality=0.9;
-				let newFile=file;
-				while(newFile.size>img_max_file_size_for_compress && quality>0.1){
-					newFile=await compressImage(newFile,quality);
-					quality-=0.1;
-				}
-				return newFile;
-			}
+                        async function compressIfNeeded(file){
+                                console.log('Original file size:', file.size);
+                                if(img_compress_yn!=='y' || file.size<=img_max_file_size_for_compress){
+                                        console.log('Compression skipped');
+                                        return file;
+                                }
+                                let quality=0.9;
+                                let newFile=file;
+                                while(newFile.size>img_max_file_size_for_compress && quality>0.1){
+                                        console.log('Compressing with quality', quality.toFixed(1));
+                                        newFile=await compressImage(newFile,quality);
+                                        console.log('New size:', newFile.size);
+                                        quality-=0.1;
+                                }
+                                return newFile;
+                        }
 			function addItemRow(item={}){
 				const tbody=document.querySelector('#itemsTable tbody');
 				const row=document.createElement('tr');
@@ -224,8 +240,10 @@
                         }
 
                         async function preprocessImage(file){
+                                console.log('Preprocessing file:', file.name);
                                 const img=await loadImageFile(file);
                                 const orientation=deskew_yn==='y'?await getOrientation(file):1;
+                                console.log('Detected orientation:', orientation);
 
                                 let canvas=document.createElement('canvas');
                                 canvas.width=img.width; canvas.height=img.height;
@@ -234,6 +252,7 @@
                                 ctx.drawImage(img,0,0);
 
                                 if(increase_resolution_yn==='y'){
+                                        console.log('Increasing resolution');
                                         const scale=2;
                                         const c2=document.createElement('canvas');
                                         c2.width=canvas.width*scale; c2.height=canvas.height*scale;
@@ -249,11 +268,26 @@
                                         imageData.data[i]=imageData.data[i+1]=imageData.data[i+2]=avg;
                                 }
 
-                                if(contrast_enhance_yn==='y') histogramEqualization(imageData);
-                                if(adaptive_threshold_yn==='y') thresholdImage(imageData);
-                                if(noise_median_yn==='y') medianFilter(imageData,canvas.width,canvas.height);
-                                if(noise_gaussian_yn==='y') convolve(imageData,canvas.width,canvas.height,[1,2,1,2,4,2,1,2,1],16);
-                                if(sharpen_image_yn==='y') convolve(imageData,canvas.width,canvas.height,[0,-1,0,-1,5,-1,0,-1,0],1);
+                                if(contrast_enhance_yn==='y'){
+                                        console.log('Enhancing contrast');
+                                        histogramEqualization(imageData);
+                                }
+                                if(adaptive_threshold_yn==='y'){
+                                        console.log('Applying adaptive threshold');
+                                        thresholdImage(imageData);
+                                }
+                                if(noise_median_yn==='y'){
+                                        console.log('Applying median filter');
+                                        medianFilter(imageData,canvas.width,canvas.height);
+                                }
+                                if(noise_gaussian_yn==='y'){
+                                        console.log('Applying gaussian blur');
+                                        convolve(imageData,canvas.width,canvas.height,[1,2,1,2,4,2,1,2,1],16);
+                                }
+                                if(sharpen_image_yn==='y'){
+                                        console.log('Sharpening image');
+                                        convolve(imageData,canvas.width,canvas.height,[0,-1,0,-1,5,-1,0,-1,0],1);
+                                }
 
                                 canvas.getContext('2d').putImageData(imageData,0,0);
                                 return new Promise(res=>canvas.toBlob(b=>res(new File([b],file.name,{type:'image/png'})),'image/png'));
