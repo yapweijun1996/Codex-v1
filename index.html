@@ -108,6 +108,23 @@ function extractJSON(text){
  }
  throw new Error('Incomplete JSON in response');
 }
+
+function sanitizeData(data){
+ if(!data) return data;
+ if(data.to) data.to=data.to.replace(/[^A-Za-z\s]/g,'').trim();
+ if(data.from) data.from=data.from.replace(/[^A-Za-z\s]/g,'').trim();
+ if(Array.isArray(data.items)){
+  data.items=data.items.map(item=>{
+   ['qty','unit_price','total'].forEach(field=>{
+    if(item[field]&&typeof item[field]==='string'&&item[field].includes(',')){
+     delete item[field];
+    }
+   });
+   return item;
+  });
+ }
+ return data;
+}
 async function sendOCR(file){
  if(!apiKey){alert('Please provide API key'); throw new Error('No API key');}
  const base64=await fileToBase64(file);
@@ -127,11 +144,11 @@ async function sendOCR(file){
  console.log('Raw API JSON:', data);
  const text=data.candidates[0].content.parts.map(p=>p.text).join('');
  console.log('LLM response:', text);
- const objText=extractJSON(text);
- console.log('Extracted JSON:', objText);
+const objText=extractJSON(text);
+console.log('Extracted JSON:', objText);
  const json=JSON.parse(objText);
  console.log('Parsed JSON:', json);
- return json;
+ return sanitizeData(json);
 }
 async function runOCR(){
  const files=document.getElementById('imageInput').files;
@@ -143,10 +160,11 @@ async function runOCR(){
    if(json.to) combined.to=json.to;
    if(json.from) combined.from=json.from;
    if(Array.isArray(json.items)) combined.items.push(...json.items);
-  }catch(err){
-   alert(err.message);
-  }
+ }catch(err){
+  alert(err.message);
  }
+}
+ combined=sanitizeData(combined);
  document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
  populateFormFromJSON(combined);
 }
