@@ -114,28 +114,12 @@ function extractJSON(text){
  throw new Error('Incomplete JSON in response');
 }
 
-function sanitizeData(data){
- if(!data) return data;
- if(data.to) data.to=data.to.replace(/[^A-Za-z\s]/g,'').trim();
- if(data.from) data.from=data.from.replace(/[^A-Za-z\s]/g,'').trim();
- if(Array.isArray(data.items)){
-  data.items=data.items.map(item=>{
-   ['qty','unit_price','total'].forEach(field=>{
-    if(item[field]&&typeof item[field]==='string'&&item[field].includes(',')){
-     delete item[field];
-    }
-   });
-   return item;
-  });
- }
- return data;
-}
 async function sendOCR(file){
  if(!apiKey){alert('Please provide API key'); throw new Error('No API key');}
  const base64=await fileToBase64(file);
  console.log('Base64 length:', base64.length);
  const body={
-  contents:[{role:'user',parts:[{text:"Extract sales order fields as JSON with keys 'to','from','items' (array of objects with 'stock_code','desc','remark','qty','unit_price','total'). Return only JSON."},{inline_data:{data:base64,mime_type:file.type}}]}],
+  contents:[{role:'user',parts:[{text:"Extract sales order fields as JSON with keys 'to','from','items' (array of objects with 'stock_code','desc','remark','qty','unit_price','total'). 'to' and 'from' must contain only letters and spaces. Omit 'qty','unit_price' or 'total' if the value includes a comma. Return only JSON."},{inline_data:{data:base64,mime_type:file.type}}]}],
   generationConfig:{temperature:0}
  };
  
@@ -153,7 +137,7 @@ const objText=extractJSON(text);
 console.log('Extracted JSON:', objText);
  const json=JSON.parse(objText);
  console.log('Parsed JSON:', json);
- return sanitizeData(json);
+  return json;
 }
 async function runOCR(){
  const loader=document.getElementById('loader');
@@ -172,7 +156,7 @@ async function runOCR(){
     alert(err.message);
    }
   }
-  combined=sanitizeData(combined);
+   // Results should already be sanitized by the language model
   document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
   populateFormFromJSON(combined);
  }finally{
