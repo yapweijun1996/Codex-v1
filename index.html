@@ -608,31 +608,35 @@
 				return jsonObj;
 			}
 			
-			async function runOCR(){
-				const loader=document.getElementById('loader');
-				loader.classList.add('show');
-				try{
-					const files=document.getElementById('imageInput').files;
-					let combined={to:'',from:'',items:[]};
-					for(const f of files){
-						try{
-							const pre=await preprocessImage(f);
-							const file=await compressIfNeeded(pre);
-							const json=await sendOCR(file);
-							if(json.to) combined.to=json.to;
-							if(json.from) combined.from=json.from;
-							if(Array.isArray(json.items)) combined.items.push(...json.items);
-						}catch(err){
-							alert(err.message);
-						}
-					}
-					// Results should already be sanitized by the language model
-					document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
-					populateFormFromJSON(combined);
-				}finally{
-					loader.classList.remove('show');
-				}
-			}
+                        async function runOCR(){
+                                const loader=document.getElementById('loader');
+                                const files=document.getElementById('imageInput').files;
+                                loader.textContent=`Processing 0/${files.length}...`;
+                                loader.classList.add('show');
+                                try{
+                                        let combined={to:'',from:'',items:[]};
+                                        let index=0;
+                                        for(const f of files){
+                                                loader.textContent=`Processing ${++index}/${files.length}...`;
+                                                try{
+                                                        const pre=await preprocessImage(f);
+                                                        const file=await compressIfNeeded(pre);
+                                                        const json=await sendOCR(file);
+                                                        if(json.to) combined.to=json.to;
+                                                        if(json.from) combined.from=json.from;
+                                                        if(Array.isArray(json.items)) combined.items.push(...json.items);
+                                                }catch(err){
+                                                        alert(err.message);
+                                                }
+                                        }
+                                        // Results should already be sanitized by the language model
+                                        document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
+                                        populateFormFromJSON(combined);
+                                }finally{
+                                        loader.classList.remove('show');
+                                        loader.textContent='Processing...';
+                                }
+                        }
 			function updateCheckboxes(){
 				document.getElementById('chkIncrease').checked = increase_resolution_yn==='y';
 				document.getElementById('chkContrast').checked = contrast_enhance_yn==='y';
