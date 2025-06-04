@@ -31,6 +31,42 @@ pre { background: #f4f4f4; padding: 10px; }
 <pre id="jsonOutput"></pre>
 <script src="./script_v1.js"></script>
 <script>
+let img_compress_yn="y";
+let img_max_file_size_for_compress=1*1024*1024; // 1MB
+
+function compressImage(file, quality=0.8){
+ return new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onload=ev=>{
+   const img=new Image();
+   img.onload=()=>{
+    const canvas=document.createElement('canvas');
+    canvas.width=img.width;
+    canvas.height=img.height;
+    const ctx=canvas.getContext('2d');
+    ctx.drawImage(img,0,0);
+    canvas.toBlob(blob=>{
+     resolve(new File([blob], file.name, {type:'image/jpeg'}));
+    },'image/jpeg',quality);
+   };
+   img.onerror=reject;
+   img.src=ev.target.result;
+  };
+  reader.onerror=reject;
+  reader.readAsDataURL(file);
+ });
+}
+
+async function compressIfNeeded(file){
+ if(img_compress_yn!=='y' || file.size<=img_max_file_size_for_compress) return file;
+ let quality=0.9;
+ let newFile=file;
+ while(newFile.size>img_max_file_size_for_compress && quality>0.1){
+  newFile=await compressImage(newFile,quality);
+  quality-=0.1;
+ }
+ return newFile;
+}
 function addItemRow(item={}){
  const tbody=document.querySelector('#itemsTable tbody');
  const row=document.createElement('tr');
@@ -99,15 +135,20 @@ async function sendOCR(file){
 }
 async function runOCR(){
  const files=document.getElementById('imageInput').files;
- for(const file of files){
+ let combined={to:'',from:'',items:[]};
+ for(const f of files){
   try{
+   const file=await compressIfNeeded(f);
    const json=await sendOCR(file);
-   document.getElementById('jsonOutput').textContent=JSON.stringify(json,null,2);
-   populateFormFromJSON(json);
+   if(json.to) combined.to=json.to;
+   if(json.from) combined.from=json.from;
+   if(Array.isArray(json.items)) combined.items.push(...json.items);
   }catch(err){
    alert(err.message);
   }
  }
+ document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
+ populateFormFromJSON(combined);
 }
 document.getElementById('ocrBtn').addEventListener('click',runOCR);
 addItemRow();
