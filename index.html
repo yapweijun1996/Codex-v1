@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sales Order OCR</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; }
+#itemsTable { border-collapse: collapse; width: 100%; margin-top: 10px; }
+#itemsTable th, #itemsTable td { border: 1px solid #ccc; padding: 5px; }
+#itemsTable input { width: 100%; box-sizing: border-box; }
+pre { background: #f4f4f4; padding: 10px; }
+</style>
+</head>
+<body>
+<h1>Sales Order</h1>
+<div>
+<label>API Key: <input id="apiKey" type="password" placeholder="Google API Key"></label>
+<input id="imageInput" type="file" accept="image/*" multiple>
+<button id="ocrBtn" type="button">Upload & OCR</button>
+</div>
+<form id="orderForm" onsubmit="return false;">
+<div>
+<label>To: <input type="text" id="to"></label>
+<label>From: <input type="text" id="from"></label>
+</div>
+<table id="itemsTable">
+<thead><tr><th>Stock Code</th><th>Description</th><th>Remark</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+<tbody></tbody>
+</table>
+<button type="button" onclick="addItemRow()">Add Item</button>
+</form>
+<pre id="jsonOutput"></pre>
+<script>
+function addItemRow(item={}){
+ const tbody=document.querySelector('#itemsTable tbody');
+ const row=document.createElement('tr');
+ ['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
+  const td=document.createElement('td');
+  td.innerHTML=`<input type="text" class="${key}" value="${item[key]||''}">`;
+  row.appendChild(td);
+ });
+ tbody.appendChild(row);
+}
+function populateFormFromJSON(data){
+ if(!data) return;
+ document.getElementById('to').value=data.to||'';
+ document.getElementById('from').value=data.from||'';
+ const tbody=document.querySelector('#itemsTable tbody');
+ tbody.innerHTML='';
+ if(Array.isArray(data.items)) data.items.forEach(addItemRow);
+}
+function fileToBase64(file){
+ return new Promise((resolve,reject)=>{
+  const r=new FileReader();
+  r.onload=()=>resolve(r.result.split(',')[1]);
+  r.onerror=reject;
+  r.readAsDataURL(file);
+ });
+}
+async function sendOCR(file){
+ const apiKey=document.getElementById('apiKey').value.trim();
+ if(!apiKey){alert('Please provide API key'); throw new Error('No API key');}
+ const base64=await fileToBase64(file);
+ const body={
+  contents:[{role:'user',parts:[{text:"Extract sales order fields as JSON with keys 'to','from','items' (array of objects with 'stock_code','desc','remark','qty','unit_price','total'). Return only JSON."},{inline_data:{data:base64,mime_type:file.type}}]}],
+  generationConfig:{temperature:0}
+ };
+ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro:generateContent?key=${apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ if(!res.ok) throw new Error('API error '+res.status);
+ const data=await res.json();
+ const text=data.candidates[0].content.parts.map(p=>p.text).join('');
+ return JSON.parse(text);
+}
+async function runOCR(){
+ const files=document.getElementById('imageInput').files;
+ for(const file of files){
+  try{
+   const json=await sendOCR(file);
+   document.getElementById('jsonOutput').textContent=JSON.stringify(json,null,2);
+   populateFormFromJSON(json);
+  }catch(err){
+   alert(err.message);
+  }
+ }
+}
+document.getElementById('ocrBtn').addEventListener('click',runOCR);
+addItemRow();
+</script>
+</body>
+</html>
