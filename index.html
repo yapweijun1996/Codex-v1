@@ -31,6 +31,10 @@ pre { background: #f4f4f4; padding: 10px; }
 <pre id="jsonOutput"></pre>
 <script src="./script_v1.js"></script>
 <script>
+let compress_img_yn='y';
+// Maximum file size in bytes before compression (default 1MB)
+let compress_img_max_size=1024*1024;
+
 function addItemRow(item={}){
  const tbody=document.querySelector('#itemsTable tbody');
  const row=document.createElement('tr');
@@ -57,22 +61,69 @@ function fileToBase64(file){
   r.readAsDataURL(file);
  });
 }
+
+// Compress image using canvas if required
+async function compressImage(file){
+ if(compress_img_yn!=='y' || file.size<=compress_img_max_size) return file;
+ console.log('Compressing image. Original size:', file.size);
+ const img= new Image();
+ img.src=URL.createObjectURL(file);
+ await img.decode();
+ const canvas=document.createElement('canvas');
+ let {width,height}=img;
+ const maxDim=1000;
+ if(width>height){
+  if(width>maxDim){height=Math.round(height*maxDim/width);width=maxDim;}
+ }else{
+  if(height>maxDim){width=Math.round(width*maxDim/height);height=maxDim;}
+ }
+ canvas.width=width;
+ canvas.height=height;
+ canvas.getContext('2d').drawImage(img,0,0,width,height);
+ const blob=await new Promise(res=>canvas.toBlob(res,'image/jpeg',0.8));
+ console.log('Compressed size:', blob.size);
+ return new File([blob], file.name, {type:'image/jpeg'});
+}
+
+// Extract the first JSON object found in the given text
+function extractJSON(text){
+ const start=text.indexOf('{');
+ if(start===-1) throw new Error('No JSON found in response');
+ let depth=0;
+ for(let i=start;i<text.length;i++){
+  if(text[i]==='{') depth++;
+  else if(text[i]==='}'){
+   depth--;
+   if(depth===0) return text.slice(start,i+1);
+  }
+ }
+ throw new Error('Incomplete JSON in response');
+}
 async function sendOCR(file){
  if(!apiKey){alert('Please provide API key'); throw new Error('No API key');}
- const base64=await fileToBase64(file);
+ const processed=await compressImage(file);
+ const base64=await fileToBase64(processed);
+ console.log('Base64 length:', base64.length);
  const body={
-  contents:[{role:'user',parts:[{text:"Extract sales order fields as JSON with keys 'to','from','items' (array of objects with 'stock_code','desc','remark','qty','unit_price','total'). Return only JSON."},{inline_data:{data:base64,mime_type:file.type}}]}],
+  contents:[{role:'user',parts:[{text:"Extract sales order fields as JSON with keys 'to','from','items' (array of objects with 'stock_code','desc','remark','qty','unit_price','total'). Return only JSON."},{inline_data:{data:base64,mime_type:processed.type}}]}],
   generationConfig:{temperature:0}
  };
  
  
  //const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ console.log('Request body:', body);
  const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
- console.log(res);
+ console.log('Fetch response:', res);
  if(!res.ok) throw new Error('API error '+res.status);
  const data=await res.json();
+ console.log('Raw API JSON:', data);
  const text=data.candidates[0].content.parts.map(p=>p.text).join('');
- return JSON.parse(text);
+ console.log('LLM response:', text);
+ const objText=extractJSON(text);
+ console.log('Extracted JSON:', objText);
+ const json=JSON.parse(objText);
+ console.log('Parsed JSON:', json);
+ return json;
 }
 async function runOCR(){
  const files=document.getElementById('imageInput').files;
