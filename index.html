@@ -142,7 +142,7 @@
                                 <label>CUST P/O NO. [N]: <input type="text" id="cust_po_no"></label>
                                 <label>CREDIT TERMS: <input type="text" id="credit_terms"></label>
                                 <label>PROJECT [P]: <input type="text" id="project"></label>
-                                <label>SOE05306: <input type="text" id="soe05306"></label>
+                                <label>DOCUMENT NUMBER: <input type="text" id="document_number"></label>
                                 <label>REMARKS: <input type="text" id="remarks"></label>
                         </div>
 			<button type="button" onclick="addItemRow()">Add Item</button>
@@ -312,7 +312,7 @@
                                 document.getElementById('cust_po_no').value=data.cust_po_no||'';
                                 document.getElementById('credit_terms').value=data.credit_terms||'';
                                 document.getElementById('project').value=data.project||'';
-                                document.getElementById('soe05306').value=data.soe05306||'';
+                                document.getElementById('document_number').value=data.document_number||'';
                                 document.getElementById('remarks').value=data.remarks||'';
 				const tbody=document.querySelector('#itemsTable tbody');
 				if(keep_items_yn!=='y'){
@@ -660,7 +660,7 @@
                                 "cust_po_no": "<string>",
                                 "credit_terms": "<string>",
                                 "project": "<string>",
-                                "soe05306": "<string>",
+                                "document_number": "<string>",
                                 "remarks": "<string>",
                                 "items": [
                                         {
@@ -817,7 +817,7 @@
 				loader.textContent=`Reading image with AI 0/${files.length}...`;
 				loader.classList.add('show');
                                 try{
-                                        let combined={to:'',from:'',customer:'',addr_line1:'',addr_line2:'',bill_to_name:'',country:'',attention:'',sales_exec:'',reference_num:'',trn_date:'',paym_mtd:'',post_code:'',cc_to:'',biz_unit:'',logistics_logs:'',master_num:'',shp_date:'',delivery_mode:'',currency:'',currency_rate:'',city:'',state:'',telephone:'',email:'',location:'',cust_po_no:'',credit_terms:'',project:'',soe05306:'',remarks:'',items:[]};
+                                        let combined={to:'',from:'',customer:'',addr_line1:'',addr_line2:'',bill_to_name:'',country:'',attention:'',sales_exec:'',reference_num:'',trn_date:'',paym_mtd:'',post_code:'',cc_to:'',biz_unit:'',logistics_logs:'',master_num:'',shp_date:'',delivery_mode:'',currency:'',currency_rate:'',city:'',state:'',telephone:'',email:'',location:'',cust_po_no:'',credit_terms:'',project:'',document_number:'',remarks:'',items:[]};
                                         if(keep_items_yn==='y'){
                                                 combined.items=getItemsFromTable();
                                         }
