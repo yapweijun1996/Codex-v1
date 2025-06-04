@@ -534,7 +534,7 @@
                                 sharpen_image_yn = document.getElementById('chkSharpen').checked?'y':'n';
                         }
 
-                        async function showPreview(){
+async function showPreview(){
     const preview=document.getElementById("imagePreview");
     preview.innerHTML="";
     const files=document.getElementById("imageInput").files;
@@ -553,6 +553,14 @@
         }
     }
 };
+
+                        ['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen']
+                                .forEach(id=>{
+                                        document.getElementById(id).addEventListener('change',()=>{
+                                                applyCheckboxes();
+                                                showPreview();
+                                        });
+                                });
 
                         const modal=document.getElementById('preprocessModal');
                         document.getElementById('openModalBtn').addEventListener('click',()=>{
