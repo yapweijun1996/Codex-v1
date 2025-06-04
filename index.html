@@ -31,7 +31,7 @@
 	</head>
 	<body>
 		<h1>Sales Order</h1>
-		<div id="loader">Processing...</div>
+                <div id="loader">Reading image with AI...</div>
                 <div id="buttonBar">
                         <input id="imageInput" type="file" accept="image/*" multiple>
                         <button id="ocrBtn" type="button">Upload & OCR</button>
@@ -668,7 +668,7 @@
                         async function runOCR(){
                                 const loader=document.getElementById('loader');
                                 const files=document.getElementById('imageInput').files;
-                                loader.textContent=`Processing 0/${files.length}...`;
+                                loader.textContent=`Reading image with AI 0/${files.length}...`;
                                 loader.classList.add('show');
                                 try{
                                         let combined={to:'',from:'',items:[]};
@@ -677,7 +677,7 @@
                                         }
                                         let index=0;
                                         for(const f of files){
-                                                loader.textContent=`Processing ${++index}/${files.length}...`;
+                                                loader.textContent=`Reading image with AI ${++index}/${files.length}...`;
                                                 try{
                                                         const pre=await preprocessImage(f);
                                                         const file=await compressIfNeeded(pre);
@@ -694,7 +694,7 @@
                                         populateFormFromJSON(combined);
                                 }finally{
                                         loader.classList.remove('show');
-                                        loader.textContent='Processing...';
+                                        loader.textContent='Reading image with AI...';
                                 }
                         }
 			function updateCheckboxes(){
