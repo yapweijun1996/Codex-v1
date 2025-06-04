@@ -4,40 +4,68 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>Sales Order OCR</title>
-                <style>
-                        body{font-family:Arial,sans-serif;margin:1em}
-                        #buttonBar{margin-bottom:1em;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5em}
-                       button{padding:0;background:#2c7cff;color:#fff;border:none;border-radius:4px;cursor:pointer}
-                        button:hover{background:#1a5fb4}
-                        #itemsTable{border-collapse:collapse;width:100%;margin-top:10px}
-                        #itemsTable th,#itemsTable td{border:1px solid #ccc;padding:5px}
-                        #itemsTable tr{display:grid;grid-template-columns:auto 1fr 2fr 2fr 1fr 1fr 1fr;gap:.5em}
-                        #itemsTable thead tr{background:#f0f0f0;font-weight:bold}
-                        #itemsTable input{width:100%;box-sizing:border-box}
-                        #headerFields input,#headerFields select,#headerFields textarea{width:100%;box-sizing:border-box}
-                        #headerFields{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5em;margin-bottom:1em}
-                        #preprocessOptions{display:grid;grid-template-columns:1fr 1fr;gap:.5em}
-                        #preprocessOptions label{display:block}
-                        pre{background:#f4f4f4;padding:10px}
-                        #loader{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);text-align:center;padding-top:40vh;font-size:1.5em}
-                        #loader.show{display:block}
-                        .modal{display:none;position:fixed;z-index:1000;inset:0;background:rgba(0,0,0,.4);overflow:auto}
-                        .modal.show{display:flex;align-items:center;justify-content:center}
-                        .modal-content{background:#fff;margin:auto;padding:20px;border:1px solid #888;width:90%;max-width:500px;animation:fadeIn .2s ease}
-                        .close{float:right;cursor:pointer;font-size:1.2em}
-                        @keyframes fadeIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
-                        #imagePreview img{max-width:100%;height:auto;display:block;margin-bottom:10px}
-                        @media(max-width:600px){body{margin:.5em}#itemsTable{font-size:12px}}
-                </style>
+		<style>
+			body{font-family:Arial,sans-serif;margin:1em}
+			#buttonBar{margin-bottom:1em;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5em}
+			button{padding:10px;background:#2c7cff;color:#fff;border:none;border-radius:4px;cursor:pointer}
+			button.del{padding:4px;background:red;color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;}
+			button:hover{background:#1a5fb4}
+			#itemsTable{width:100%;margin-top:0px;table-layout: fixed; min-width: 500px;}
+			#itemsTable th,#itemsTable td{padding:5px}
+			#itemsTable td,#itemsTable th {
+			  border: none; /* Remove default borders, we'll add custom below */
+			  padding: 5px;
+			}
+
+			
+			#itemsTable td,#itemsTable th {
+			  border-right: 1px solid #ccc;
+			  border-bottom: 1px solid #ccc;
+			}
+			
+			/* 1. First column: right & bottom border */
+			#itemsTable td:first-child,#itemsTable th:first-child {
+			  border-right: 1px solid #ccc;
+			  border-bottom: 1px solid #ccc;
+			}
+
+			/* 2. Last column: left & bottom border */
+			#itemsTable td:last-child {
+			  border-left: 1px solid #ccc;
+			  border-bottom: 1px solid #ccc;
+			}
+
+			/* 3. First row: bottom border for all tds in the row */
+			#itemsTable tr:first-child td {
+			  border-bottom: 1px solid #ccc;
+			}
+
+			#itemsTable td{box-sizing:border-box; padding: 5px 4px;}
+			#itemsTable thead tr{background:#f0f0f0;font-weight:bold}
+			#itemsTable input{width:100%;box-sizing:border-box}
+			#orderForm>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5em;margin-bottom:1em}
+			#preprocessOptions{display:grid;grid-template-columns:1fr 1fr;gap:.5em}
+			#preprocessOptions label{display:block}
+			pre{background:#f4f4f4;padding:10px}
+			#loader{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,.8);text-align:center;padding-top:40vh;font-size:1.5em;z-index:10;}
+			#loader.show{display:block}
+			.modal{display:none;position:fixed;z-index:1000;inset:0;background:rgba(0,0,0,.4);overflow:auto}
+			.modal.show{display:flex;align-items:center;justify-content:center}
+			.modal-content{background:#fff;margin:auto;padding:20px;border:1px solid #888;width:90%;max-width:500px;animation:fadeIn .2s ease}
+			.close{float:right;cursor:pointer;font-size:1.2em}
+			@keyframes fadeIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+			#imagePreview img{max-width:100%;height:auto;display:block;margin-bottom:10px}
+			@media(max-width:600px){body{margin:.5em}#itemsTable{font-size:12px}}
+		</style>
 	</head>
 	<body>
 		<h1>Sales Order</h1>
-                <div id="loader">Reading image with AI...</div>
-                <div id="buttonBar">
-                        <input id="imageInput" type="file" accept="image/*" multiple>
-                        <button id="ocrBtn" type="button">Upload & OCR</button>
-                        <button id="openModalBtn" type="button">Preview / Options</button>
-                </div>
+		<div id="loader">Reading image with AI...</div>
+		<div id="buttonBar">
+			<input id="imageInput" type="file" accept="image/*" multiple>
+			<button id="ocrBtn" type="button">Upload & OCR</button>
+			<button id="openModalBtn" type="button">Preview / Options</button>
+		</div>
 		
 		<div id="preprocessModal" class="modal" aria-hidden="true">
 			<div class="modal-content">
@@ -45,85 +73,71 @@
 				<h2>Preview &amp; Pre-processing</h2>
 				<div id="imagePreview"></div>
 				<div id="preprocessOptions">
-                                        <label><input type="checkbox" id="chkIncrease"> Increase Resolution</label>
-                                        <label><input type="checkbox" id="chkContrast"> Contrast Enhance</label>
-                                        <label><input type="checkbox" id="chkAdaptive"> Adaptive Threshold</label>
-                                        <label><input type="checkbox" id="chkDeskew"> Deskew</label>
-                                        <label><input type="checkbox" id="chkMedian"> Median Noise Reduction</label>
-                                        <label><input type="checkbox" id="chkGaussian"> Gaussian Noise Reduction</label>
-                                        <label><input type="checkbox" id="chkSharpen"> Sharpen Image</label>
-                                        <label><input type="checkbox" id="chkMorpho"> Morphological Operation</label>
-                                        <label>
-                                                Type:
-                                                <select id="selectMorphoType">
-                                                        <option value="dilate">Dilate</option>
-                                                        <option value="erode">Erode</option>
-                                                        <option value="open">Open</option>
-                                                        <option value="close">Close</option>
-                                                </select>
-                                        </label>
-                                        <label>
-                                                Model:
-                                                <select id="modelSelect">
-                                                        <option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</option>
-                                                        <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                                                        <option value="gemma-3-27b-it">gemma-3-27b-it</option>
-                                                        <option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview-05-06</option>
-                                                        <option value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash-preview-04-17</option>
-                                                        <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
-                                                        <option value="gemini-1.5-flash">gemini-1.5-flash</option>
-                                                        <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-                                                </select>
-                                        </label>
-                                        <label><input type="checkbox" id="chkBackground"> Background Artifact Removal</label>
-                                        <label>Boldness: <input type="range" id="boldnessRange" min="-2" max="2" value="0"></label>
-                                <label><input type="checkbox" id="chkNoOverride" checked> Never override imported row item data</label>
-                                <label><input type="checkbox" id="chkShowJson"> Show JSON Output</label>
-                                </div>
+					<label><input type="checkbox" id="chkIncrease"> Increase Resolution</label>
+					<label><input type="checkbox" id="chkContrast"> Contrast Enhance</label>
+					<label><input type="checkbox" id="chkAdaptive"> Adaptive Threshold</label>
+					<label><input type="checkbox" id="chkDeskew"> Deskew</label>
+					<label><input type="checkbox" id="chkMedian"> Median Noise Reduction</label>
+					<label><input type="checkbox" id="chkGaussian"> Gaussian Noise Reduction</label>
+					<label><input type="checkbox" id="chkSharpen"> Sharpen Image</label>
+					<label><input type="checkbox" id="chkMorpho"> Morphological Operation</label>
+					<label>
+						Type:
+						<select id="selectMorphoType">
+							<option value="dilate">Dilate</option>
+							<option value="erode">Erode</option>
+							<option value="open">Open</option>
+							<option value="close">Close</option>
+						</select>
+					</label>
+					<label>
+						Model:
+						<select id="modelSelect">
+							<option value="gemini-2.5-flash-preview-05-20">gemini-2.5-flash-preview-05-20</option>
+							<option value="gemini-2.0-flash">gemini-2.0-flash</option>
+							<option value="gemma-3-27b-it">gemma-3-27b-it</option>
+							<option value="gemini-2.5-pro-preview-05-06">gemini-2.5-pro-preview-05-06</option>
+							<option value="gemini-2.5-flash-preview-04-17">gemini-2.5-flash-preview-04-17</option>
+							<option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite</option>
+							<option value="gemini-1.5-flash">gemini-1.5-flash</option>
+							<option value="gemini-1.5-pro">gemini-1.5-pro</option>
+						</select>
+					</label>
+					<label><input type="checkbox" id="chkBackground"> Background Artifact Removal</label>
+					<label>Boldness: <input type="range" id="boldnessRange" min="-2" max="2" value="0"></label>
+					<label><input type="checkbox" id="chkNoOverride" checked> Never override imported row item data</label>
+					<label><input type="checkbox" id="chkShowJson"> Show JSON Output</label>
+				</div>
 				<button id="runOCRModal" type="button">Run OCR</button>
 			</div>
 		</div>
-                <form id="orderForm" onsubmit="return false;">
-                        <div id="headerFields">
-                                <label>To: <input type="text" id="to"></label>
-                                <label>From: <input type="text" id="from"></label>
-                                <label>CUSTOMER: <input type="text" id="customer"></label>
-                                <label>ADDR LINE1: <input type="text" id="addr_line1"></label>
-                                <label>ADDR LINE2: <input type="text" id="addr_line2"></label>
-                                <label>BILL TO NAME: <input type="text" id="bill_to_name"></label>
-                                <label>COUNTRY: <input type="text" id="country"></label>
-                                <label>ATTENTION: <input type="text" id="attention"></label>
-                                <label>SALES EXEC: <input type="text" id="sales_exec"></label>
-                                <label>REFERENCE NUM: <input type="text" id="reference_num"></label>
-                                <label>TRN DATE: <input type="date" id="trn_date"></label>
-                                <label>PAYM MTD: <input type="text" id="paym_mtd"></label>
-                                <label>POST CODE: <input type="text" id="post_code"></label>
-                                <label>CC TO: <input type="text" id="cc_to"></label>
-                                <label>Biz Unit [B]: <input type="text" id="biz_unit"></label>
-                                <label>LOGISTICS LOGS: <input type="text" id="logistics_logs"></label>
-                                <label>MASTER NUM: <input type="text" id="master_num"></label>
-                                <label>SHP DATE [R C]: <input type="date" id="shp_date"></label>
-                                <label>DELIVERY MODE: <input type="text" id="delivery_mode"></label>
-                                <label>CURRENCY: <input type="text" id="currency"></label>
-                                <label>Currency Rate: <input type="number" step="any" id="currency_rate"></label>
-                                <label>CITY: <input type="text" id="city"></label>
-                                <label>STATE: <input type="text" id="state"></label>
-                                <label>TELEPHONE: <input type="text" id="telephone"></label>
-                                <label>EMAIL: <input type="email" id="email"></label>
-                                <label>LOCATION [L]: <input type="text" id="location"></label>
-                                <label>CUST P/O NO. [N]: <input type="text" id="cust_po_no"></label>
-                                <label>CREDIT TERMS: <input type="text" id="credit_terms"></label>
-                                <label>PROJECT [P]: <input type="text" id="project"></label>
-                                <label>SOE05306: <input type="text" id="soe05306"></label>
-                                <label>REMARKS:<br><textarea id="remarks"></textarea></label>
-                        </div>
-                        <table id="itemsTable">
-                                <thead><tr><th>-DEL</th><th>Stock Code</th><th>Description</th><th>Remark</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
-                                <tbody></tbody>
-                        </table>
+		<form id="orderForm" onsubmit="return false;">
+			<div>
+				<label>To: <input type="text" id="to"></label>
+				<label>From: <input type="text" id="from"></label>
+			</div>
 			<button type="button" onclick="addItemRow()">Add Item</button>
+			<div style="max-height: 400px; overflow: auto; border: 1px solid #ccc; margin-top: 10px;">
+				<table id="itemsTable" cellpadding="0" cellspacing="0">
+					<thead>
+						<tr>
+						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">DEL</th>
+						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">Stock Code</th>
+						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">Description</th>
+						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">Remark</th>
+						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">Qty</th>
+						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">Unit Price</th>
+						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">Total</th>
+						</tr>
+					  </thead>
+					  <tbody>
+					  
+					  </tbody>
+				</table>
+			</div>
+			
 		</form>
-                <pre id="jsonOutput" style="display:none"></pre>
+		<pre id="jsonOutput" style="display:none"></pre>
 		<script src="./script_v1.js"></script>
 		<script>
 			let img_compress_yn="y";
@@ -139,11 +153,11 @@
 			let sharpen_image_yn = "y"; // Sharpen Image
 			let morpho_yn = "n"; // Morphological Operation
 			let morpho_type = "dilate"; // dilate, erode, open, close
-                        let background_removal_yn = "n"; // Background Artifact Removal
-                        let boldness_level = 0; // -2 to 2, 0 = no change
-                       let keep_items_yn = "y"; // keep imported row items when running OCR again
-                        let llm_model = "gemini-2.5-flash-preview-05-20"; // selected language model
-                        let show_json_output_yn = "n"; // show JSON output area
+			let background_removal_yn = "n"; // Background Artifact Removal
+			let boldness_level = 0; // -2 to 2, 0 = no change
+			let keep_items_yn = "y"; // keep imported row items when running OCR again
+			let llm_model = "gemini-2.5-flash-preview-05-20"; // selected language model
+			let show_json_output_yn = "n"; // show JSON output area
 			
 			// Debug: log preprocessing settings
 			console.log('Compression enabled:', img_compress_yn === 'y', 'max size:', img_max_file_size_for_compress);
@@ -156,15 +170,15 @@
 			console.log('Sharpen image:', sharpen_image_yn === 'y');
 			console.log('Morphological operation:', morpho_yn === 'y');
 			console.log('Morphological type:', morpho_type);
-                        console.log('Background removal:', background_removal_yn === 'y');
-                        console.log('Boldness level:', boldness_level);
-                        console.log('Keep items across OCR runs:', keep_items_yn === 'y');
-                       console.log('Selected model:', llm_model);
-
-                        function updateJsonOutputVisibility(){
-                                const pre=document.getElementById('jsonOutput');
-                                pre.style.display=show_json_output_yn==='y'?'block':'none';
-                        }
+			console.log('Background removal:', background_removal_yn === 'y');
+			console.log('Boldness level:', boldness_level);
+			console.log('Keep items across OCR runs:', keep_items_yn === 'y');
+			console.log('Selected model:', llm_model);
+			
+			function updateJsonOutputVisibility(){
+				const pre=document.getElementById('jsonOutput');
+				pre.style.display=show_json_output_yn==='y'?'block':'none';
+			}
 			
 			function compressImage(file, quality=0.8){
 				return new Promise((resolve,reject)=>{
@@ -205,62 +219,63 @@
 				}
 				return newFile;
 			}
-                        function addItemRow(item={}){
-                                const tbody=document.querySelector('#itemsTable tbody');
-                                const row=document.createElement('tr');
-                                const delTd=document.createElement('td');
-                                const btn=document.createElement('button');
-                                btn.type='button';
-                                btn.textContent='DEL';
-                                btn.addEventListener('click',()=>row.remove());
-                                delTd.appendChild(btn);
-                                row.appendChild(delTd);
-                                ['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
-                                        const td=document.createElement('td');
-                                        td.innerHTML=`<input type="text" class="${key}" value="${item[key]||''}">`;
-                                        row.appendChild(td);
-                                });
-                                tbody.appendChild(row);
-                        }
-
-                        function getItemsFromTable(){
-                                const rows=document.querySelectorAll('#itemsTable tbody tr');
-                                return Array.from(rows).map(r=>{
-                                        const get=(cls)=>r.querySelector('.'+cls)?.value||'';
-                                        return {
-                                                stock_code:get('stock_code'),
-                                                desc:get('desc'),
-                                                remark:get('remark'),
-                                                qty:get('qty'),
-                                                unit_price:get('unit_price'),
-                                                total:get('total')
-                                        };
-                                });
-                        }
-                        function populateFormFromJSON(data){
-                                if(!data) return;
-                                document.getElementById('to').value=data.to||'';
-                                document.getElementById('from').value=data.from||'';
-                                const tbody=document.querySelector('#itemsTable tbody');
-                                if(keep_items_yn!=='y'){
-                                        tbody.innerHTML='';
-                                        if(Array.isArray(data.items)) data.items.forEach(addItemRow);
-                                        return;
-                                }
-                                if(!Array.isArray(data.items)) return;
-                                const rows=tbody.querySelectorAll('tr');
-                                data.items.forEach((item,idx)=>{
-                                        if(idx<rows.length){
-                                                const row=rows[idx];
-                                                ['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
-                                                        const input=row.querySelector('.'+key);
-                                                        if(input && !input.value) input.value=item[key]||'';
-                                                });
-                                        }else{
-                                                addItemRow(item);
-                                        }
-                                });
-                        }
+			function addItemRow(item={}){
+				const tbody=document.querySelector('#itemsTable tbody');
+				const row=document.createElement('tr');
+				const delTd=document.createElement('td');
+				const btn=document.createElement('button');
+				btn.type='button';
+				btn.classList.add("del");
+				btn.textContent='DEL';
+				btn.addEventListener('click',()=>row.remove());
+				delTd.appendChild(btn);
+				row.appendChild(delTd);
+				['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
+					const td=document.createElement('td');
+					td.innerHTML=`<input type="text" class="${key}" value="${item[key]||''}">`;
+					row.appendChild(td);
+				});
+				tbody.appendChild(row);
+			}
+			
+			function getItemsFromTable(){
+				const rows=document.querySelectorAll('#itemsTable tbody tr');
+				return Array.from(rows).map(r=>{
+					const get=(cls)=>r.querySelector('.'+cls)?.value||'';
+					return {
+						stock_code:get('stock_code'),
+						desc:get('desc'),
+						remark:get('remark'),
+						qty:get('qty'),
+						unit_price:get('unit_price'),
+						total:get('total')
+					};
+				});
+			}
+			function populateFormFromJSON(data){
+				if(!data) return;
+				document.getElementById('to').value=data.to||'';
+				document.getElementById('from').value=data.from||'';
+				const tbody=document.querySelector('#itemsTable tbody');
+				if(keep_items_yn!=='y'){
+					tbody.innerHTML='';
+					if(Array.isArray(data.items)) data.items.forEach(addItemRow);
+					return;
+				}
+				if(!Array.isArray(data.items)) return;
+				const rows=tbody.querySelectorAll('tr');
+				data.items.forEach((item,idx)=>{
+					if(idx<rows.length){
+						const row=rows[idx];
+						['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
+							const input=row.querySelector('.'+key);
+							if(input && !input.value) input.value=item[key]||'';
+						});
+					}else{
+						addItemRow(item);
+					}
+				});
+			}
 			function fileToBase64(file){
 				return new Promise((resolve,reject)=>{
 					const r=new FileReader();
@@ -640,16 +655,16 @@
 				
 				console.log('Request body:', body);
 				
-                                let res;
-                                try {
-                                        res = await fetch(
-                                        `https://generativelanguage.googleapis.com/v1beta/models/${llm_model}:generateContent?key=${apiKey}`,
-                                        {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(body)
-                                        }
-                                        );
+				let res;
+				try {
+					res = await fetch(
+					`https://generativelanguage.googleapis.com/v1beta/models/${llm_model}:generateContent?key=${apiKey}`,
+					{
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(body)
+					}
+					);
 					console.log('Fetch response:', res);
 				} catch (err) {
 					console.error('Fetch failed:', err);
@@ -709,39 +724,39 @@
 				return jsonObj;
 			}
 			
-                        async function runOCR(){
-                                const loader=document.getElementById('loader');
-                                const files=document.getElementById('imageInput').files;
-                                loader.textContent=`Reading image with AI 0/${files.length}...`;
-                                loader.classList.add('show');
-                                try{
-                                        let combined={to:'',from:'',items:[]};
-                                        if(keep_items_yn==='y'){
-                                                combined.items=getItemsFromTable();
-                                        }
-                                        let index=0;
-                                        for(const f of files){
-                                                loader.textContent=`Reading image with AI ${++index}/${files.length}...`;
-                                                try{
-                                                        const pre=await preprocessImage(f);
-                                                        const file=await compressIfNeeded(pre);
-                                                        const json=await sendOCR(file);
-                                                        if(json.to) combined.to=json.to;
-                                                        if(json.from) combined.from=json.from;
-                                                        if(Array.isArray(json.items)) combined.items.push(...json.items);
-                                                }catch(err){
-                                                        alert(err.message);
-                                                }
-                                        }
-                                        // Results should already be sanitized by the language model
-                                        document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
-                                        updateJsonOutputVisibility();
-                                        populateFormFromJSON(combined);
-                                }finally{
-                                        loader.classList.remove('show');
-                                        loader.textContent='Reading image with AI...';
-                                }
-                        }
+			async function runOCR(){
+				const loader=document.getElementById('loader');
+				const files=document.getElementById('imageInput').files;
+				loader.textContent=`Reading image with AI 0/${files.length}...`;
+				loader.classList.add('show');
+				try{
+					let combined={to:'',from:'',items:[]};
+					if(keep_items_yn==='y'){
+						combined.items=getItemsFromTable();
+					}
+					let index=0;
+					for(const f of files){
+						loader.textContent=`Reading image with AI ${++index}/${files.length}...`;
+						try{
+							const pre=await preprocessImage(f);
+							const file=await compressIfNeeded(pre);
+							const json=await sendOCR(file);
+							if(json.to) combined.to=json.to;
+							if(json.from) combined.from=json.from;
+							if(Array.isArray(json.items)) combined.items.push(...json.items);
+						}catch(err){
+							alert(err.message);
+						}
+					}
+					// Results should already be sanitized by the language model
+					document.getElementById('jsonOutput').textContent=JSON.stringify(combined,null,2);
+					updateJsonOutputVisibility();
+					populateFormFromJSON(combined);
+				}finally{
+					loader.classList.remove('show');
+					loader.textContent='Reading image with AI...';
+				}
+			}
 			function updateCheckboxes(){
 				document.getElementById('chkIncrease').checked = increase_resolution_yn==='y';
 				document.getElementById('chkContrast').checked = contrast_enhance_yn==='y';
@@ -752,14 +767,14 @@
 				document.getElementById('chkSharpen').checked = sharpen_image_yn==='y';
 				document.getElementById('chkMorpho').checked = morpho_yn==='y';
 				document.getElementById('selectMorphoType').value = morpho_type;
-                                document.getElementById('chkBackground').checked = background_removal_yn==='y';
-                                document.getElementById('boldnessRange').value = boldness_level;
-                               document.getElementById('chkNoOverride').checked = keep_items_yn==='y';
-                               document.getElementById('modelSelect').value = llm_model;
-                               document.getElementById('chkShowJson').checked = show_json_output_yn==='y';
-                       }
-
-                        function applyCheckboxes(){
+				document.getElementById('chkBackground').checked = background_removal_yn==='y';
+				document.getElementById('boldnessRange').value = boldness_level;
+				document.getElementById('chkNoOverride').checked = keep_items_yn==='y';
+				document.getElementById('modelSelect').value = llm_model;
+				document.getElementById('chkShowJson').checked = show_json_output_yn==='y';
+			}
+			
+			function applyCheckboxes(){
 				increase_resolution_yn = document.getElementById('chkIncrease').checked?'y':'n';
 				contrast_enhance_yn = document.getElementById('chkContrast').checked?'y':'n';
 				adaptive_threshold_yn = document.getElementById('chkAdaptive').checked?'y':'n';
@@ -769,12 +784,12 @@
 				sharpen_image_yn = document.getElementById('chkSharpen').checked?'y':'n';
 				morpho_yn = document.getElementById('chkMorpho').checked?'y':'n';
 				morpho_type = document.getElementById('selectMorphoType').value;
-                                background_removal_yn = document.getElementById('chkBackground').checked?'y':'n';
-                                boldness_level = parseInt(document.getElementById('boldnessRange').value,10);
-                               keep_items_yn = document.getElementById('chkNoOverride').checked?'y':'n';
-                               llm_model = document.getElementById('modelSelect').value;
-                               show_json_output_yn = document.getElementById('chkShowJson').checked?'y':'n';
-                        }
+				background_removal_yn = document.getElementById('chkBackground').checked?'y':'n';
+				boldness_level = parseInt(document.getElementById('boldnessRange').value,10);
+				keep_items_yn = document.getElementById('chkNoOverride').checked?'y':'n';
+				llm_model = document.getElementById('modelSelect').value;
+				show_json_output_yn = document.getElementById('chkShowJson').checked?'y':'n';
+			}
 			
 			async function showPreview(){
 				const preview=document.getElementById("imagePreview");
@@ -796,33 +811,33 @@
 				}
 			};
 			
-                        ['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange','selectMorphoType','chkNoOverride','modelSelect','chkShowJson']
-                        .forEach(id=>{
-                                document.getElementById(id).addEventListener('change',()=>{
-                                        applyCheckboxes();
-                                        showPreview();
-                                        updateJsonOutputVisibility();
-                                });
-                        });
+			['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange','selectMorphoType','chkNoOverride','modelSelect','chkShowJson']
+			.forEach(id=>{
+				document.getElementById(id).addEventListener('change',()=>{
+					applyCheckboxes();
+					showPreview();
+					updateJsonOutputVisibility();
+				});
+			});
 			
 			const modal=document.getElementById('preprocessModal');
 			
-                        function openModal(){
-                                updateCheckboxes();
-                                showPreview();
-                                updateJsonOutputVisibility();
-                                modal.classList.add('show');
-                                modal.setAttribute('aria-hidden','false');
-                                document.body.style.overflow='hidden';
-                        }
+			function openModal(){
+				updateCheckboxes();
+				showPreview();
+				updateJsonOutputVisibility();
+				modal.classList.add('show');
+				modal.setAttribute('aria-hidden','false');
+				document.body.style.overflow='hidden';
+			}
 			
-                        function closeModal(){
-                                applyCheckboxes();
-                                updateJsonOutputVisibility();
-                                modal.classList.remove('show');
-                                modal.setAttribute('aria-hidden','true');
-                                document.body.style.overflow='';
-                        }
+			function closeModal(){
+				applyCheckboxes();
+				updateJsonOutputVisibility();
+				modal.classList.remove('show');
+				modal.setAttribute('aria-hidden','true');
+				document.body.style.overflow='';
+			}
 			
 			document.getElementById('openModalBtn').addEventListener('click',openModal);
 			document.getElementById('closeModal').addEventListener('click',closeModal);
@@ -834,8 +849,8 @@
 				applyCheckboxes();
 				runOCR();
 			});
-                        addItemRow();
-                        updateJsonOutputVisibility();
-                </script>
-        </body>
+			addItemRow();
+			updateJsonOutputVisibility();
+		</script>
+	</body>
 </html>
