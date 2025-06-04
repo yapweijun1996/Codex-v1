@@ -44,6 +44,15 @@
                                         <label><input type="checkbox" id="chkGaussian"> Gaussian Noise Reduction</label><br>
                                         <label><input type="checkbox" id="chkSharpen"> Sharpen Image</label><br>
                                         <label><input type="checkbox" id="chkMorpho"> Morphological Operation</label><br>
+                                        <label>
+                                                Type:
+                                                <select id="selectMorphoType">
+                                                        <option value="dilate">Dilate</option>
+                                                        <option value="erode">Erode</option>
+                                                        <option value="open">Open</option>
+                                                        <option value="close">Close</option>
+                                                </select>
+                                        </label><br>
                                         <label><input type="checkbox" id="chkBackground"> Background Artifact Removal</label><br>
                                         <label>Boldness: <input type="range" id="boldnessRange" min="-2" max="2" value="0"></label>
                                 </div>
@@ -76,6 +85,7 @@
                         let noise_gaussian_yn = "y"; // Noise Reduction (Gaussian)
                         let sharpen_image_yn = "y"; // Sharpen Image
                         let morpho_yn = "n"; // Morphological Operation
+                        let morpho_type = "dilate"; // dilate, erode, open, close
                         let background_removal_yn = "n"; // Background Artifact Removal
                         let boldness_level = 0; // -2 to 2, 0 = no change
 
@@ -89,6 +99,7 @@
                         console.log('Gaussian noise reduction:', noise_gaussian_yn === 'y');
                         console.log('Sharpen image:', sharpen_image_yn === 'y');
                         console.log('Morphological operation:', morpho_yn === 'y');
+                        console.log('Morphological type:', morpho_type);
                         console.log('Background removal:', background_removal_yn === 'y');
                         console.log('Boldness level:', boldness_level);
 			
@@ -273,21 +284,22 @@
                                 src.data.set(out);
                         }
 
-                        function morphologicalOperation(imageData,width,height){
-                                const data=imageData.data;
-                                const copy=new Uint8ClampedArray(data);
-                                for(let y=1;y<height-1;y++){
-                                        for(let x=1;x<width-1;x++){
-                                                let maxVal=0;
-                                                for(let dy=-1;dy<=1;dy++){
-                                                        for(let dx=-1;dx<=1;dx++){
-                                                                const idx=((y+dy)*width+(x+dx))*4;
-                                                                if(copy[idx]>maxVal) maxVal=copy[idx];
-                                                        }
-                                                }
-                                                const i=(y*width+x)*4;
-                                                data[i]=data[i+1]=data[i+2]=maxVal;
-                                        }
+                        function morphologicalOperation(imageData,width,height,type){
+                                switch(type){
+                                        case 'dilate':
+                                                dilateImage(imageData,width,height);
+                                                break;
+                                        case 'erode':
+                                                erodeImage(imageData,width,height);
+                                                break;
+                                        case 'open':
+                                                erodeImage(imageData,width,height);
+                                                dilateImage(imageData,width,height);
+                                                break;
+                                        case 'close':
+                                                dilateImage(imageData,width,height);
+                                                erodeImage(imageData,width,height);
+                                                break;
                                 }
                         }
 
@@ -408,7 +420,7 @@
                                 }
                                 if(morpho_yn==='y'){
                                         console.log('Applying morphological operation');
-                                        morphologicalOperation(imageData,canvas.width,canvas.height);
+                                        morphologicalOperation(imageData,canvas.width,canvas.height,morpho_type);
                                 }
                                 if(background_removal_yn==='y'){
                                         console.log('Removing background artifacts');
@@ -630,6 +642,7 @@
                         document.getElementById('chkGaussian').checked = noise_gaussian_yn==='y';
                         document.getElementById('chkSharpen').checked = sharpen_image_yn==='y';
                         document.getElementById('chkMorpho').checked = morpho_yn==='y';
+                        document.getElementById('selectMorphoType').value = morpho_type;
                         document.getElementById('chkBackground').checked = background_removal_yn==='y';
                         document.getElementById('boldnessRange').value = boldness_level;
                         }
@@ -643,6 +656,7 @@
                         noise_gaussian_yn = document.getElementById('chkGaussian').checked?'y':'n';
                         sharpen_image_yn = document.getElementById('chkSharpen').checked?'y':'n';
                         morpho_yn = document.getElementById('chkMorpho').checked?'y':'n';
+                        morpho_type = document.getElementById('selectMorphoType').value;
                         background_removal_yn = document.getElementById('chkBackground').checked?'y':'n';
                         boldness_level = parseInt(document.getElementById('boldnessRange').value,10);
                         }
@@ -667,7 +681,7 @@ async function showPreview(){
     }
 };
 
-                        ['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange']
+                        ['chkIncrease','chkContrast','chkAdaptive','chkDeskew','chkMedian','chkGaussian','chkSharpen','chkMorpho','chkBackground','boldnessRange','selectMorphoType']
                                 .forEach(id=>{
                                         document.getElementById(id).addEventListener('change',()=>{
                                                 applyCheckboxes();
