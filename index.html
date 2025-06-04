@@ -11,7 +11,7 @@
                         button:hover{background:#1a5fb4}
                         #itemsTable{border-collapse:collapse;width:100%;margin-top:10px}
                         #itemsTable th,#itemsTable td{border:1px solid #ccc;padding:5px}
-                        #itemsTable tr{display:grid;grid-template-columns:1fr 2fr 2fr 1fr 1fr 1fr;gap:.5em}
+                        #itemsTable tr{display:grid;grid-template-columns:auto 1fr 2fr 2fr 1fr 1fr 1fr;gap:.5em}
                         #itemsTable thead tr{background:#f0f0f0;font-weight:bold}
                         #itemsTable input{width:100%;box-sizing:border-box}
                         #orderForm>div{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.5em;margin-bottom:1em}
@@ -87,10 +87,10 @@
 				<label>To: <input type="text" id="to"></label>
 				<label>From: <input type="text" id="from"></label>
 			</div>
-			<table id="itemsTable">
-				<thead><tr><th>Stock Code</th><th>Description</th><th>Remark</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
-				<tbody></tbody>
-			</table>
+                        <table id="itemsTable">
+                                <thead><tr><th>-DEL</th><th>Stock Code</th><th>Description</th><th>Remark</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+                                <tbody></tbody>
+                        </table>
 			<button type="button" onclick="addItemRow()">Add Item</button>
 		</form>
                 <pre id="jsonOutput" style="display:none"></pre>
@@ -178,6 +178,13 @@
                         function addItemRow(item={}){
                                 const tbody=document.querySelector('#itemsTable tbody');
                                 const row=document.createElement('tr');
+                                const delTd=document.createElement('td');
+                                const btn=document.createElement('button');
+                                btn.type='button';
+                                btn.textContent='DEL';
+                                btn.addEventListener('click',()=>row.remove());
+                                delTd.appendChild(btn);
+                                row.appendChild(delTd);
                                 ['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
                                         const td=document.createElement('td');
                                         td.innerHTML=`<input type="text" class="${key}" value="${item[key]||''}">`;
