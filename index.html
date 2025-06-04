@@ -14,7 +14,6 @@ pre { background: #f4f4f4; padding: 10px; }
 <body>
 <h1>Sales Order</h1>
 <div>
-<label>API Key: <input id="apiKey" type="password" placeholder="Google API Key"></label>
 <input id="imageInput" type="file" accept="image/*" multiple>
 <button id="ocrBtn" type="button">Upload & OCR</button>
 </div>
@@ -30,6 +29,7 @@ pre { background: #f4f4f4; padding: 10px; }
 <button type="button" onclick="addItemRow()">Add Item</button>
 </form>
 <pre id="jsonOutput"></pre>
+<script src="./script_v1.js"></script>
 <script>
 function addItemRow(item={}){
  const tbody=document.querySelector('#itemsTable tbody');
@@ -58,14 +58,17 @@ function fileToBase64(file){
  });
 }
 async function sendOCR(file){
- const apiKey=document.getElementById('apiKey').value.trim();
  if(!apiKey){alert('Please provide API key'); throw new Error('No API key');}
  const base64=await fileToBase64(file);
  const body={
   contents:[{role:'user',parts:[{text:"Extract sales order fields as JSON with keys 'to','from','items' (array of objects with 'stock_code','desc','remark','qty','unit_price','total'). Return only JSON."},{inline_data:{data:base64,mime_type:file.type}}]}],
   generationConfig:{temperature:0}
  };
- const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro:generateContent?key=${apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ 
+ 
+ //const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ console.log(res);
  if(!res.ok) throw new Error('API error '+res.status);
  const data=await res.json();
  const text=data.candidates[0].content.parts.map(p=>p.text).join('');
