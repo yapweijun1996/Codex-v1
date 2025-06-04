@@ -185,14 +185,30 @@
                                         };
                                 });
                         }
-			function populateFormFromJSON(data){
-				if(!data) return;
-				document.getElementById('to').value=data.to||'';
-				document.getElementById('from').value=data.from||'';
+                        function populateFormFromJSON(data){
+                                if(!data) return;
+                                document.getElementById('to').value=data.to||'';
+                                document.getElementById('from').value=data.from||'';
                                 const tbody=document.querySelector('#itemsTable tbody');
-                                if(keep_items_yn!=='y') tbody.innerHTML='';
-                                if(Array.isArray(data.items)) data.items.forEach(addItemRow);
-			}
+                                if(keep_items_yn!=='y'){
+                                        tbody.innerHTML='';
+                                        if(Array.isArray(data.items)) data.items.forEach(addItemRow);
+                                        return;
+                                }
+                                if(!Array.isArray(data.items)) return;
+                                const rows=tbody.querySelectorAll('tr');
+                                data.items.forEach((item,idx)=>{
+                                        if(idx<rows.length){
+                                                const row=rows[idx];
+                                                ['stock_code','desc','remark','qty','unit_price','total'].forEach(key=>{
+                                                        const input=row.querySelector('.'+key);
+                                                        if(input && !input.value) input.value=item[key]||'';
+                                                });
+                                        }else{
+                                                addItemRow(item);
+                                        }
+                                });
+                        }
 			function fileToBase64(file){
 				return new Promise((resolve,reject)=>{
 					const r=new FileReader();
