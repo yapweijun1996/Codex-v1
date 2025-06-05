@@ -98,12 +98,25 @@
 				cursor: pointer;
 				transition: 0.2s;
 			}
-			#clearHistory:hover {
-				background: #e0e0e0;
-			}
-			.progress-container {
-				margin: 15px 0;
-			}
+                        #clearHistory:hover {
+                                background: #e0e0e0;
+                        }
+                        #resetChat {
+                                margin-left: 10px;
+                                padding: 5px 10px;
+                                font-size: 0.9em;
+                                background: #f9f9f9;
+                                border: 1px solid #ddd;
+                                border-radius: 4px;
+                                cursor: pointer;
+                                transition: 0.2s;
+                        }
+                        #resetChat:hover {
+                                background: #eef2ff;
+                        }
+                        .progress-container {
+                                margin: 15px 0;
+                        }
 			.progress-bar {
 				width: 100%;
 				height: 6px;
@@ -732,8 +745,9 @@
 			<div id="chatHistory">
 				<h3 style="color: #666; font-size: 1.1em; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
 					Chat History
-					<button id="clearHistory">Clear History</button>
-				</h3>
+                                       <button id="clearHistory">Clear History</button>
+                                       <button id="resetChat">Reset Chat</button>
+                               </h3>
 				<div id="chatHistoryContainer"></div>
 			</div>
 			
@@ -841,11 +855,18 @@
 			const confirmBox = document.getElementById("confirmBox");
 			const confirmText = document.getElementById("confirmText");
 			const confirmYes = document.getElementById("confirmYes");
-			const confirmNo = document.getElementById("confirmNo");
-			let dots = 0, dotsInterval, lastUserMsg = '', lastSQL = '';
-			let currentRequest = null; // For request cancellation
-			let progressInterval = null;
-			let chatHistoryChartConfigs = [];
+                        const confirmNo = document.getElementById("confirmNo");
+                        const toggleDebugBtn = document.getElementById("toggleDebug");
+                        const resetChatBtn = document.getElementById("resetChat");
+                        const clearHistoryBtn = document.getElementById("clearHistory");
+                        const questionInput = document.getElementById('question');
+                        questionInput.focus();
+                        let dots = 0, dotsInterval, lastUserMsg = '', lastSQL = '';
+                        let lastResponseHTML = '';
+                        let isSubmitting = false;
+                        let currentRequest = null; // For request cancellation
+                        let progressInterval = null;
+                        let chatHistoryChartConfigs = [];
 			
 			const agentSteps = [
 				{ text: "Analyzing your question...", progress: 15 },
@@ -919,12 +940,27 @@
 				return history;
 			}
 			
-			// Clear History Function
-			document.getElementById('clearHistory').onclick = function() {
-				document.getElementById('chatHistoryContainer').innerHTML = '';
-				document.getElementById('chatHistory').style.display = 'none';
-				chatHistoryChartConfigs = [];
-			};
+                        // Unified conversation reset
+                        function resetConversation(all = false) {
+                                document.getElementById('chatHistoryContainer').innerHTML = '';
+                                document.getElementById('chatHistory').style.display = 'none';
+                                chatHistoryChartConfigs = [];
+                                if (all) {
+                                        output.innerHTML = '';
+                                        document.getElementById('debugPanel').style.display = 'none';
+                                        toggleDebugBtn.textContent = 'Show Debug JSON';
+                                }
+                        }
+
+                        // Clear history only
+                        clearHistoryBtn.onclick = function() {
+                                resetConversation();
+                        };
+
+                        // Full reset
+                        resetChatBtn.onclick = function() {
+                                resetConversation(true);
+                        };
 			
 			// Enhanced loading with agent progress
 			function startLoader() {
@@ -959,8 +995,9 @@
 					currentRequest.abort();
 					currentRequest = null;
 				}
-				stopLoader();
-				output.innerHTML = `<div style="color:#888; font-style:italic;">Request cancelled by user.</div>`;
+                                stopLoader();
+                                isSubmitting = false;
+                                output.innerHTML = `<div style="color:#888; font-style:italic;">Request cancelled by user.</div>`;
 			};
 			
 			function generateUniqueId() {
@@ -981,7 +1018,8 @@
 				if(json.error || json.ERROR) {
 					html += `<div class="err">${json.error || json.ERROR}</div>`;
 					if (json.debug || json.DEBUG) html += `<div style="color:#aaa;">DEBUG: ${json.debug || json.DEBUG}</div>`;
-					output.innerHTML = html;
+                                        output.innerHTML = html;
+                                        lastResponseHTML = html;
 					addToHistory(`<b>AI:</b> <div class="err">${json.error || json.ERROR}</div>`, 'ai');
 					return;
 				}
@@ -1047,8 +1085,9 @@
 						html += `<div style="color:#888; font-size:.95em;">BI Debug: ${JSON.stringify(json.BUSINESSINTELLIGENCEDEBUG)}</div>`;
 						historyHtml += `<div style="color:#888; font-size:.95em;">BI Debug: ${JSON.stringify(json.BUSINESSINTELLIGENCEDEBUG)}</div>`;
 					}
-					output.innerHTML = html;
-					document.getElementById('chatHistoryContainer').innerHTML += historyHtml;
+                                        output.innerHTML = html;
+                                        lastResponseHTML = html;
+                                        document.getElementById('chatHistoryContainer').innerHTML += historyHtml;
 					// Render all charts in chat history
 					chatHistoryChartConfigs.forEach(cfg => renderChartFromConfig(cfg));
 					// Render output chart (latest)
@@ -1089,8 +1128,9 @@
 						html += `<div style="color:#888; font-size:.95em;">BI Debug: ${JSON.stringify(json.BUSINESSINTELLIGENCEDEBUG)}</div>`;
 						historyHtml += `<div style="color:#888; font-size:.95em;">BI Debug: ${JSON.stringify(json.BUSINESSINTELLIGENCEDEBUG)}</div>`;
 					}
-					output.innerHTML = html;
-					document.getElementById('chatHistoryContainer').innerHTML += historyHtml;
+                                        output.innerHTML = html;
+                                        lastResponseHTML = html;
+                                        document.getElementById('chatHistoryContainer').innerHTML += historyHtml;
 					// Render chart if present
 					if (json.CHARTCONFIG && json.CHARTCONFIG.canvasId) {
 						renderChartFromConfig(json.CHARTCONFIG);
@@ -1148,8 +1188,10 @@
 					<div style="margin:10px 0; color:#888;">Waiting for confirmation...</div>
 				`, 'ai');
 			}
-			confirmYes.onclick = async function() {
-				addToHistory('<b>You:</b> <span style="color: #1a73e8;">✓ Confirmed SQL execution</span>', 'user');
+                        confirmYes.onclick = async function() {
+                                if (isSubmitting) return;
+                                isSubmitting = true;
+                                addToHistory('<b>You:</b> <span style="color: #1a73e8;">✓ Confirmed SQL execution</span>', 'user');
 				
 				confirmBox.style.display = "none";
 				startLoader();
@@ -1171,14 +1213,16 @@
 						body: data,
 						signal: controller.signal
 					});
-					const json = await res.json();
-					currentRequest = null;
-					stopLoader();
-					showResponse(json, lastUserMsg);
-				} catch (e) {
-					currentRequest = null;
-					stopLoader();
-					if (e.name === 'AbortError') {
+                                        const json = await res.json();
+                                        currentRequest = null;
+                                        stopLoader();
+                                        isSubmitting = false;
+                                        showResponse(json, lastUserMsg);
+                                } catch (e) {
+                                        currentRequest = null;
+                                        stopLoader();
+                                        isSubmitting = false;
+                                        if (e.name === 'AbortError') {
 						return; // Request was cancelled
 					}
 					output.innerHTML = `<div class="err">Failed to connect to server.</div>`;
@@ -1192,19 +1236,26 @@
 				output.innerHTML = `<div class="err">SQL execution cancelled. You can modify your question or ask something else.</div>`;
 				addToHistory('<b>AI:</b> <div class="err">SQL execution cancelled. You can modify your question or ask something else.</div>', 'ai');
 			};
-			form.addEventListener("submit", async function(e) {
-				e.preventDefault();
-				const q = document.getElementById("question").value.trim();
-				if(!q) return;
+                        form.addEventListener("submit", async function(e) {
+                                e.preventDefault();
+                                const q = document.getElementById("question").value.trim();
+                                if(!q) return;
+                                if (isSubmitting) return;
+                                if (q === lastUserMsg && lastResponseHTML) {
+                                        output.innerHTML = `<div style="color:#888;">Repeated question, showing previous answer.</div>` + lastResponseHTML;
+                                        addToHistory('<b>AI:</b> <span style="color:#888;">Repeated question - used cached response</span>', 'ai');
+                                        return;
+                                }
+                                isSubmitting = true;
 				
 				addToHistory(`<b>You:</b> ${q}`, 'user');
 				document.getElementById("question").value = '';
 				
 				output.innerHTML = "";
 				startLoader();
-				lastUserMsg = q;
-				try {
-					const recentHistory = getRecentHistory(8);
+                                lastUserMsg = q;
+                                try {
+                                        const recentHistory = getRecentHistory(8);
 					
 					// Create abort controller for cancellation
 					const controller = new AbortController();
@@ -1222,20 +1273,22 @@
 					});
 					const json = await res.json();
 					currentRequest = null;
-					stopLoader();
-					
-					if(json.needConfirmation || json.NEEDCONFIRMATION) {
+                                        stopLoader();
+                                        isSubmitting = false;
+
+                                        if(json.needConfirmation || json.NEEDCONFIRMATION) {
 						lastSQL = json.sql || json.SQL;
 						showConfirmation(json.sql || json.SQL, q);
 					} else {
 						showResponse(json, q);
 					}
-				} catch (e) {
-					currentRequest = null;
-					stopLoader();
-					if (e.name === 'AbortError') {
-						return; // Request was cancelled
-					}
+                                } catch (e) {
+                                        currentRequest = null;
+                                        stopLoader();
+                                        isSubmitting = false;
+                                        if (e.name === 'AbortError') {
+                                                return; // Request was cancelled
+                                        }
 					output.innerHTML = `<div class="err">Failed to connect to server.</div>`;
 					addToHistory('<b>AI:</b> <div class="err">Failed to connect to server.</div>', 'ai');
 				}
@@ -1558,16 +1611,16 @@
 			}
 			
 			// Debug panel toggle
-			document.getElementById('toggleDebug').onclick = function() {
-				const panel = document.getElementById('debugPanel');
-				if (panel.style.display === 'none') {
-					panel.style.display = 'block';
-					this.textContent = 'Hide Debug JSON';
-				} else {
-					panel.style.display = 'none';
-					this.textContent = 'Show Debug JSON';
-				}
-			};
+                        toggleDebugBtn.onclick = function() {
+                                const panel = document.getElementById('debugPanel');
+                                if (panel.style.display === 'none') {
+                                        panel.style.display = 'block';
+                                        this.textContent = 'Hide Debug JSON';
+                                } else {
+                                        panel.style.display = 'none';
+                                        this.textContent = 'Show Debug JSON';
+                                }
+                        };
 			
 			function loadChartJs(callback) {
 				if (window.Chart) {
