@@ -1,4 +1,0 @@
-{
-  "amountPatterns": ["nettot", "amount", "total", "grosstot", "subtot"],
-  "currencyPatterns": ["curr_short_local", "curr_short_forex"]
-} 
