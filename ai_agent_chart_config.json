@@ -1,0 +1,30 @@
+[
+  {
+    "keyPattern": "staff",
+    "valuePattern": ["nettot","amount","total"],
+    "type": "bar",
+    "title": "Sales Performance by Staff",
+    "recommendation": "Bar chart showing sales performance by staff member"
+  },
+  {
+    "keyPattern": "date",
+    "valuePattern": ["nettot","amount","total"],
+    "type": "line",
+    "title": "Sales Trends Over Time",
+    "recommendation": "Line chart showing sales trends over time"
+  },
+  {
+    "keyPattern": "client|party|customer",
+    "valuePattern": ["nettot","amount","total"],
+    "type": "pie",
+    "title": "Sales by Client",
+    "recommendation": "Pie chart showing sales distribution by client"
+  },
+  {
+    "keyPattern": "curr",
+    "valuePattern": ["nettot","amount","total"],
+    "type": "pie",
+    "title": "Sales by Currency",
+    "recommendation": "Pie chart showing sales distribution by currency"
+  }
+] 
