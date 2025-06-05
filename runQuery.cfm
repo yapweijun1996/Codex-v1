@@ -7,6 +7,12 @@
 </cfif>
 <!--- Attempt SQL execution --->
 <cfset sqlOut = url.sql />
+<!--- Replace MySQL-style YEAR() with PostgreSQL EXTRACT() --->
+<cfset sqlOutSanitized = rereplace(sqlOut, "(?i)\\byear\\(([^)]+)\\)", "EXTRACT(YEAR FROM \1)", "all")>
+<cfif sqlOutSanitized NEQ sqlOut>
+    <cflog file="ai_agent" text="Normalized YEAR() function" type="information" />
+    <cfset sqlOut = sqlOutSanitized>
+</cfif>
 <cfif NOT structKeyExists(application,"queryCache")>
     <cfset application.queryCache = structNew()>
 </cfif>

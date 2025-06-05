@@ -80,15 +80,15 @@
     "common_queries": [
       {
         "purpose": "Retrieving all Sales Invoices",
-        "sql": "SELECT * FROM sales_headers WHERE tag_table_usage = 'sal_inv' AND tag_deleted_yn = 'n';"
+        "sql": "SELECT * FROM scm_sal_main WHERE tag_table_usage = 'sal_inv' AND tag_deleted_yn = 'n';"
       },
       {
         "purpose": "Finding Approved Delivery Orders for a Specific Customer",
-        "sql": "SELECT * FROM sales_headers WHERE tag_table_usage = 'stk_do' AND tag_wflow_app_yn = 'y' AND party_unique = ? AND tag_deleted_yn = 'n';"
+        "sql": "SELECT * FROM scm_sal_main WHERE tag_table_usage = 'stk_do' AND tag_wflow_app_yn = 'y' AND party_unique = ? AND tag_deleted_yn = 'n';"
       },
       {
         "purpose": "Summarizing Sales Order amounts by Department",
-        "sql": "SELECT deptunit_desc, SUM(amount_local) AS Total_SO_Amount FROM sales_headers WHERE tag_table_usage = 'sal_soe' AND tag_deleted_yn = 'n' GROUP BY deptunit_desc;"
+        "sql": "SELECT deptunit_desc, SUM(amount_local) AS Total_SO_Amount FROM scm_sal_main WHERE tag_table_usage = 'sal_soe' AND tag_deleted_yn = 'n' GROUP BY deptunit_desc;"
       }
     ]
   },

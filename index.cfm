@@ -90,21 +90,32 @@ function addMessage(role, text){
     div.scrollIntoView();
 }
 function addDebug(text){
+    console.log(text);
     const p = document.createElement('div');
     p.textContent=text;
     document.getElementById('debug').appendChild(p);
 }
 async function callAgent(text){
-    const res = await fetch('ask.cfm', {
-        method: 'POST',
-        headers: {'Content-Type':'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({msg:text})
-    });
-    return res.json();
+    try{
+        const res = await fetch('ask.cfm', {
+            method: 'POST',
+            headers: {'Content-Type':'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({msg:text})
+        });
+        return res.json();
+    } catch(err){
+        addDebug('Network error: '+err);
+        throw err;
+    }
 }
 async function runSQL(sql){
-    const res = await fetch('runQuery.cfm?sql='+encodeURIComponent(sql));
-    return res.json();
+    try{
+        const res = await fetch('runQuery.cfm?sql='+encodeURIComponent(sql));
+        return res.json();
+    } catch(err){
+        addDebug('Network error: '+err);
+        throw err;
+    }
 }
 document.addEventListener("DOMContentLoaded", ()=>{
     addMessage("bot", "Welcome to the analytics chat! Ask a question to get started.");

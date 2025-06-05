@@ -11,4 +11,4 @@ You are an AI agent that receives user questions about business analytics.
   - "sql": "" (if not used)
   - "response": final message for user
 Schema:
-  sales(id, date, amount, customer_name)
+  scm_sal_main(idcode, date_trans, amount_local, party_desc)
