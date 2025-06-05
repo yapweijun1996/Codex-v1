@@ -1,0 +1,195 @@
+{
+  "scm_sal_main": {
+    "description": "Sales and logistics records. Header-level information for all sales-related documents (Sales Invoice, Delivery Order, Sales Order Confirmation, Quotation, etc.). Each row represents a unique sales transaction document.",
+    "document_types": {
+      "sal_inv": "Sales Invoice",
+      "stk_do": "Stock Delivery Order",
+      "sal_soc": "Sales Order Confirmation",
+      "sal_quo": "Sales Quotation",
+      "sal_soe": "Sales Order Entry",
+      "stk_doc": "Stock Document",
+      "sal_dn": "Sales Debit Note",
+      "sal_cn": "Sales Credit Note"
+    },
+    "columns": {
+      "idcode": "Primary key, unique system identifier",
+      "uniquenum_pri": "Primary unique number for internal linking",
+      "dnum_docnum": "User-facing document number (e.g., SO-A0610009)",
+      "dnum_reference": "Secondary reference number (e.g., Quotation number on SO)",
+      "tag_table_usage": "Document type (sal_inv, stk_do, etc.)",
+      "party_code": "Customer code",
+      "party_unique": "Customer unique system ID (preferred for joins)",
+      "party_desc": "Customer name",
+      "party_orig_code": "Original customer code (legacy/changed customers)",
+      "party_2nd_code": "Second party code (if applicable)",
+      "party_3rd_code": "Third party code (if applicable)",
+      "staff_code": "Staff code (salesperson, approver, etc.)",
+      "staff_unique": "Staff unique system ID",
+      "staff_desc": "Staff name",
+      "deptunit_code": "Department code",
+      "deptunit_desc": "Department name",
+      "location_code": "Warehouse/location code",
+      "location_desc": "Warehouse/location name",
+      "date_post": "Posting date",
+      "date_lastupdate": "Last modification date",
+      "date_trans": "Transaction date",
+      "date_due": "Payment due date",
+      "amount_local": "Amount in local currency",
+      "curr_short_local": "Local currency code",
+      "curr_short_forex": "Foreign currency code",
+      "curr_rate_forex_display": "Exchange rate (display)",
+      "tag_deleted_yn": "Logical deletion flag ('y'/'n')",
+      "tag_wflow_app_yn": "Workflow approved flag ('y'/'n')",
+      "wflow_status": "Workflow status (e.g., 'app', 'drf', 'rej')",
+      "interco_yn": "Intercompany transaction flag",
+      "userfield01": "User-defined field 1",
+      "userfield02": "User-defined field 2"
+    },
+    "relationships": [
+      {
+        "column": "party_unique",
+        "references": "customer_master.party_unique",
+        "description": "Links to customer master table"
+      },
+      {
+        "column": "uniquenum_pri",
+        "references": "sales_line_items.uniquenum_pri",
+        "description": "Links to line items for this document"
+      },
+      {
+        "column": "deptunit_code",
+        "references": "department_master.deptunit_code",
+        "description": "Links to department master"
+      }
+    ],
+    "business_rules": [
+      "Always filter by tag_deleted_yn = 'n' for active records.",
+      "Use tag_table_usage to filter by document type (e.g., sal_inv for Sales Invoices).",
+      "For workflow-approved documents, filter by tag_wflow_app_yn = 'y'.",
+      "For customer joins, use party_unique (not party_code) for reliability.",
+      "For staff queries: Add AND staff_desc IS NOT NULL AND staff_desc != '' (exclude empty staff names).",
+      "For amounts: Include currency ONCE per query (not repeated for each amount field).",
+      "When showing sales totals: SELECT staff_desc, SUM(nettot_local) AS total_sales, curr_short_local AS currency.",
+      "For currency questions: SELECT DISTINCT curr_short_local, curr_short_forex.",
+      "For invoice details: SELECT dnum_auto, staff_desc, party_desc, date_post, date_trans, nettot_local, curr_short_local.",
+      "Always add LIMIT for performance.",
+      "NEVER repeat the same column multiple times in SELECT.",
+      "Group related amount fields logically: nettot_local, amount_local, grosstot_local, subtot_local.",
+      "For party/customer queries: Add AND party_desc IS NOT NULL AND party_desc != ''."
+    ],
+    "common_queries": [
+      {
+        "purpose": "Retrieving all Sales Invoices",
+        "sql": "SELECT * FROM sales_headers WHERE tag_table_usage = 'sal_inv' AND tag_deleted_yn = 'n';"
+      },
+      {
+        "purpose": "Finding Approved Delivery Orders for a Specific Customer",
+        "sql": "SELECT * FROM sales_headers WHERE tag_table_usage = 'stk_do' AND tag_wflow_app_yn = 'y' AND party_unique = ? AND tag_deleted_yn = 'n';"
+      },
+      {
+        "purpose": "Summarizing Sales Order amounts by Department",
+        "sql": "SELECT deptunit_desc, SUM(amount_local) AS Total_SO_Amount FROM sales_headers WHERE tag_table_usage = 'sal_soe' AND tag_deleted_yn = 'n' GROUP BY deptunit_desc;"
+      }
+    ]
+  },
+  "scm_pur_main": {
+    "description": "Purchase records. Header-level information for all purchase-related documents (PR, PO, PI, GRN, GVN, etc.). Each row represents a unique purchase transaction document.",
+    "document_types": {
+      "pur_pr": "Purchase Request",
+      "pur_po": "Purchase Order",
+      "pur_poc": "Purchase Order Confirmation",
+      "pur_pi": "Purchase Invoice",
+      "stk_grn": "Goods Received Note",
+      "stk_gvn": "Goods Returned Voucher"
+    },
+    "columns": {
+      "idcode": "Primary key, unique system identifier",
+      "uniquenum_pri": "Primary unique number for internal linking",
+      "dnum_docnum": "User-facing document number (e.g., PO-A0610009)",
+      "dnum_reference": "Secondary reference number (e.g., PR number on PO)",
+      "tag_table_usage": "Document type (pur_pi, pur_po, etc.)",
+      "party_code": "Vendor code",
+      "party_unique": "Vendor unique system ID (preferred for joins)",
+      "party_desc": "Vendor name",
+      "party_orig_code": "Original vendor code (legacy/changed vendors)",
+      "party_2nd_code": "Second party code (if applicable)",
+      "party_3rd_code": "Third party code (if applicable)",
+      "staff_code": "Staff code (requester, approver, etc.)",
+      "staff_unique": "Staff unique system ID",
+      "staff_desc": "Staff name",
+      "deptunit_code": "Department code",
+      "deptunit_desc": "Department name",
+      "location_code": "Warehouse/location code",
+      "location_desc": "Warehouse/location name",
+      "date_post": "Posting date",
+      "date_lastupdate": "Last modification date",
+      "date_trans": "Transaction date",
+      "date_due": "Payment due date",
+      "amount_local": "Amount in local currency",
+      "curr_short_local": "Local currency code",
+      "curr_short_forex": "Foreign currency code",
+      "curr_rate_forex_display": "Exchange rate (display)",
+      "tag_deleted_yn": "Logical deletion flag ('y'/'n')",
+      "tag_wflow_app_yn": "Workflow approved flag ('y'/'n')",
+      "wflow_status": "Workflow status (e.g., 'app', 'drf', 'rej')",
+      "interco_yn": "Intercompany transaction flag",
+      "userfield01": "User-defined field 1",
+      "userfield02": "User-defined field 2"
+    },
+    "relationships": [
+      {
+        "column": "party_unique",
+        "references": "vendor_master.party_unique",
+        "description": "Links to vendor master table"
+      },
+      {
+        "column": "uniquenum_pri",
+        "references": "purchase_line_items.uniquenum_pri",
+        "description": "Links to line items for this document"
+      },
+      {
+        "column": "deptunit_code",
+        "references": "department_master.deptunit_code",
+        "description": "Links to department master"
+      }
+    ],
+    "business_rules": [
+      "Always filter by tag_deleted_yn = 'n' for active records.",
+      "Use tag_table_usage to filter by document type (e.g., pur_po for Purchase Orders).",
+      "For workflow-approved documents, filter by tag_wflow_app_yn = 'y'.",
+      "For vendor joins, use party_unique (not party_code) for reliability."
+    ],
+    "common_queries": [
+      {
+        "purpose": "Retrieving all Purchase Orders",
+        "sql": "SELECT * FROM purchase_headers WHERE tag_table_usage = 'pur_po' AND tag_deleted_yn = 'n';"
+      },
+      {
+        "purpose": "Finding Approved Purchase Invoices for a Specific Vendor",
+        "sql": "SELECT * FROM purchase_headers WHERE tag_table_usage = 'pur_pi' AND tag_wflow_app_yn = 'y' AND party_unique = ? AND tag_deleted_yn = 'n';"
+      },
+      {
+        "purpose": "Summarizing Purchase Request amounts by Department",
+        "sql": "SELECT deptunit_desc, SUM(amount_local) AS Total_PR_Amount FROM purchase_headers WHERE tag_table_usage = 'pur_pr' AND tag_deleted_yn = 'n' GROUP BY deptunit_desc;"
+      }
+    ]
+  },
+  "relationships": [
+    {
+      "from_table": "scm_sal_main",
+      "from_column": "party_code",
+      "to_table": "scm_party",
+      "to_column": "party_code",
+      "type": "many-to-one",
+      "description": "Each sales record is linked to a party (customer)"
+    },
+    {
+      "from_table": "scm_pur_main",
+      "from_column": "supplier_code",
+      "to_table": "scm_supplier",
+      "to_column": "supplier_code",
+      "type": "many-to-one",
+      "description": "Each purchase record is linked to a supplier"
+    }
+  ]
+} 
