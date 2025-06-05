@@ -81,15 +81,8 @@ schemaSummary & Chr(10) &
 "Respond in JSON: {""table"": ""table_name"", ""doc_type"": ""doc_type_code""}. If unsure, respond: {""table"": ""unknown""}"
 >
 
-<cfset tableSelectSession = LuceeCreateAISession(name="gpt002", systemMessage=tableSelectPrompt)>
-<cfset aiTableSelect = LuceeInquiryAISession(tableSelectSession, form.msg)>
-<cfset aiTableSelectStruct = {}>
-<cftry>
-	<cfset aiTableSelectStruct = deserializeJSON(aiTableSelect)>
-	<cfcatch>
-		<cfset aiTableSelectStruct = { "table": "unknown" }>
-	</cfcatch>
-</cftry>
+<cfset aiTableSelect = callAI(tableSelectPrompt, form.msg)>
+<cfset aiTableSelectStruct = safeDeserializeJSON(aiTableSelect, { "table": "unknown" })>
 
 <!--- Improved fallback logic: if AI returns unknown but mapping exists, use mappedTable/mappedDocType --->
 <cfif structKeyExists(aiTableSelectStruct, "table") AND aiTableSelectStruct.table NEQ "unknown">
@@ -127,13 +120,8 @@ schemaSummary & Chr(10) &
 <!--- Process chat history --->
 <cfset historyContext = "">
 <cfif len(chatHistoryJson)>
-	<cftry>
-		<cfset chatHistoryArray = deserializeJSON(chatHistoryJson)>
-		<cfset historyContext = formatHistoryForAI(chatHistoryArray)>
-		<cfcatch>
-			<cfset historyContext = "">
-		</cfcatch>
-	</cftry>
+        <cfset chatHistoryArray = safeDeserializeJSON(chatHistoryJson, [])>
+        <cfset historyContext = formatHistoryForAI(chatHistoryArray)>
 </cfif>
 
 <cfif !len(userMsg)>
@@ -699,6 +687,31 @@ Return ONLY the SQL SELECT statement OR 'USE_PREVIOUS_RESULTS' (only if data tab
 	<cfreturn result>
 </cffunction>
 
+<!--- Helper to call the AI model with a prompt and question --->
+<cffunction name="callAI" access="private" returntype="string">
+    <cfargument name="prompt" type="string" required="true">
+    <cfargument name="question" type="string" required="true">
+
+    <cfset var session = LuceeCreateAISession(name="gpt002", systemMessage=arguments.prompt)>
+    <cfset var response = LuceeInquiryAISession(session, arguments.question)>
+    <cfreturn trim(response)>
+</cffunction>
+
+<!--- Safely deserialize JSON with a default fallback --->
+<cffunction name="safeDeserializeJSON" access="private" returntype="any">
+    <cfargument name="text" type="string" required="true">
+    <cfargument name="default" type="any" required="false" default="#structNew()#">
+
+    <cfset var obj = arguments.default>
+    <cftry>
+        <cfset obj = deserializeJSON(arguments.text)>
+        <cfcatch>
+            <cfset obj = arguments.default>
+        </cfcatch>
+    </cftry>
+    <cfreturn obj>
+</cffunction>
+
 <!--- AGENT 17b: Intelligent SQL Error Analysis & Recovery --->
 <cffunction name="intelligentSQLErrorRecovery" returntype="struct" access="private">
 	<cfargument name="sql" type="string" required="true">
@@ -1261,15 +1274,8 @@ Total Records: #totalRecords#
 		";
 	</cfscript>
 	
-	<cfset aiSession = LuceeCreateAISession(name="gpt002", systemMessage=prompt)>
-	<cfset aiResponse = LuceeInquiryAISession(aiSession, arguments.userMsg)>
-	<cfset chartConfig = {} >
-	<cftry>
-		<cfset chartConfig = deserializeJSON(aiResponse)>
-		<cfcatch>
-			<cfset chartConfig = { "confidence": 0.0, "error": "Failed to parse AI response", "raw": aiResponse } >
-		</cfcatch>
-	</cftry>
+        <cfset aiResponse = callAI(prompt, arguments.userMsg)>
+        <cfset chartConfig = safeDeserializeJSON(aiResponse, { "confidence": 0.0, "error": "Failed to parse AI response", "raw": aiResponse })>
 	
 	<!--- Strict validation of AI output --->
 	<cfset validTypes = ["bar","line","pie","none"]>
@@ -1785,16 +1791,9 @@ Total Records: #totalRecords#
 	" User question: " & arguments.userMsg &
 	" Respond in JSON: {""table"": ""table_name"", ""doc_type"": ""doc_type_code""}. If unsure, respond: {""table"": ""unknown""}">
 	
-	<cfset var docTypeSession = LuceeCreateAISession(name="gpt002", systemMessage=prompt)>
-	<cfset var aiResponse = LuceeInquiryAISession(docTypeSession, arguments.userMsg)>
-	<cfset var result = { "table": "unknown" }>
-	<cftry>
-		<cfset result = deserializeJSON(aiResponse)>
-		<cfcatch>
-			<cfset result = { "table": "unknown" }>
-		</cfcatch>
-	</cftry>
-	<cfreturn result>
+        <cfset var aiResponse = callAI(prompt, arguments.userMsg)>
+        <cfset var result = safeDeserializeJSON(aiResponse, { "table": "unknown" })>
+        <cfreturn result>
 </cffunction>
 
 <!--- Refactor main logic to use AI agent for document type mapping --->
@@ -1873,16 +1872,9 @@ Total Records: #totalRecords#
 	CHR(10) & "Sample data: " & serializeJSON(arguments.sampleRows) &
 	CHR(10) & CHR(10) & "JSON:" >
 	
-	<cfset var colDetectSession = LuceeCreateAISession(name="gpt002", systemMessage=prompt)>
-	<cfset var aiResponse = LuceeInquiryAISession(colDetectSession, arguments.userMsg)>
-	<cfset var result = { "amountColumns": [], "currencyColumns": [], "dateColumns": [] }>
-	<cftry>
-		<cfset result = deserializeJSON(aiResponse)>
-		<cfcatch>
-			<cfset result = { "amountColumns": [], "currencyColumns": [], "dateColumns": [] }>
-		</cfcatch>
-	</cftry>
-	<cfreturn result>
+        <cfset var aiResponse = callAI(prompt, arguments.userMsg)>
+        <cfset var result = safeDeserializeJSON(aiResponse, { "amountColumns": [], "currencyColumns": [], "dateColumns": [] })>
+        <cfreturn result>
 </cffunction>
 
 
@@ -1907,16 +1899,9 @@ Total Records: #totalRecords#
 	CHR(10) & "SCHEMA:" & CHR(10) & schemaSummary &
 	CHR(10) & CHR(10) & "Respond in JSON: {""canRecover"": true/false, ""recoveredSQL"": ""..."", ""recoveryDescription"": ""...""}. If you cannot suggest a fix, set canRecover to false.">
 	
-	<cfset var sqlErrorSession = LuceeCreateAISession(name="gpt002", systemMessage=prompt)>
-	<cfset var aiResponse = LuceeInquiryAISession(sqlErrorSession, arguments.userMsg)>
-	<cfset var result = { "canRecover": false, "recoveredSQL": arguments.sql, "recoveryDescription": "No recovery possible (AI)" }>
-	<cftry>
-		<cfset result = deserializeJSON(aiResponse)>
-		<cfcatch>
-			<cfset result = { "canRecover": false, "recoveredSQL": arguments.sql, "recoveryDescription": "No recovery possible (AI parse error)" }>
-		</cfcatch>
-	</cftry>
-	<cfreturn result>
+        <cfset var aiResponse = callAI(prompt, arguments.userMsg)>
+        <cfset var result = safeDeserializeJSON(aiResponse, { "canRecover": false, "recoveredSQL": arguments.sql, "recoveryDescription": "No recovery possible (AI parse error)" })>
+        <cfreturn result>
 </cffunction>
 
 <cffunction name="validateSQLRequiredColumns" access="private" returntype="struct">
