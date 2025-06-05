@@ -12,6 +12,8 @@
         .user { font-weight:bold; }
         .bot { color:#333; }
         #debug { background:#fafafa; border:1px solid #ddd; padding:10px; margin-top:20px; font-size:0.9em; max-height:200px; overflow:auto; }
+        #debug.hidden { display:none; }
+        #toggle-debug { margin-top:10px; }
         form { display:flex; gap:10px; margin-top:15px; }
         input[type="text"] { flex:1; padding:10px; border:1px solid #ccc; border-radius:4px; }
         button { padding:10px 15px; }
@@ -26,6 +28,7 @@
         <input id="user-input" type="text" placeholder="Ask a question..." autocomplete="off" required>
         <button type="submit">Send</button>
     </form>
+    <button id="toggle-debug" type="button">Toggle Debug</button>
     <div id="debug"></div>
 </div>
 <script>
@@ -63,7 +66,11 @@ document.getElementById('chat-form').addEventListener('submit', async (e)=>{
     (agent.debug||[]).forEach(addDebug);
     let reply = agent.response || '';
     if(agent.mode==='sql' && agent.sql){
+        addDebug('SQL: '+agent.sql);
         const data = await runSQL(agent.sql);
+        if(data.error){
+            addDebug('SQL Error: '+data.error);
+        }
         if(data.rows){
             const table = document.createElement('table');
             const header = document.createElement('tr');
@@ -80,6 +87,9 @@ document.getElementById('chat-form').addEventListener('submit', async (e)=>{
         }
     }
     addMessage('bot', reply);
+});
+document.getElementById('toggle-debug').addEventListener('click',()=>{
+    document.getElementById('debug').classList.toggle('hidden');
 });
 </script>
 </body>

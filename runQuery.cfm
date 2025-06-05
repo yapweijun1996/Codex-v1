@@ -8,9 +8,9 @@
 <!--- Attempt SQL execution --->
 <cfset sqlOut = url.sql />
 <cftry>
-    <cfquery name="q" datasource="#cookie.cooksql_mainsync#_active" timeout="30">
+<cfquery name="q" datasource="analytics" timeout="30">
         #preserveSingleQuotes(sqlOut)#
-    </cfquery>
+</cfquery>
     <cfset rows = []>
     <cfloop query="q">
         <cfset row = structNew()>
@@ -21,6 +21,10 @@
     </cfloop>
     <cfoutput>#serializeJSON({rows:rows})#</cfoutput>
     <cfcatch>
-        <cfoutput>#serializeJSON({error:cfcatch.message})#</cfoutput>
+        <cfset err = cfcatch.message>
+        <cfif structKeyExists(cfcatch,"detail")>
+            <cfset err = err & " - " & cfcatch.detail>
+        </cfif>
+        <cfoutput>#serializeJSON({error:err,sql:sqlOut})#</cfoutput>
     </cfcatch>
 </cftry>
