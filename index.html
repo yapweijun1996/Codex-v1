@@ -39,7 +39,7 @@
 			#itemsTable tr:first-child td {
 			  border-bottom: 1px solid #ccc;
 			}
-
+			div.div_header label input{max-width: calc(100% - 10px);}
 			#itemsTable td{box-sizing:border-box; padding: 5px 4px;}
 			#itemsTable thead tr{background:#f0f0f0;font-weight:bold}
 			#itemsTable input{width:100%;box-sizing:border-box}
@@ -113,7 +113,7 @@
 			</div>
 		</div>
 		<form id="orderForm" onsubmit="return false;">
-                        <div>
+                        <div class="div_header">
                                 <label>To: <input type="text" id="to"></label>
                                 <label>From: <input type="text" id="from"></label>
                                 <label>CUSTOMER: <input type="text" id="customer"></label>
@@ -143,13 +143,22 @@
                                 <label>CUST P/O NO. [N]: <input type="text" id="cust_po_no"></label>
                                 <label>CREDIT TERMS: <input type="text" id="credit_terms"></label>
                                 <label>PROJECT [P]: <input type="text" id="project"></label>
-                                <label>DOCUMENT NUMBER: <input type="text" id="document_number"></label>
+                                <label>DOC NUMBER: <input type="text" id="document_number"></label>
                                 <label>REMARKS: <input type="text" id="remarks"></label>
                         </div>
 			<button type="button" onclick="addItemRow()">Add Item</button>
 			<div style="max-height: 400px; overflow: auto; border: 1px solid #ccc; margin-top: 10px;">
 				<table id="itemsTable" cellpadding="0" cellspacing="0">
 					<thead>
+						<tr>
+							<th style="box-sizing:border-box;padding: 0;width:45px;"></th>
+							<th style="box-sizing:border-box;padding: 0;width:auto;"></th>
+							<th style="box-sizing:border-box;padding: 0;width:auto;"></th>
+							<th style="box-sizing:border-box;padding: 0;width:auto;"></th>
+							<th style="box-sizing:border-box;padding: 0;width:auto;"></th>
+							<th style="box-sizing:border-box;padding: 0;width:auto;"></th>
+							<th style="box-sizing:border-box;padding: 0;width:auto;"></th>
+						</tr>
 						<tr>
 						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">DEL</th>
 						  <th style="position: sticky; top: 0; background: #fff; z-index: 2;">Stock Code</th>
@@ -161,8 +170,7 @@
 						</tr>
 					  </thead>
 					  <tbody>
-					  
-					  </tbody>
+						</tbody>
 				</table>
 			</div>
 			
