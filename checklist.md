@@ -22,3 +22,10 @@ This checklist identifies areas where the project could be enhanced. Items are g
 - [x] Handle AI response failures gracefully. (index.cfm)
 - [x] Add automated tests for major features.
 - [x] Implement caching for frequently used data.
+
+## Database Error Fix
+- [x] Audit the codebase for any SQL statements referencing a non-existent `sales` table.
+- [x] Replace those references with the correct table name `scm_sal_main` as defined in `schema_config.json`.
+- [x] Update documentation or examples that mention a `sales` table to prevent future confusion.
+- [x] Run the test suite to verify that updated queries succeed.
+- [x] Perform a manual query through `runQuery.cfm` to confirm the fix.
