@@ -120,12 +120,32 @@ function renderTable(rows){
 }
 
 function renderChart(chartData){
-  const canvas=document.getElementById('chart');
-  if(chartInstance){chartInstance.destroy();}
-  if(!chartData || chartData.type==='none'){canvas.classList.add('d-none');return;}
-  canvas.classList.remove('d-none');
-  chartInstance=new Chart(canvas,{type:chartData.type,data:{labels:chartData.labels||[],datasets:[{label:'',data:chartData.values||[],backgroundColor:'rgba(54,162,235,0.5)',borderColor:'rgba(54,162,235,1)',borderWidth:1}]},options:{responsive:true,plugins:{legend:{display:false}}});
+  const canvas = document.getElementById("chart");
+  if (chartInstance) { chartInstance.destroy(); }
+  if (!chartData || chartData.type === "none") {
+    canvas.classList.add("d-none");
+    return;
+  }
+  canvas.classList.remove("d-none");
+  chartInstance = new Chart(canvas, {
+    type: chartData.type,
+    data: {
+      labels: chartData.labels || [],
+      datasets: [{
+        label: "",
+        data: chartData.values || [],
+        backgroundColor: "rgba(54,162,235,0.5)",
+        borderColor: "rgba(54,162,235,1)",
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } }
+    }
+  });
 }
+
 
 async function sendPrompt(){
   const q=document.getElementById('prompt').value.trim();
