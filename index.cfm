@@ -89,10 +89,14 @@ function addMessage(role, text){
     container.appendChild(div);
     div.scrollIntoView();
 }
-function addDebug(text){
-    console.log(text);
+function addDebug(info){
+    console.log(info);
     const p = document.createElement('div');
-    p.textContent=text;
+    if(typeof info === 'object'){
+        p.textContent = JSON.stringify(info, null, 2);
+    } else {
+        p.textContent = info;
+    }
     document.getElementById('debug').appendChild(p);
 }
 async function callAgent(text){
@@ -117,6 +121,26 @@ async function runSQL(sql){
         throw err;
     }
 }
+
+function loadChartJs(cb){
+    if(window.Chart){
+        cb();
+        return;
+    }
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/chart.js';
+    s.onload=cb;
+    document.body.appendChild(s);
+}
+
+function renderChartFromConfig(cfg){
+    loadChartJs(()=>{
+        const ctx=document.getElementById(cfg.canvasId);
+        if(!ctx) return;
+        if(ctx._chartInstance){ ctx._chartInstance.destroy(); }
+        ctx._chartInstance=new Chart(ctx,cfg);
+    });
+}
 document.addEventListener("DOMContentLoaded", ()=>{
     addMessage("bot", "Welcome to the analytics chat! Ask a question to get started.");
     if(!localStorage.getItem('tourShown')){
@@ -140,9 +164,10 @@ document.getElementById('chat-form').addEventListener('submit', async (e)=>{
         addMessage("bot", "Error: "+agent.error);
         return;
     }
-    (agent.debug||[]).forEach(addDebug);
-    let reply = agent.response || '';
-    if(agent.mode==='sql' && agent.sql){
+    if(Array.isArray(agent.debug)) agent.debug.forEach(addDebug); else if(agent.debug) addDebug(agent.debug);
+    let reply = agent.summary || agent.response || '';
+    let tableHTML = agent.table || '';
+    if(agent.sql && !tableHTML){
         const data = await runSQL(agent.sql);
         if(data.error){
             addMessage("bot", "Query error: "+data.error);
@@ -158,11 +183,26 @@ document.getElementById('chat-form').addEventListener('submit', async (e)=>{
                 Object.values(row).forEach(val=>{ const td=document.createElement('td'); td.textContent=val; tr.appendChild(td);});
                 table.appendChild(tr);
             });
-            document.getElementById('messages').appendChild(table);
-            table.scrollIntoView();
+            tableHTML = table.outerHTML;
         }
     }
-    addMessage('bot', reply);
+    if(reply) addMessage('bot', reply);
+    if(tableHTML){
+        const div = document.createElement('div');
+        div.innerHTML = tableHTML;
+        const tableElem = div.firstElementChild;
+        document.getElementById('messages').appendChild(tableElem);
+        tableElem.scrollIntoView();
+    }
+    if(agent.chart){
+        const chartDiv = document.createElement('div');
+        chartDiv.innerHTML = agent.chart;
+        const chartElem = chartDiv.firstElementChild;
+        document.getElementById('messages').appendChild(chartElem);
+        if(agent.chartConfig && agent.chartConfig.canvasId){
+            renderChartFromConfig(agent.chartConfig);
+        }
+    }
 });
 document.getElementById('toggle-dark').addEventListener('click', ()=>{
     document.body.classList.toggle('dark-mode');
