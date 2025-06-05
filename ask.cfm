@@ -23,7 +23,7 @@
 </cfloop>
 <cfset rulesSummary = "">
 <cfloop collection="#schema#" item="tbl">
-    <cfif structKeyExists(schema[tbl], "business_rules")> 
+    <cfif isStruct(schema[tbl]) AND structKeyExists(schema[tbl], "business_rules")>
         <cfset rulesSummary &= "* " & tbl & ": " & arrayToList(schema[tbl]["business_rules"], "; ") & "\n">
     </cfif>
 </cfloop>
