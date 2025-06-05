@@ -29,10 +29,6 @@
     <div id="debug"></div>
 </div>
 <script>
-const OPENAI_API_KEY = 'YOUR_API_KEY'; // replace with your key
-const systemPrompt = `You are an AI agent that receives user questions about business analytics.\n- Decide if the query is a chat (definition/explanation) or if it needs SQL/database access.\n- If SQL is needed:\n    - Generate the SQL using only the provided table schema\n    - Briefly explain your logic\n    - Do not invent fields or data\n- Log every step, decision, and SQL in a step-by-step debug array\n- Output JSON {"mode":"chat|sql","debug":[],"sql":"","response":""}\nSchema:\nsales(id:int,date:date,amount:decimal,customer_name:varchar)`;
-let history = [];
-
 function addMessage(role, text){
     const div = document.createElement('div');
     div.className='msg '+role;
@@ -45,15 +41,12 @@ function addDebug(text){
     document.getElementById('debug').appendChild(p);
 }
 async function callAgent(text){
-    const messages=[{role:'system',content:systemPrompt},...history,{role:'user',content:text}];
-    const res = await fetch('https://api.openai.com/v1/chat/completions',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+OPENAI_API_KEY},
-        body:JSON.stringify({model:'gpt-4',messages,temperature:0})
+    const res = await fetch('ask.cfm', {
+        method: 'POST',
+        headers: {'Content-Type':'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({msg:text})
     });
-    const data = await res.json();
-    const content = data.choices[0].message.content.trim();
-    return JSON.parse(content);
+    return res.json();
 }
 async function runSQL(sql){
     const res = await fetch('runQuery.cfm?sql='+encodeURIComponent(sql));
@@ -67,8 +60,8 @@ document.getElementById('chat-form').addEventListener('submit', async (e)=>{
     input.value='';
     addMessage('user', text);
     const agent = await callAgent(text);
-    agent.debug.forEach(addDebug);
-    let reply = agent.response;
+    (agent.debug||[]).forEach(addDebug);
+    let reply = agent.response || '';
     if(agent.mode==='sql' && agent.sql){
         const data = await runSQL(agent.sql);
         if(data.rows){
@@ -87,8 +80,6 @@ document.getElementById('chat-form').addEventListener('submit', async (e)=>{
         }
     }
     addMessage('bot', reply);
-    history.push({role:'user',content:text});
-    history.push({role:'assistant',content:reply});
 });
 </script>
 </body>
