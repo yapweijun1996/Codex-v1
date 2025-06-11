@@ -17,6 +17,9 @@
         .biz-table th, .biz-table td { border: 1px solid #ddd; padding: 3px 4px; font-size: 12px; }
         .biz-table th { background: #f0f4ff; }
         .sql-debug { font-family: "JetBrains Mono",monospace,monospace; color: #888; font-size: .94rem; background: #f6f6fa; margin: 8px 0 0; padding: 7px 10px; border-radius: 4px;}
+        .debug-box { font-family: "JetBrains Mono",monospace; margin-top: 20px; background: #eee; padding: 10px; border-radius: 6px; display:none; }
+        .debug-box-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+        .debug-copy-btn { font-size:.8rem; padding:4px 8px; }
     </style>
 </head>
 <body>
@@ -33,11 +36,39 @@
             <button type="submit">Ask</button>
         </form>
         <div id="result" class="result" style="display:none"></div>
+        <div id="debugBox" class="debug-box">
+            <div class="debug-box-header">
+                <strong>Debug Log</strong>
+                <button type="button" id="copyDebug" class="debug-copy-btn">Copy Log</button>
+            </div>
+            <pre id="debugContent"></pre>
+        </div>
     </div>
     <script>
     const $form = document.getElementById('qform');
     const $msg = document.getElementById('msg');
     const $result = document.getElementById('result');
+    const $debugBox = document.getElementById('debugBox');
+    const $debugContent = document.getElementById('debugContent');
+    const $copyDebug = document.getElementById('copyDebug');
+
+    const debugLogs = [];
+    ['log','warn','error'].forEach(fn => {
+        const orig = console[fn];
+        console[fn] = (...args) => {
+            orig.apply(console, args);
+            const msg = args.map(a => {
+                if(typeof a === 'object'){
+                    try { return JSON.stringify(a, null, 2); } catch(e){ return String(a); }
+                }
+                return String(a);
+            }).join(' ');
+            debugLogs.push(fn.toUpperCase()+': '+msg);
+            $debugContent.textContent = debugLogs.join('\n');
+            $debugBox.style.display = 'block';
+        };
+    });
+    $copyDebug.onclick = () => navigator.clipboard.writeText($debugContent.textContent);
     $msg.addEventListener('focus', () => {
         $msg.dispatchEvent(new Event('input', {bubbles: true}));
     });
@@ -49,7 +80,7 @@
         try {
             const r = await fetch('ai_agent.cfm', {method:"POST", body:fd});
             const j = await r.json();
-            console.log(j); // <----- add this line
+            console.log(j);
             if(j.error){
                 $result.innerHTML = "<b>❌ Error:</b> " + j.error + (j.details? "<br>"+j.details : "");
                 return;
