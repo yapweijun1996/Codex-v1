@@ -37,9 +37,7 @@
 	#schemaString#
 	````
 	
-	User question:
-	\#userMsg#
-	">
+        ">
 	
 	<cfset aiSession = LuceeCreateAISession(name="gpt001", systemMessage=aiPrompt)>
 	<cfset aiSql = LuceeInquiryAISession(aiSession, userMsg)>
