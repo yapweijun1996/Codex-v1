@@ -93,7 +93,7 @@
             "SQL statement executed:\n" & sql & "\n\n" &
             "HTML table:\n" & prettyTable & "\n\n" &
             "Provide a short summary in no more than 3 sentences that helps a business user understand the results." >
-        <cfset summarySession = LuceeCreateAISession(name="gpt_summary", systemMessage=summaryPrompt)>
+        <cfset summarySession = LuceeCreateAISession(name="gpt001", systemMessage=summaryPrompt)>
         <cfset aiSummary = LuceeInquiryAISession(summarySession, "Summarize the results")>
         <cfif len(trim(aiSummary))>
             <cfset summary = aiSummary>
