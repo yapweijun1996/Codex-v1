@@ -18,9 +18,8 @@
     <cfset schemaString = fileRead(schemaPath)>
     <cfset schema = deserializeJSON(schemaString)>
 
-
-    <cfset aiPrompt = "
-	You are an expert business analyst and SQL developer.
+	<cfset aiPrompt =
+	"You are an expert business analyst and SQL developer.
 	
 	Given the following database schema (in JSON), and a user's business question:
 	- **Choose the best table (or tables) to answer the question**
@@ -32,11 +31,9 @@
 	- **Respond ONLY with the SQL (no explanations or comments)**
 	
 	Database schema:
-        ```json
-        #schemaString#
-        ```
-	
-        ">
+	```json
+	" & schemaString & "
+	```">
 	
 	<cfset aiSession = LuceeCreateAISession(name="gpt001", systemMessage=aiPrompt)>
 	<cfset aiSql = LuceeInquiryAISession(aiSession, userMsg)>
