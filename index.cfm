@@ -23,7 +23,13 @@
     <div class="main">
         <h1>Business Report AI Agent</h1>
         <form id="qform" autocomplete="off">
-            <input name="msg" id="msg" placeholder="e.g. Top sales by staff in 2023" required />
+            <input name="msg" id="msg" list="presetQueries" placeholder="e.g. Top sales by staff in 2023" required>
+            <datalist id="presetQueries">
+                <option value="Show latest purchase order"></option>
+                <option value="Show latest sales invoice"></option>
+                <option value="Top 10 Client for Sales Invoice"></option>
+                <option value="Top 10 Supplier for Purchase Order"></option>
+            </datalist>
             <button type="submit">Ask</button>
         </form>
         <div id="result" class="result" style="display:none"></div>
