@@ -38,6 +38,9 @@
     const $form = document.getElementById('qform');
     const $msg = document.getElementById('msg');
     const $result = document.getElementById('result');
+    $msg.addEventListener('focus', () => {
+        $msg.dispatchEvent(new Event('input', {bubbles: true}));
+    });
     $form.onsubmit = async (e) => {
         e.preventDefault();
         $result.innerHTML = "Generating report...";
