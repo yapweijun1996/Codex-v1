@@ -71,19 +71,37 @@
         </cfloop>
         <cfset prettyTable &= "</tr>">
         <cfloop query="data">
-			<cfset prettyTable &= "<tr>">
-			<cfloop list="#data.columnlist#" index="col">
-				<cfset prettyTable &= "<td>" & encodeForHTML(data[col]) & "</td>">
-			</cfloop>
-			<cfset prettyTable &= "</tr>">
-		</cfloop>
+            <cfset prettyTable &= "<tr>">
+            <cfloop list="#data.columnlist#" index="col">
+                <cfset prettyTable &= "<td>" & encodeForHTML(data[col]) & "</td>">
+            </cfloop>
+            <cfset prettyTable &= "</tr>">
+        </cfloop>
 
         <cfset prettyTable &= "</table>">
         <cfset prettyTable &= "</div>">
     <cfelse>
         <cfset prettyTable = "No records found.">
     </cfif>
+
+    <!--- Generate AI summary of the results --->
     <cfset summary = "Found #data.recordCount# records.">
+    <cfset aiSummary = "">
+    <cftry>
+        <cfset summaryPrompt = "You are an expert business analyst summarizer.\n\n" &
+            "User question: " & userMsg & "\n\n" &
+            "SQL statement executed:\n" & sql & "\n\n" &
+            "HTML table:\n" & prettyTable & "\n\n" &
+            "Provide a short summary in no more than 3 sentences that helps a business user understand the results." >
+        <cfset summarySession = LuceeCreateAISession(name="gpt_summary", systemMessage=summaryPrompt)>
+        <cfset aiSummary = LuceeInquiryAISession(summarySession, "Summarize the results")>
+        <cfif len(trim(aiSummary))>
+            <cfset summary = aiSummary>
+        </cfif>
+        <cfcatch>
+            <!--- If summarization fails, fall back to basic summary --->
+        </cfcatch>
+    </cftry>
     <cfoutput>
     #serializeJSON({
         summary = summary,
@@ -91,7 +109,7 @@
         schema = schema,
         table = prettyTable,
         rowCount = data.recordCount,
-        debug = { aiPrompt = aiPrompt, aiSql = aiSql }
+        debug = { aiPrompt = aiPrompt, aiSql = aiSql, aiSummary = aiSummary }
     })#
     </cfoutput>
     <cfcatch>
