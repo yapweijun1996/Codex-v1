@@ -16,8 +16,7 @@
         <cfoutput>#serializeJSON({error="Missing schema_config.json."})#</cfoutput><cfabort>
     </cfif>
     <cfset schemaString = fileRead(schemaPath)>
-    <cfset schema = deserializeJSON(fileRead(schemaPath))>
-    <cfset schemaString = serializeJSON(schema)>
+    <cfset schema = deserializeJSON(schemaString)>
 
 
     <cfset aiPrompt = "
