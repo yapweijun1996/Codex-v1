@@ -86,9 +86,9 @@
                 return;
             }
             
-            const temp_sql = j.SQL;
-            const temp_table = j.TABLE;
-            const temp_summary = j.SUMMARY;
+            const temp_sql = j.sql;
+            const temp_table = j.table;
+            const temp_summary = j.summary;
             
             $result.innerHTML =
                 "<div><b>" + (temp_summary||"") + "</b></div>" +
