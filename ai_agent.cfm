@@ -33,9 +33,9 @@
 	- **Respond ONLY with the SQL (no explanations or comments)**
 	
 	Database schema:
-	```json
-	#schemaString#
-	````
+        ```json
+        #schemaString#
+        ```
 	
         ">
 	
