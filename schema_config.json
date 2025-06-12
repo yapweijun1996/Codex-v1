@@ -40,7 +40,7 @@
       "curr_rate_forex_display": "Exchange rate (display)",
       "tag_deleted_yn": "Logical deletion flag ('y'/'n')",
       "tag_wflow_app_yn": "Workflow approved flag ('y'/'n')",
-      "wflow_status": "Workflow status (e.g., 'app', 'drf', 'rej') Document Status(Approved, Draft, Reject)",
+      "wflow_status": "Workflow status (e.g., 'app', 'drf', 'rej') Document Status(Approved, Draft, Reject)"
     },
     "relationships": [
       {
@@ -72,13 +72,13 @@
       "Always add LIMIT for performance.",
       "NEVER repeat the same column multiple times in SELECT.",
       "Group related amount fields logically: nettot_local, amount_local, grosstot_local, subtot_local.",
-      "For party/customer queries: Add AND party_desc IS NOT NULL AND party_desc != ''."
+      "For party/customer queries: Add AND party_desc IS NOT NULL AND party_desc != ''.",
       "Always use date_trans (date of transaction) for any date filters or date range queries; do NOT use date_post (posting date).",
       "Whenever selecting any amount column (such as nett amount, subtotal, total, etc.), always also select curr_short_forex in the result to show the currency code.",
       "Always filter out rows where staff_desc is NULL or blank when reporting by salesperson.",
       "Add to WHERE: AND staff_desc IS NOT NULL AND TRIM(staff_desc) <> ''",
       "Only include named salespeople in any “top salesperson” query.",
-      "Do not display results where the salesperson is missing unless specifically requested by the user.",
+      "Do not display results where the salesperson is missing unless specifically requested by the user."
 
     ],
     "common_queries": [
@@ -135,7 +135,7 @@
       "curr_rate_forex_display": "Exchange rate (display)",
       "tag_deleted_yn": "Logical deletion flag ('y'/'n')",
       "tag_wflow_app_yn": "Workflow approved flag ('y'/'n')",
-      "wflow_status": "Workflow status (e.g., 'app', 'drf', 'rej') Document Status(Approved, Draft, Reject)",
+      "wflow_status": "Workflow status (e.g., 'app', 'drf', 'rej') Document Status(Approved, Draft, Reject)"
     },
     "relationships": [
       {
@@ -160,7 +160,7 @@
       "For workflow-approved documents, filter by tag_wflow_app_yn = 'y'.",
       "For vendor joins, use party_unique (not party_code) for reliability.",
       "Always use date_trans (date of transaction) for any date filters or date range queries; do NOT use date_post (posting date).",
-      "Whenever selecting any amount column (such as nett amount, subtotal, total, etc.), always also select curr_short_forex in the result to show the currency code.",
+      "Whenever selecting any amount column (such as nett amount, subtotal, total, etc.), always also select curr_short_forex in the result to show the currency code."
 
     ],
     "common_queries": [
@@ -177,23 +177,5 @@
         "sql": "SELECT deptunit_desc, SUM(amount_local) AS Total_PR_Amount FROM purchase_headers WHERE tag_table_usage = 'pur_pr' AND tag_deleted_yn = 'n' GROUP BY deptunit_desc;"
       }
     ]
-  },
-  "relationships": [
-    {
-      "from_table": "scm_sal_main",
-      "from_column": "party_code",
-      "to_table": "scm_party",
-      "to_column": "party_code",
-      "type": "many-to-one",
-      "description": "Each sales record is linked to a party (customer)"
-    },
-    {
-      "from_table": "scm_pur_main",
-      "from_column": "supplier_code",
-      "to_table": "scm_supplier",
-      "to_column": "supplier_code",
-      "type": "many-to-one",
-      "description": "Each purchase record is linked to a supplier"
-    }
-  ]
+  }
 } 

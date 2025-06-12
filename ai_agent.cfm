@@ -46,6 +46,7 @@
         <cfoutput>#serializeJSON({error="Missing schema_config.json."})#</cfoutput><cfabort>
     </cfif>
     <cfset schemaString = fileRead(schemaPath)>
+    <cfset parsedSchema = deserializeJSON(schemaString)>
 
     <!--- 4. Few-shot EXAMPLES for better LLM reasoning --->
     <cfset followup_examples = "
@@ -124,16 +125,21 @@ Question: #userMsg#
     <cfset prettyTable = "">
     <cfset summary = "">
     <cfset stepData = {}>
+    <cfset debugAgents = []>
 
     <cfloop array="#plan#" index="step">
         <cfswitch expression="#step#">
             <cfcase value="table">
-                <!--- Table Agent: Choose tables/columns --->
-                <cfset tablePrompt = "
+    <!--- Table Agent: Choose tables/columns (now supports multi-table) --->
+    <cfset tablePrompt = "
 #followup_examples#
 
-You are a table selection agent. Given the schema, user question, recent chat history, previous SQL, and previous summary, list the best table(s) and columns for answering it.
-Reply ONLY as JSON: {table:..., columns:[...]}
+You are a table selection agent. Given the schema, user question, recent chat history, previous SQL, and previous summary, 
+list the best table(s) and columns for answering it.
+
+Reply ONLY as JSON: 
+{""tables"": [{""table"":""..."", ""columns"":[""...""...]}]}  (use multiple if needed)
+
 Schema:
 #schemaString#
 Chat history: #serializeJSON(chatHistory)#
@@ -141,37 +147,67 @@ Previous SQL: #prevSQL#
 Previous summary: #prevSummary#
 Question: #userMsg#
 ">
-                <cfset tableSession = LuceeCreateAISession(name=aiEngine, systemMessage=tablePrompt)>
-                <cfset tableResult = LuceeInquiryAISession(tableSession, userMsg)>
-                <cfset stepData['table'] = tableResult>
-                <cfset tableName = "">
-                <cfset columns = ["*"]>
-                <cftry>
-                    <cfset tempTable = deserializeJSON(tableResult)>
-                    <cfset tableName = structKeyExists(tempTable, "table") ? tempTable.table : "unknown">
-                    <cfset columns = (structKeyExists(tempTable, "columns") and isArray(tempTable.columns) and arrayLen(tempTable.columns) GT 0) ? tempTable.columns : ["*"]>
-                <cfcatch>
-                    <cfset tableName = "unknown">
-                    <cfset columns = ["*"]>
-                </cfcatch>
-                </cftry>
-                <cfset arrayAppend(log, "Table agent: " & tableResult)>
-            </cfcase>
+    <cfset tableSession = LuceeCreateAISession(name=aiEngine, systemMessage=tablePrompt)>
+    <cfset tableResult = LuceeInquiryAISession(tableSession, userMsg)>
+    
+    <!--- Log both input and output --->
+    <cfset arrayAppend(debugAgents, {
+        agent: "table",
+        input: tablePrompt,
+        output: tableResult
+    })>
+    
+    
+    <cfset stepData['table'] = tableResult>
+    <cfset selectedTables = []>
+    <cftry>
+        <cfset tempTable = deserializeJSON(tableResult)>
+        <cfif structKeyExists(tempTable, "tables")>
+            <cfset selectedTables = tempTable.tables>
+        <cfelse>
+            <cfset selectedTables = []>
+        </cfif>
+    <cfcatch>
+        <cfset selectedTables = []>
+    </cfcatch>
+    </cftry>
+    <!--- backward compatibility if needed --->
+    <cfif arrayLen(selectedTables) EQ 1>
+        <cfset tableName = selectedTables[1].table>
+        <cfset columns = selectedTables[1].columns>
+    <cfelse>
+        <cfset tableName = "">
+        <cfset columns = ["*"]>
+    </cfif>
+    <cfset arrayAppend(log, "Table agent: " & tableResult)>
+</cfcase>
+
             <cfcase value="sql">
-                <!--- SQL Agent: Write SQL --->
-                <cfset sqlPrompt = "
+
+    <cfset filteredSchema = {}>
+
+    <!--- Only include selected tables in schema --->
+    <cfloop array="#selectedTables#" index="tbl">
+		<cfif structKeyExists(parsedSchema, tbl.table)>
+			<cfset filteredSchema[tbl.table] = parsedSchema[tbl.table]>
+		</cfif>
+	</cfloop>
+
+
+    <!--- SQL Agent: Write SQL using filteredSchema --->
+    <cfset sqlPrompt = "
 #followup_examples#
 
 You are a PostgreSQL SQL generator agent.
 
 **Task:**  
-Given the database schema, table(s), column list, user’s question, recent chat history, previous SQL, and previous summary,  
-write a single SELECT statement to answer the question.
+Given the database schema, a list of tables/columns (JSON), user’s question, recent chat history, previous SQL, and previous summary,  
+write a single SELECT statement (with JOIN if >1 table) to answer the question.
 
 **Strict Rules:**  
 - Only generate SELECT statements.  
 - Do NOT use *, always specify each column name explicitly.
-- For each column, use a descriptive alias with AS (e.g., sample_column AS Document_Number).
+- For each column, use a descriptive alias with AS (e.g., staff_desc AS Salesperson).
 - Do NOT generate DELETE, UPDATE, INSERT, ALTER, or DROP statements.
 - Always include: WHERE tag_deleted_yn = 'n'
 - Always include: LIMIT 1000
@@ -180,10 +216,10 @@ write a single SELECT statement to answer the question.
 
 **Inputs:**  
 Schema:  
-#schemaString#
+#serializeJSON(filteredSchema)#
 
-Table: #tableName#  
-Columns: #arrayToList(columns, ', ')#
+Selected Tables and Columns (JSON):  
+#serializeJSON(selectedTables)#
 
 Chat history:  
 #serializeJSON(chatHistory)#
@@ -198,15 +234,24 @@ User Question:
 #userMsg#
 ">
 
-                <cfset sqlSession = LuceeCreateAISession(name=aiEngine, systemMessage=sqlPrompt)>
-                <cfset sql = LuceeInquiryAISession(sqlSession, userMsg)>
-                <!--- Strip code fences and extra formatting from SQL --->
-                <cfset sql = rereplacenocase(sql, "^\s*```(\w+)?", "", "one")>
-                <cfset sql = rereplacenocase(sql, "```", "", "all")>
-                <cfset sql = trim(sql)>
-                <cfset stepData['sql'] = sql>
-                <cfset arrayAppend(log, "SQL agent: " & sql)>
-            </cfcase>
+    <cfset sqlSession = LuceeCreateAISession(name=aiEngine, systemMessage=sqlPrompt)>
+    <cfset sql = LuceeInquiryAISession(sqlSession, userMsg)>
+
+    <cfset arrayAppend(debugAgents, {
+		agent: "sql",
+		input: sqlPrompt,
+		output: sql
+	})>
+
+    <!--- Strip code fences and extra formatting from SQL --->
+    <cfset sql = rereplacenocase(sql, "^\s*```(\w+)?", "", "one")>
+    <cfset sql = rereplacenocase(sql, "```", "", "all")>
+    <cfset sql = trim(sql)>
+    <cfset stepData['sql'] = sql>
+    <cfset arrayAppend(log, "SQL agent: " & sql)>
+</cfcase>
+
+
             <cfcase value="summary">
                 <!--- Will be run after SQL executed. See below. --->
             </cfcase>
@@ -223,6 +268,14 @@ Question: #userMsg#
 ">
                 <cfset chatSession = LuceeCreateAISession(name=aiEngine, systemMessage=chatPrompt)>
                 <cfset summary = LuceeInquiryAISession(chatSession, userMsg)>
+                
+                <cfset arrayAppend(debugAgents, {
+					agent: "sql",
+					input: chatPrompt,
+					output: userMsg
+				})>
+	
+	
                 <cfset arrayAppend(log, "Chat agent: " & summary)>
             </cfcase>
             <cfdefaultcase>
@@ -242,7 +295,7 @@ Question: #userMsg#
                 #preserveSingleQuotes(sql)#
             </cfquery>
             <cfcatch>
-                <cfoutput>#serializeJSON({error="SQL execution failed", details=cfcatch.message, sql=sql, plan=plan, log=log})#</cfoutput><cfabort>
+                <cfoutput>#serializeJSON({error="SQL execution failed", details=cfcatch.message, sql=sql, debugAgents=debugAgents, plan=plan, log=log})#</cfoutput><cfabort>
             </cfcatch>
         </cftry>
 
@@ -305,7 +358,8 @@ Summarize the business insight or answer in 2-3 clear sentences, using plain lan
         SQL = sql,
         SUMMARY = summary,
         LOG = log,
-        DEBUG = stepData
+        DEBUG = stepData,
+        AGENTS = debugAgents
     })#
     </cfoutput>
 

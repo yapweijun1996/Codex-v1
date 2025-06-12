@@ -159,7 +159,7 @@
         color:#456;
     }
     #showDebugBtn {
-        position: absolute; right: 16px; bottom: 74px; z-index:10;
+        position: absolute; right: 118px; top: 13px; z-index:10;
         font-size:.95rem;padding:5px 15px;border-radius:7px;
         background:#f4f5fc;border:1px solid #e0e1e8;cursor:pointer;color:#456;
     }
@@ -197,6 +197,8 @@
         <div class="chat-header">
             Business Report AI Agent
             <button class="clear-btn" id="clearChat" type="button">Clear Chat</button>
+			<!-- Debug trigger button -->
+			<button id="showDebugBtn" type="button">Show Debug Log</button>
         </div>
         <div class="chatbox" id="chatbox">
             <!-- Conversation goes here -->
@@ -215,8 +217,6 @@
             <pre id="debugContent"></pre>
           </div>
         </div>
-        <!-- Debug trigger button -->
-        <button id="showDebugBtn" type="button">Show Debug Log</button>
 
     </div>
     <script>
@@ -279,7 +279,7 @@
 		const $debugContent = document.getElementById('debugContent');
 	
 		let chatHistory = [];
-		let lastDebug = { LOG:[], PLAN:[], DEBUG:{} };
+		let lastDebug = { LOG:[], PLAN:[], DEBUG:{}, AGENTS:{} };
 	
 		// Render a chat bubble (ai/user)
 		function addMsg(content, type = 'ai', options = {}) {
@@ -340,7 +340,7 @@
 					addMsg(msg, 'ai');
 					$form.querySelector('button').disabled = false;
 					await saveTurn(userMsg, msg);
-					lastDebug = { LOG:['Error: '+(j.details||j.error)], PLAN:j.PLAN||[], DEBUG:j.DEBUG||{} };
+					lastDebug = { LOG:['Error: '+(j.details||j.error)], PLAN:j.PLAN||[], DEBUG:j.DEBUG||{}, AGENTS:j.AGENTS||{} };
 					return;
 				}
 				if(j.SUMMARY) msg += `<b>${j.SUMMARY}</b><br>`;
@@ -348,13 +348,13 @@
 				if(j.TABLE) msg += j.TABLE;
 				addMsg(msg, 'ai');
 				await saveTurn(userMsg, msg);
-				lastDebug = { LOG: j.LOG || [], PLAN: j.PLAN || [], DEBUG: j.DEBUG || {} };
+				lastDebug = { LOG: j.LOG || [], PLAN: j.PLAN || [], DEBUG: j.DEBUG || {}, AGENTS:j.AGENTS||{} };
 			} catch(ex){
 				const loading = $chatbox.querySelector('.loading');
 				if (loading) loading.parentNode.remove();
 				addMsg("<b>Unexpected error:</b> " + ex, 'ai');
 				await saveTurn(userMsg, "<b>Unexpected error:</b> " + ex);
-				lastDebug = { LOG:['Fetch error: ' + ex], PLAN:[], DEBUG:{} };
+				lastDebug = { LOG:['Fetch error: ' + ex], PLAN:[], DEBUG:{}, AGENTS:{} };
 			}
 			$form.querySelector('button').disabled = false;
 		};
@@ -373,6 +373,9 @@
 			if (lastDebug.LOG && lastDebug.LOG.length) msg += "LOG:\n" + lastDebug.LOG.join('\n') + "\n\n";
 			if (lastDebug.DEBUG && Object.keys(lastDebug.DEBUG).length)
 				msg += "DEBUG:\n" + JSON.stringify(lastDebug.DEBUG, null, 2) + "\n";
+			
+			if (lastDebug.AGENTS) msg += "AGENTS:\n" + JSON.stringify(lastDebug.AGENTS, null, 2) + "\n\n";
+			
 			$debugContent.textContent = msg || "(No debug info)";
 			$debugWrap.style.display = '';
 			document.body.style.overflow = 'hidden';
