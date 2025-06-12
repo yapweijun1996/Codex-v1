@@ -41,6 +41,10 @@
     <cfif NOT len(sql) OR NOT refindnocase("^select\\s", sql)>
         <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug=aiSql})#</cfoutput><cfabort>
     </cfif>
+    <!--- Ensure the datasource cookie is present before querying --->
+    <cfif NOT structKeyExists(cookie, "cooksql_mainsync")>
+        <cfoutput>#serializeJSON({error="Missing cookie 'cooksql_mainsync'."})#</cfoutput><cfabort>
+    </cfif>
         <cftry>
             <cfquery name="data" datasource="#cookie.cooksql_mainsync#_active" timeout="20">
                 #preserveSingleQuotes(sql)#
