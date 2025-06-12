@@ -29,6 +29,11 @@
             <cfreturn { error="AI session failed", details=cfcatch.message }>
         </cfcatch>
     </cftry>
+    <!--- Detect empty AI responses --->
+    <cfif NOT len(aiSql)>
+        <cflog type="warning" text="generateSQL: empty AI response"/>
+        <cfreturn { error="Empty AI response" }>
+    </cfif>
     <!--- Extract first SELECT statement --->
     <cfset var sql = "">
     <cfif refindnocase("^select\\s", aiSql)>

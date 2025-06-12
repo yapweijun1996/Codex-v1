@@ -90,7 +90,6 @@
     </cfloop>
     <cfset result.history = session.history>
     <cfset result.rowCount = data.recordCount>
-    <cfset result.schema = schema>
     <cfset result.debug = { plan=plan, aiSql=aiSql, requestId=requestId }>
     <cfif len(debugMsg)>
         <cfset result.debug.message = debugMsg>
