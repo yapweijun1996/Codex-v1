@@ -36,8 +36,30 @@
     <cfelse>
         <cfset var m = rematchnocase("select\\s.+?(?=;|\\s*$)", aiSql)>
         <cfif arraylen(m)> <cfset sql = trim(m[1])> </cfif>
-    </cfif>
+</cfif>
     <cfreturn sql>
+</cffunction>
+
+<cffunction name="isValidSelect" output="false" returnType="boolean">
+    <cfargument name="sql" type="string" required="true">
+    <cfset var s = trim(arguments.sql)>
+    <!--- must start with SELECT --->
+    <cfif NOT refindnocase("^select\\b", s)>
+        <cfreturn false>
+    </cfif>
+    <!--- allow at most one semicolon and only at the end --->
+    <cfif listLen(s, ";") GT 1>
+        <cfreturn false>
+    </cfif>
+    <cfset var semiPos = find(";", s)>
+    <cfif semiPos AND semiPos LT len(s)>
+        <cfreturn false>
+    </cfif>
+    <!--- reject other statement types --->
+    <cfif refindnocase("\\b(insert|update|delete|drop|create|alter)\\b", s)>
+        <cfreturn false>
+    </cfif>
+    <cfreturn true>
 </cffunction>
 
 <cffunction name="renderTable" output="false" returnType="string">
