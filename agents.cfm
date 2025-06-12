@@ -51,7 +51,7 @@
         <cfset tableHTML &= "<div style='max-height: 200px;overflow: auto;'>">
         <cfset tableHTML &= "<table class='biz-table'><thead><tr>">
         <cfloop list="#arguments.data.columnlist#" index="col">
-            <cfset tableHTML &= "<th">#encodeForHTML(col)#</th>">
+            <cfset tableHTML &= "<th>" & encodeForHTML(col) & "</th>">
         </cfloop>
         <cfset tableHTML &= "</tr></thead><tbody>">
         <cfloop query="arguments.data">
