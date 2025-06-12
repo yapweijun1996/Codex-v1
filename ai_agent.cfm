@@ -32,11 +32,15 @@
     <cfset aiSql = "">
     <cfset debugMsg = "">
     <cfif plan.database>
-        <cfset aiSql = generateSQL(schemaString, userMsg)>
-        <cfset sql = aiSql>
-        <cfif NOT len(sql) OR NOT refindnocase("^select\\s", sql)>
-            <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug=aiSql})#</cfoutput><cfabort>
-        </cfif>
+    <cfset aiSqlResult = generateSQL(schemaString, userMsg)>
+    <cfif isStruct(aiSqlResult)>
+        <cfoutput>#serializeJSON({error=aiSqlResult.error ?: "AI session error", details=aiSqlResult.details})#</cfoutput><cfabort>
+    </cfif>
+    <cfset aiSql = aiSqlResult>
+    <cfset sql = aiSql>
+    <cfif NOT len(sql) OR NOT refindnocase("^select\\s", sql)>
+        <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug=aiSql})#</cfoutput><cfabort>
+    </cfif>
         <cftry>
             <cfquery name="data" datasource="#cookie.cooksql_mainsync#_active" timeout="20">
                 #preserveSingleQuotes(sql)#

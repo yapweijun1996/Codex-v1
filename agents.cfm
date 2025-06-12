@@ -7,7 +7,7 @@
     <cfreturn plan>
 </cffunction>
 
-<cffunction name="generateSQL" output="false" returnType="string">
+<cffunction name="generateSQL" output="false" returnType="any">
     <cfargument name="schemaString" type="string" required="true">
     <cfargument name="userMsg" type="string" required="true">
     <cfset var aiPrompt = "You are an expert business analyst and SQL developer.\n\n" &
@@ -20,8 +20,15 @@
         "- If more than one table is relevant, use JOIN as needed" &
         "- Respond ONLY with the SQL (no explanations or comments)" &
         "\n\nDatabase schema:\n```json\n" & arguments.schemaString & "\n```">
-    <cfset var aiSession = LuceeCreateAISession(name="gpt001", systemMessage=aiPrompt)>
-    <cfset var aiSql = LuceeInquiryAISession(aiSession, arguments.userMsg)>
+    <cfset var aiSql = "">
+    <cftry>
+        <cfset var aiSession = LuceeCreateAISession(name="gpt001", systemMessage=aiPrompt)>
+        <cfset aiSql = LuceeInquiryAISession(aiSession, arguments.userMsg)>
+        <cfcatch>
+            <cflog type="error" text="generateSQL: #cfcatch.message#"/>
+            <cfreturn { error="AI session failed", details=cfcatch.message }>
+        </cfcatch>
+    </cftry>
     <!--- Extract first SELECT statement --->
     <cfset var sql = "">
     <cfif refindnocase("^select\\s", aiSql)>
