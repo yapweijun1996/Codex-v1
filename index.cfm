@@ -191,7 +191,15 @@
             const j = await r.json();
             console.log(j);
             if (j.error) {
-                aiEl.innerHTML = '<b>❌ Error:</b> ' + j.error + (j.details ? '<br>' + j.details : '');
+                aiEl.textContent = '';
+                const errLabel = document.createElement('b');
+                errLabel.textContent = '❌ Error:';
+                aiEl.appendChild(errLabel);
+                aiEl.appendChild(document.createTextNode(' ' + j.error));
+                if (j.details) {
+                    aiEl.appendChild(document.createElement('br'));
+                    aiEl.appendChild(document.createTextNode(j.details));
+                }
                 return;
             }
 
@@ -205,23 +213,56 @@
 
                     const ae = document.createElement('div');
                     ae.className = 'msg ai';
-                    ae.innerHTML =
-                        '<div><b>' + (item.summary || '') + '</b></div>' +
-                        (item.sql ? `<div class="sql-debug">SQL: ${item.sql}</div>` : '') +
-                        (item.table ? item.table : '');
+
+                    const summaryDiv = document.createElement('div');
+                    const summaryB = document.createElement('b');
+                    summaryB.textContent = item.summary || '';
+                    summaryDiv.appendChild(summaryB);
+                    ae.appendChild(summaryDiv);
+
+                    if (item.sql) {
+                        const sqlDiv = document.createElement('div');
+                        sqlDiv.className = 'sql-debug';
+                        sqlDiv.textContent = 'SQL: ' + item.sql;
+                        ae.appendChild(sqlDiv);
+                    }
+
+                    if (item.table) {
+                        ae.insertAdjacentHTML('beforeend', item.table);
+                    }
+
                     $thread.appendChild(ae);
                 });
             } else {
                 const temp_sql = j.SQL;
                 const temp_table = j.TABLE;
                 const temp_summary = j.SUMMARY;
-                aiEl.innerHTML =
-                    '<div><b>' + (temp_summary || '') + '</b></div>' +
-                    (temp_sql ? `<div class="sql-debug">SQL: ${temp_sql}</div>` : '') +
-                    (temp_table ? temp_table : '');
+
+                aiEl.textContent = '';
+
+                const summaryDiv = document.createElement('div');
+                const summaryB = document.createElement('b');
+                summaryB.textContent = temp_summary || '';
+                summaryDiv.appendChild(summaryB);
+                aiEl.appendChild(summaryDiv);
+
+                if (temp_sql) {
+                    const sqlDiv = document.createElement('div');
+                    sqlDiv.className = 'sql-debug';
+                    sqlDiv.textContent = 'SQL: ' + temp_sql;
+                    aiEl.appendChild(sqlDiv);
+                }
+
+                if (temp_table) {
+                    aiEl.insertAdjacentHTML('beforeend', temp_table);
+                }
             }
         } catch (ex) {
-            aiEl.innerHTML = '<b>Unexpected error:</b> ' + ex;
+            aiEl.textContent = '';
+            const errLabel = document.createElement('b');
+            errLabel.textContent = 'Unexpected error:';
+            aiEl.appendChild(errLabel);
+            aiEl.appendChild(document.createTextNode(' ' + ex));
         }
         $thread.scrollTop = $thread.scrollHeight;
     };
