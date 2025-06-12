@@ -75,6 +75,10 @@
       "For party/customer queries: Add AND party_desc IS NOT NULL AND party_desc != ''."
       "Always use date_trans (date of transaction) for any date filters or date range queries; do NOT use date_post (posting date).",
       "Whenever selecting any amount column (such as nett amount, subtotal, total, etc.), always also select curr_short_forex in the result to show the currency code.",
+      "Always filter out rows where staff_desc is NULL or blank when reporting by salesperson.",
+      "Add to WHERE: AND staff_desc IS NOT NULL AND TRIM(staff_desc) <> ''",
+      "Only include named salespeople in any “top salesperson” query.",
+      "Do not display results where the salesperson is missing unless specifically requested by the user.",
 
     ],
     "common_queries": [
