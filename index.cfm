@@ -1,103 +1,390 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>Business Report AI Agent</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta charset="utf-8">
     <style>
-        body { font-family: system-ui, Arial, sans-serif; background: #f4f6fa; margin: 0; padding: 0; }
-        .main { max-width: 520px; margin: 40px auto; background: #fff; border-radius: 10px; box-shadow: 0 4px 18px #0002; padding: 32px 28px; }
-        h1 { font-size: 1.3rem; margin: 0 0 22px; letter-spacing: 1px; }
-        form { display: flex; gap: 10px; }
-        input, button { font-size: 1rem; border-radius: 8px; border: 1px solid #bbb; padding: 8px 14px; }
-        input { flex: 1; }
-        button { background: #2d69e0; color: #fff; border: none; cursor: pointer; }
-        button:active { background: #1b3977; }
-        .result { margin: 32px 0 0; background: #fcfcfc; border-radius: 8px; padding: 18px 16px; box-shadow: 0 1px 4px #0001;}
-        .biz-table { border-collapse: collapse; margin-top: 10px; }
-        .biz-table th, .biz-table td { border: 1px solid #ddd; padding: 3px 4px; font-size: 12px; }
-        .biz-table th { background: #f0f4ff; }
-        .sql-debug { font-family: "JetBrains Mono",monospace,monospace; color: #888; font-size: .94rem; background: #f6f6fa; margin: 8px 0 0; padding: 7px 10px; border-radius: 4px;}
-        .debug-box { font-family: "JetBrains Mono",monospace; margin-top: 20px; background: #eee; padding: 10px; border-radius: 6px; display:none; }
-        .debug-box-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-        .debug-copy-btn { font-size:.8rem; padding:4px 8px; }
+    :root {
+        --main-bg: #f6f7fb;
+        --bubble-user: #2d69e0;
+        --bubble-ai: #e4e9f4;
+        --text-ai: #1a2343;
+        --border: #e2e2e2;
+        --shadow: 0 4px 24px #2d69e011;
+    }
+    html,body {
+        height: 100%; margin:0; padding:0;
+        background: var(--main-bg);
+    }
+    body {
+        display: flex; align-items: center; justify-content: center;
+        min-height: 100vh;
+    }
+    .chat-wrap {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        width: 100%;
+        max-width: 95vw;
+        display: flex;
+        flex-direction: column;
+        height: 95vh;
+        min-height: 480px;
+        overflow: hidden;
+        position: relative;
+    }
+    .chat-header {
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--border);
+        background: #f7f9fb;
+        font-size: 1.15rem;
+        font-weight: 600;
+        letter-spacing: .2px;
+        position: relative;
+    }
+    .chatbox {
+        flex:1;
+        padding: 18px 12px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        background: #fafdff;
+    }
+    .msg-row {
+        display: flex;
+        gap: 7px;
+        align-items: flex-end;
+    }
+    .msg-bubble {
+        max-width: 85%;
+        padding: 10px 15px;
+        border-radius: 14px 14px 14px 4px;
+        font-size: 1rem;
+        line-height: 1.55;
+        box-shadow: 0 2px 7px #0001;
+        word-break: break-word;
+    }
+    .msg-user {
+        margin-left: auto;
+        background: var(--bubble-user);
+        color: #fff;
+        border-radius: 14px 14px 4px 14px;
+    }
+    .msg-ai {
+        background: var(--bubble-ai);
+        color: var(--text-ai);
+    }
+    .sql-debug {
+        font-family: "JetBrains Mono",monospace,monospace;
+        font-size: .92rem; color: #5a6382; background: #eef2fa;
+        border-radius: 5px; padding: 6px 10px; margin: 7px 0 0;
+        white-space: pre-line;
+    }
+    .chat-form {
+        display: flex;
+        border-top: 1px solid var(--border);
+        padding: 12px 10px 12px 14px;
+        background: #fff;
+        gap: 8px;
+    }
+    .chat-form input {
+        border: 1px solid #ccd6e4;
+        border-radius: 7px;
+        padding: 9px 12px;
+        font-size: 1.03rem;
+        flex: 1;
+        background: #fafcff;
+        outline: none;
+    }
+    .chat-form button {
+        background: var(--bubble-user);
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        padding: 0 20px;
+        font-size: 1.05rem;
+        cursor: pointer;
+        transition: background .16s;
+    }
+    .chat-form button:active { background: #1b3977; }
+    table.biz-table {
+		width: 100%;
+		border-collapse: separate;
+		border-spacing: 0;
+		background: #fff;
+		font-size: 14px;
+		border-radius: 16px;
+		box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+		overflow: hidden;
+	}
+	
+	table.biz-table th, table.biz-table td {
+		padding: 12px 18px;
+		text-align: left;
+		border-bottom: 1px solid #f0f0f0;
+		white-space: nowrap;
+	}
+	
+	table.biz-table th {
+		background: #f9fafb;
+		font-weight: bold;
+		color: #323232;
+		letter-spacing: 1px;
+	}
+	
+	table.biz-table tr:hover td {
+		background: #f6f8fa;
+		transition: background 0.2s;
+	}
+	
+	table.biz-table tr:last-child td {
+		border-bottom: none;
+	}
+	
+	/* Optional: zebra stripes for rows */
+	table.biz-table tr:nth-child(even) td {
+		background: #fcfcfc;
+	}
+    .loading {
+        opacity: .7;
+        font-style: italic;
+    }
+    .clear-btn {
+        position: absolute; right: 16px; top: 13px;
+        font-size:.92rem; padding:4px 10px;
+        border-radius:7px;background:#f4f5fc;
+        border:1px solid #e0e1e8;cursor:pointer;
+        color:#456;
+    }
+    #showDebugBtn {
+        position: absolute; right: 16px; bottom: 74px; z-index:10;
+        font-size:.95rem;padding:5px 15px;border-radius:7px;
+        background:#f4f5fc;border:1px solid #e0e1e8;cursor:pointer;color:#456;
+    }
+    #debugWrap {
+        position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1000;
+        background:#111c;
+        padding:0 8px;
+    }
+    #debugWrap .modal-box {
+        max-width:540px;
+        margin:44px auto;
+        background:#fff;
+        border-radius:8px;
+        padding:18px 16px;
+        box-shadow:0 6px 36px #2223;
+    }
+    #debugWrap .modal-head {
+        display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;
+    }
+    #debugContent {
+        font-size:.97rem;max-height:65vh;overflow:auto;color:#223;white-space:pre-wrap;
+    }
+    @media (max-width:480px) {
+        .chat-wrap { height: 98vh; min-height: 0; border-radius: 0; }
+        .chat-header { font-size: 1.06rem; padding: 15px 10px;}
+        .chatbox { padding: 10px 5px;}
+        .clear-btn { top:8px; right: 10px; }
+        #showDebugBtn { bottom: 56px; right:10px; }
+        #debugWrap .modal-box { margin: 24px auto;}
+    }
     </style>
 </head>
 <body>
-    <div class="main">
-        <h1>Business Report AI Agent</h1>
-        <form id="qform" autocomplete="off">
-            <input name="msg" id="msg" list="presetQueries" placeholder="e.g. Top sales by staff in 2023" required>
-            <datalist id="presetQueries">
-                <option value="Show latest purchase order"></option>
-                <option value="Show latest sales invoice"></option>
-                <option value="Top 10 Client for Sales Invoice"></option>
-                <option value="Top 10 Supplier for Purchase Order"></option>
-            </datalist>
-            <button type="submit">Ask</button>
+    <div class="chat-wrap">
+        <div class="chat-header">
+            Business Report AI Agent
+            <button class="clear-btn" id="clearChat" type="button">Clear Chat</button>
+        </div>
+        <div class="chatbox" id="chatbox">
+            <!-- Conversation goes here -->
+        </div>
+        <form class="chat-form" id="qform" autocomplete="off">
+            <input name="msg" id="msg" autocomplete="off" placeholder="Ask business, data or SQL questions..." required>
+            <button type="submit">Send</button>
         </form>
-        <div id="result" class="result" style="display:none"></div>
-        <div id="debugBox" class="debug-box">
-            <div class="debug-box-header">
-                <strong>Debug Log</strong>
-                <button type="button" id="copyDebug" class="debug-copy-btn">Copy Log</button>
+        <!-- Debug log modal -->
+        <div id="debugWrap" style="display:none;">
+          <div class="modal-box">
+            <div class="modal-head">
+              <b>Debug Log</b>
+              <button id="closeDebug" style="font-size:.98rem;padding:3px 13px;border-radius:6px;border:1px solid #eee;cursor:pointer;">Close</button>
             </div>
             <pre id="debugContent"></pre>
+          </div>
         </div>
+        <!-- Debug trigger button -->
+        <button id="showDebugBtn" type="button">Show Debug Log</button>
+
     </div>
     <script>
-    const $form = document.getElementById('qform');
-    const $msg = document.getElementById('msg');
-    const $result = document.getElementById('result');
-    const $debugBox = document.getElementById('debugBox');
-    const $debugContent = document.getElementById('debugContent');
-    const $copyDebug = document.getElementById('copyDebug');
-
-    const debugLogs = [];
-    ['log','warn','error'].forEach(fn => {
-        const orig = console[fn];
-        console[fn] = (...args) => {
-            orig.apply(console, args);
-            const msg = args.map(a => {
-                if(typeof a === 'object'){
-                    try { return JSON.stringify(a, null, 2); } catch(e){ return String(a); }
-                }
-                return String(a);
-            }).join(' ');
-            debugLogs.push(fn.toUpperCase()+': '+msg);
-            $debugContent.textContent = debugLogs.join('\n');
-            $debugBox.style.display = 'block';
-        };
-    });
-    $copyDebug.onclick = () => navigator.clipboard.writeText($debugContent.textContent);
-    $msg.addEventListener('focus', () => {
-        $msg.dispatchEvent(new Event('input', {bubbles: true}));
-    });
-    $form.onsubmit = async (e) => {
-        e.preventDefault();
-        $result.innerHTML = "Generating report...";
-        $result.style.display = "block";
-        const fd = new FormData($form);
-        try {
-            const r = await fetch('ai_agent.cfm', {method:"POST", body:fd});
-            const j = await r.json();
-            console.log(j);
-            if(j.error){
-                $result.innerHTML = "<b>❌ Error:</b> " + j.error + (j.details? "<br>"+j.details : "");
-                return;
-            }
-            
-            const temp_sql = j.SQL;
-            const temp_table = j.TABLE;
-            const temp_summary = j.SUMMARY;
-            
-            $result.innerHTML =
-                "<div><b>" + (temp_summary||"") + "</b></div>" +
-                (temp_sql ? `<div class="sql-debug">SQL: ${temp_sql}</div>` : "") +
-                (temp_table ? temp_table : "");
-        } catch(ex){
-            $result.innerHTML = "<b>Unexpected error:</b> " + ex;
-        }
-    };
+    window.addEventListener('load', function() {
+		// ---- IndexedDB logic ----
+		const DB_NAME = 'bizAgentChatDB', STORE = 'chat';
+		let db;
+	
+		function openDB() {
+			return new Promise((resolve, reject) => {
+				const req = indexedDB.open(DB_NAME, 1);
+				req.onupgradeneeded = e => {
+					const db = e.target.result;
+					if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, {keyPath:'id', autoIncrement:true});
+				};
+				req.onsuccess = e => { db = e.target.result; resolve(db); };
+				req.onerror = e => reject(e);
+			});
+		}
+		function saveTurn(user, ai) {
+			return openDB().then(db => {
+				return new Promise((resolve, reject) => {
+					const tx = db.transaction([STORE], 'readwrite');
+					tx.objectStore(STORE).add({user, ai, ts: Date.now()});
+					tx.oncomplete = resolve; tx.onerror = reject;
+				});
+			});
+		}
+		function loadHistory() {
+			return openDB().then(db => {
+				return new Promise((resolve, reject) => {
+					const tx = db.transaction([STORE], 'readonly');
+					const store = tx.objectStore(STORE);
+					const req = store.getAll();
+					req.onsuccess = () => {
+						resolve(req.result.sort((a,b)=>a.ts-b.ts));
+					};
+					req.onerror = reject;
+				});
+			});
+		}
+		function clearHistory() {
+			return openDB().then(db => {
+				return new Promise((resolve, reject) => {
+					const tx = db.transaction([STORE], 'readwrite');
+					tx.objectStore(STORE).clear();
+					tx.oncomplete = resolve; tx.onerror = reject;
+				});
+			});
+		}
+	
+		// ---- Chat UI logic ----
+		const $form = document.getElementById('qform');
+		const $msg = document.getElementById('msg');
+		const $chatbox = document.getElementById('chatbox');
+		const $clearBtn = document.getElementById('clearChat');
+		const $showDebugBtn = document.getElementById('showDebugBtn');
+		const $debugWrap = document.getElementById('debugWrap');
+		const $closeDebug = document.getElementById('closeDebug');
+		const $debugContent = document.getElementById('debugContent');
+	
+		let chatHistory = [];
+		let lastDebug = { LOG:[], PLAN:[], DEBUG:{} };
+	
+		// Render a chat bubble (ai/user)
+		function addMsg(content, type = 'ai', options = {}) {
+			const row = document.createElement('div');
+			row.className = 'msg-row';
+			const bubble = document.createElement('div');
+			bubble.className = 'msg-bubble msg-' + type;
+			bubble.innerHTML = content;
+			row.appendChild(bubble);
+			$chatbox.appendChild(row);
+			$chatbox.scrollTop = $chatbox.scrollHeight;
+			return bubble;
+		}
+	
+		function showLoading() {
+			return addMsg('Thinking...', 'ai', {loading:true}).classList.add('loading');
+		}
+	
+		// Load & display chat history
+		loadHistory().then(history => {
+			chatHistory = history.map(turn => ({user: turn.user, ai: turn.ai}));
+			history.forEach(turn => {
+				if (turn.user) addMsg(turn.user, 'user');
+				if (turn.ai) addMsg(turn.ai, 'ai');
+			});
+			$chatbox.scrollTop = $chatbox.scrollHeight;
+		});
+	
+		$form.onsubmit = async (e) => {
+			e.preventDefault();
+			const userMsg = $msg.value.trim();
+			if(!userMsg) return;
+			addMsg(userMsg, 'user');
+			$msg.value = '';
+			showLoading();
+			$form.querySelector('button').disabled = true;
+	
+			// Gather recent chat history for context (last 10)
+			let recentHistory = [];
+			try {
+				const fullHistory = await loadHistory();
+				recentHistory = fullHistory.slice(-10).map(turn => ({user: turn.user, ai: turn.ai}));
+			} catch {}
+	
+			try {
+				const fd = new FormData();
+				fd.append('msg', userMsg);
+				fd.append('chatHistory', JSON.stringify(recentHistory));
+				const r = await fetch('ai_agent.cfm', {method:"POST", body:fd});
+				const j = await r.json();
+				// Remove loading
+				const loading = $chatbox.querySelector('.loading');
+				if (loading) loading.parentNode.remove();
+	
+				let msg = '';
+				if(j.error){
+					msg = "<b>❌ Error:</b> " + j.error + (j.details? "<br>"+j.details : "");
+					addMsg(msg, 'ai');
+					$form.querySelector('button').disabled = false;
+					await saveTurn(userMsg, msg);
+					lastDebug = { LOG:['Error: '+(j.details||j.error)], PLAN:j.PLAN||[], DEBUG:j.DEBUG||{} };
+					return;
+				}
+				if(j.SUMMARY) msg += `<b>${j.SUMMARY}</b><br>`;
+				if(j.SQL) msg += `<div class="sql-debug">SQL: ${j.SQL}</div>`;
+				if(j.TABLE) msg += j.TABLE;
+				addMsg(msg, 'ai');
+				await saveTurn(userMsg, msg);
+				lastDebug = { LOG: j.LOG || [], PLAN: j.PLAN || [], DEBUG: j.DEBUG || {} };
+			} catch(ex){
+				const loading = $chatbox.querySelector('.loading');
+				if (loading) loading.parentNode.remove();
+				addMsg("<b>Unexpected error:</b> " + ex, 'ai');
+				await saveTurn(userMsg, "<b>Unexpected error:</b> " + ex);
+				lastDebug = { LOG:['Fetch error: ' + ex], PLAN:[], DEBUG:{} };
+			}
+			$form.querySelector('button').disabled = false;
+		};
+	
+		$clearBtn.onclick = async () => {
+			await clearHistory();
+			$chatbox.innerHTML = '';
+			chatHistory = [];
+			$msg.focus();
+		};
+	
+		// Show debug log UI
+		$showDebugBtn.onclick = () => {
+			let msg = '';
+			if (lastDebug.PLAN) msg += "PLAN:\n" + JSON.stringify(lastDebug.PLAN, null, 2) + "\n\n";
+			if (lastDebug.LOG && lastDebug.LOG.length) msg += "LOG:\n" + lastDebug.LOG.join('\n') + "\n\n";
+			if (lastDebug.DEBUG && Object.keys(lastDebug.DEBUG).length)
+				msg += "DEBUG:\n" + JSON.stringify(lastDebug.DEBUG, null, 2) + "\n";
+			$debugContent.textContent = msg || "(No debug info)";
+			$debugWrap.style.display = '';
+			document.body.style.overflow = 'hidden';
+		};
+		$closeDebug.onclick = () => {
+			$debugWrap.style.display = 'none';
+			document.body.style.overflow = '';
+		};
+	
+		// Autofocus and scroll to bottom on mobile
+		setTimeout(()=>{ $msg.focus(); $chatbox.scrollTop = $chatbox.scrollHeight; }, 120);
+	});
     </script>
 </body>
 </html>
