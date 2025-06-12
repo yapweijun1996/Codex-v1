@@ -190,6 +190,7 @@
             const r = await fetch('ai_agent.cfm', { method: 'POST', body: fd });
             const j = await r.json();
             console.log(j);
+            if (j.debug) console.log('debug:', j.debug);
             if (j.error) {
                 aiEl.textContent = '';
                 const errLabel = document.createElement('b');
@@ -199,6 +200,14 @@
                 if (j.details) {
                     aiEl.appendChild(document.createElement('br'));
                     aiEl.appendChild(document.createTextNode(j.details));
+                }
+                if (j.debug) {
+                    const pre = document.createElement('pre');
+                    pre.className = 'sql-debug';
+                    pre.textContent =
+                        typeof j.debug === 'object' ? JSON.stringify(j.debug, null, 2) : j.debug;
+                    aiEl.appendChild(document.createElement('br'));
+                    aiEl.appendChild(pre);
                 }
                 return;
             }
