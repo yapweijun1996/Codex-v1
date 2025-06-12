@@ -2,6 +2,10 @@
 <cfcontent type="application/json">
 
 <cftry>
+    <!--- Initialize history array in the session --->
+    <cfif NOT structKeyExists(session, "history") OR NOT isArray(session.history)>
+        <cfset session.history = []>
+    </cfif>
     <!--- 1. Get user input --->
     <cfparam name="form.msg" default="">
     <cfparam name="url.msg" default="">
@@ -102,6 +106,14 @@
             <!--- If summarization fails, fall back to basic summary --->
         </cfcatch>
     </cftry>
+    <!--- Update session history --->
+    <cfset arrayAppend(session.history, {
+        user = userMsg,
+        summary = summary,
+        sql = sql,
+        table = prettyTable
+    })>
+
     <cfoutput>
     #serializeJSON({
         summary = summary,
@@ -109,6 +121,7 @@
         schema = schema,
         table = prettyTable,
         rowCount = data.recordCount,
+        history = session.history,
         debug = { aiPrompt = aiPrompt, aiSql = aiSql, aiSummary = aiSummary }
     })#
     </cfoutput>
