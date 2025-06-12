@@ -37,9 +37,12 @@
         <cfoutput>#serializeJSON({error=aiSqlResult.error ?: "AI session error", details=aiSqlResult.details})#</cfoutput><cfabort>
     </cfif>
     <cfset aiSql = aiSqlResult>
-    <cfset sql = aiSql>
-    <cfif NOT len(sql) OR NOT refindnocase("^select\\s", sql)>
+    <cfset sql = trim(aiSql)>
+    <cfif NOT isValidSelect(sql)>
         <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug=aiSql})#</cfoutput><cfabort>
+    </cfif>
+    <cfif right(sql,1) EQ ";">
+        <cfset sql = left(sql, len(sql)-1)>
     </cfif>
     <!--- Ensure the datasource cookie is present before querying --->
     <cfif NOT structKeyExists(cookie, "cooksql_mainsync")>

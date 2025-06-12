@@ -16,6 +16,13 @@ This project is a simple CFML application showcasing an AI agent that generates 
 4. Open `index.cfm` in your browser and ask a question about the data.
 5. Each session remembers only the last 20 exchanges to limit memory usage.
 
+## Security considerations
+
+The server validates the AI-generated SQL with a simple parser to ensure it is
+only a single `SELECT` statement. Any query that does not meet this criteria is
+rejected before execution. For additional safety, configure the datasource to
+use a database account that has read-only permissions on the relevant tables.
+
 ## Debug logs
 
 Any debug output from the AI agent is sent back in the JSON response under the `debug` key. The front‑end displays these messages in the **Debug Log** box beneath the chat and also logs them to the browser console. Use this information to inspect the generated SQL and the planner output.
