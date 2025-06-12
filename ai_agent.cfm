@@ -1,139 +1,314 @@
 <cfsetting enablecfoutputonly="true">
 <cfcontent type="application/json">
-
 <cftry>
-    <!--- 1. Get user input --->
+    <!--- 1. Get User Input --->
     <cfparam name="form.msg" default="">
     <cfparam name="url.msg" default="">
     <cfset userMsg = trim(form.msg ?: url.msg ?: "")>
     <cfif !len(userMsg)>
         <cfoutput>#serializeJSON({error="No question provided."})#</cfoutput><cfabort>
     </cfif>
+    <!--- Chat history passed as JSON string --->
+    <cfparam name="form.chatHistory" default="">
+    <cfset chatHistory = []>
+    <cfif len(form.chatHistory)>
+        <cftry>
+            <cfset chatHistory = deserializeJSON(form.chatHistory)>
+        <cfcatch>
+            <cfset chatHistory = []>
+        </cfcatch>
+    </cftry>
+    </cfif>
 
-    <!--- 2. Load schema config --->
+    <!--- 2. Extract previous SQL and summary from chatHistory, if available --->
+    <cfset prevSQL = "">
+    <cfset prevSummary = "">
+    <cfif arrayLen(chatHistory) GT 0>
+        <cfloop from="#arrayLen(chatHistory)#" to="1" step="-1" index="i">
+            <cfif structKeyExists(chatHistory[i], "ai")>
+                <cfset aiMsg = chatHistory[i].ai>
+                <!--- Extract SQL --->
+                <cfset regex = "SQL:\s*([^<\n;]+;?)">
+                <cfset res = refind(regex, aiMsg, 1, true)>
+                <cfif arrayLen(res.len) GTE 2 AND res.len[2] GT 0>
+                    <cfset prevSQL = mid(aiMsg, res.pos[2], res.len[2])>
+                </cfif>
+                <!--- Extract summary --->
+                <cfset prevSummary = rereplacenocase(aiMsg, "SQL:.*", "", "one")>
+                <cfbreak>
+            </cfif>
+        </cfloop>
+    </cfif>
+
+    <!--- 3. Load Schema --->
     <cfset schemaPath = expandPath("./schema_config.json")>
-    <cfif not fileExists(schemaPath)>
+    <cfif !fileExists(schemaPath)>
         <cfoutput>#serializeJSON({error="Missing schema_config.json."})#</cfoutput><cfabort>
     </cfif>
     <cfset schemaString = fileRead(schemaPath)>
-    <cfset schema = deserializeJSON(schemaString)>
 
-	<cfset aiPrompt =
-	"You are an expert business analyst and SQL developer.
-	
-	Given the following database schema (in JSON), and a user's business question:
-	- **Choose the best table (or tables) to answer the question**
-	- **Select only relevant columns for the result**
-	- **Write a PostgreSQL SELECT statement using these choices**
-	- **Always use: WHERE tag_deleted_yn = 'n'**
-	- **Always use LIMIT 20**
-	- **If more than one table is relevant, use JOIN as needed**
-	- **Respond ONLY with the SQL (no explanations or comments)**
-	
-	Database schema:
-	```json
-	" & schemaString & "
-	```">
-	
-	<cfset aiSession = LuceeCreateAISession(name="gpt001", systemMessage=aiPrompt)>
-	<cfset aiSql = LuceeInquiryAISession(aiSession, userMsg)>
+    <!--- 4. Few-shot EXAMPLES for better LLM reasoning --->
+    <cfset followup_examples = "
+Examples:
+User: Show me best salesman for 2020
+AI: (runs SQL grouped by staff for 2020)
+User: by date transaction
+AI: (runs similar SQL, but groups by transaction date, salesman)
 
-   
-    <!--- 5. Clean the SQL (grab only SELECT statement) --->
-    <cfset sql = "">
-    <cfif refindnocase("^select\s", aiSql)>
-        <cfset sql = aiSql>
-    <cfelse>
-        <cfset m = rematchnocase("select\s.+?(?=;|\s*$)", aiSql)>
-        <cfif arraylen(m)> <cfset sql = trim(m[1])> </cfif>
-    </cfif>
-    <cfif NOT len(sql) OR NOT refindnocase("^select\s", sql)>
-        <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug=aiSql})#</cfoutput><cfabort>
-    </cfif>
+User: Show monthly sales total for 2021
+AI: (runs SQL grouped by month)
+User: by salesman
+AI: (runs SQL grouped by month, salesman)
 
-    <!--- 6. Execute SQL --->
+User: Who was the top salesman in 2010?
+AI: The top salesman in 2010 was Hiroshi Fujita with total sales of SGD 6,809,931.26.
+User: who again?
+AI: Hiroshi Fujita.
+User: show all names
+AI: Hiroshi Fujita, Kim Meng Tan, Chee Guan Hong, Micheal Tan, K T Chan, Ali Ahmadijeah, Chin Beng Seng, John Choi, Muthu Arumugam, Allen Berry, Tommy Shen, Yew Huat Xue, Priscella Pan, Chin Seow Yeong, Lim Toh Ting, Jacqueline Hu, Kim Hu Tao, Pang Seah Heng.
+User: details?
+AI: (shows the full table or more info)
+
+User: Just give me the names.
+AI: Hiroshi Fujita, Kim Meng Tan, Chee Guan Hong, ...
+User: Repeat
+AI: (repeats the last answer)
+User: Next year
+AI: (runs the same analysis for the next year)
+
+Instruction:  
+- If the user's message is a follow-up, such as 'who again?', 'names only', 'repeat last', or is ambiguous, answer by using the previous result or summary directly, **without running new SQL or repeating the whole table** unless needed.
+- Only run a new SQL if the user's request cannot be answered from the previous result.
+- If unclear, ask the user for clarification.
+- When possible, summarize and only show relevant info.
+">
+
+
+    <!--- 5. PLAN AGENT: Decide tool chain --->
+    <cfset aiEngine = "gpt002"> <!--- Change to your desired engine if needed --->
+    <cfset planPrompt = "
+#followup_examples#
+
+You are an AI planner. Given this user message, recent chat history, previous SQL, and previous summary, decide which tools/agents should be used, in order, to answer it.
+Choose from: [table, sql, summary, chat].
+Reply ONLY as a JSON list of agent steps, e.g. [""table"", ""sql"", ""summary""] or [""chat""]. 
+Chat history (previous turns): #serializeJSON(chatHistory)#
+Previous SQL: #prevSQL#
+Previous summary: #prevSummary#
+Question: #userMsg#
+">
+    <cfset planSession = LuceeCreateAISession(name=aiEngine, systemMessage=planPrompt)>
+    <cfset planResponse = LuceeInquiryAISession(planSession, userMsg)>
+    <cfset plan = []>
     <cftry>
-        <cfquery name="data" datasource="#cookie.cooksql_mainsync#_active" timeout="20">
-            #preserveSingleQuotes(sql)#
-        </cfquery>
+        <cfset plan = deserializeJSON(planResponse)>
         <cfcatch>
-            <cfoutput>#serializeJSON({error="SQL execution failed", details=cfcatch.message, sql=sql})#</cfoutput><cfabort>
+            <cfset plan = ["table","sql","summary"]>
         </cfcatch>
     </cftry>
 
-    <!--- 7. Prepare HTML table --->
+    <!--- 6. Enforce data task grouping logic --->
+    <cfset isDataTask = arrayFindNoCase(plan, "table") or arrayFindNoCase(plan, "sql") or arrayFindNoCase(plan, "summary")>
+    <cfif isDataTask>
+        <cfset plan = ["table", "sql", "summary"]>
+    <cfelseif arrayFindNoCase(plan, "chat")>
+        <cfset plan = ["chat"]>
+    <cfelse>
+        <cfset plan = ["chat"]>
+    </cfif>
+
+    <cfset log = []>
+    <cfset tableName = "">
+    <cfset columns = ["*"]>
+    <cfset sql = "">
     <cfset prettyTable = "">
-    <cfif data.recordCount>
-        <cfset prettyTable = "<div style='max-height: 200px;overflow: auto;'>">
-        <cfset prettyTable &= "<table class='biz-table'><tr>">
-        <cfloop list="#data.columnlist#" index="col">
-            <cfset prettyTable &= "<th>" & encodeForHTML(col) & "</th>">
-        </cfloop>
-        <cfset prettyTable &= "</tr>">
-        <cfloop query="data">
-            <cfset prettyTable &= "<tr>">
+    <cfset summary = "">
+    <cfset stepData = {}>
+
+    <cfloop array="#plan#" index="step">
+        <cfswitch expression="#step#">
+            <cfcase value="table">
+                <!--- Table Agent: Choose tables/columns --->
+                <cfset tablePrompt = "
+#followup_examples#
+
+You are a table selection agent. Given the schema, user question, recent chat history, previous SQL, and previous summary, list the best table(s) and columns for answering it.
+Reply ONLY as JSON: {table:..., columns:[...]}
+Schema:
+#schemaString#
+Chat history: #serializeJSON(chatHistory)#
+Previous SQL: #prevSQL#
+Previous summary: #prevSummary#
+Question: #userMsg#
+">
+                <cfset tableSession = LuceeCreateAISession(name=aiEngine, systemMessage=tablePrompt)>
+                <cfset tableResult = LuceeInquiryAISession(tableSession, userMsg)>
+                <cfset stepData['table'] = tableResult>
+                <cfset tableName = "">
+                <cfset columns = ["*"]>
+                <cftry>
+                    <cfset tempTable = deserializeJSON(tableResult)>
+                    <cfset tableName = structKeyExists(tempTable, "table") ? tempTable.table : "unknown">
+                    <cfset columns = (structKeyExists(tempTable, "columns") and isArray(tempTable.columns) and arrayLen(tempTable.columns) GT 0) ? tempTable.columns : ["*"]>
+                <cfcatch>
+                    <cfset tableName = "unknown">
+                    <cfset columns = ["*"]>
+                </cfcatch>
+                </cftry>
+                <cfset arrayAppend(log, "Table agent: " & tableResult)>
+            </cfcase>
+            <cfcase value="sql">
+                <!--- SQL Agent: Write SQL --->
+                <cfset sqlPrompt = "
+#followup_examples#
+
+You are a PostgreSQL SQL generator agent.
+
+**Task:**  
+Given the database schema, table(s), column list, user’s question, recent chat history, previous SQL, and previous summary,  
+write a single SELECT statement to answer the question.
+
+**Strict Rules:**  
+- Only generate SELECT statements.  
+- Do NOT use *, always specify each column name explicitly.
+- For each column, use a descriptive alias with AS (e.g., sample_column AS Document_Number).
+- Do NOT generate DELETE, UPDATE, INSERT, ALTER, or DROP statements.
+- Always include: WHERE tag_deleted_yn = 'n'
+- Always include: LIMIT 1000
+- Use JOINs if needed for multiple tables.
+- Output only the SQL. No explanations or comments.
+
+**Inputs:**  
+Schema:  
+#schemaString#
+
+Table: #tableName#  
+Columns: #arrayToList(columns, ', ')#
+
+Chat history:  
+#serializeJSON(chatHistory)#
+
+Previous SQL:  
+#prevSQL#
+
+Previous summary:  
+#prevSummary#
+
+User Question:  
+#userMsg#
+">
+
+                <cfset sqlSession = LuceeCreateAISession(name=aiEngine, systemMessage=sqlPrompt)>
+                <cfset sql = LuceeInquiryAISession(sqlSession, userMsg)>
+                <!--- Strip code fences and extra formatting from SQL --->
+                <cfset sql = rereplacenocase(sql, "^\s*```(\w+)?", "", "one")>
+                <cfset sql = rereplacenocase(sql, "```", "", "all")>
+                <cfset sql = trim(sql)>
+                <cfset stepData['sql'] = sql>
+                <cfset arrayAppend(log, "SQL agent: " & sql)>
+            </cfcase>
+            <cfcase value="summary">
+                <!--- Will be run after SQL executed. See below. --->
+            </cfcase>
+            <cfcase value="chat">
+                <!--- Chat Agent: For chit-chat/non-SQL --->
+                <cfset chatPrompt = "
+#followup_examples#
+
+You are a chat agent. Given the user question, recent chat history, previous SQL, and previous summary, answer the question in a conversational style for business users.
+Chat history: #serializeJSON(chatHistory)#
+Previous SQL: #prevSQL#
+Previous summary: #prevSummary#
+Question: #userMsg#
+">
+                <cfset chatSession = LuceeCreateAISession(name=aiEngine, systemMessage=chatPrompt)>
+                <cfset summary = LuceeInquiryAISession(chatSession, userMsg)>
+                <cfset arrayAppend(log, "Chat agent: " & summary)>
+            </cfcase>
+            <cfdefaultcase>
+                <cfset arrayAppend(log, "Unknown agent step: " & step)>
+            </cfdefaultcase>
+        </cfswitch>
+    </cfloop>
+
+    <!--- 7. If SQL was generated, execute it --->
+    <cfset data = {recordCount=0}>
+    <cfif len(sql) GT 0>
+        <cftry>
+        	<cfif not refindnocase("^select\s", sql)>
+				<cfoutput>#serializeJSON({error="Refused to execute non-SELECT SQL", sql=sql})#</cfoutput><cfabort>
+			</cfif>
+            <cfquery name="data" datasource="#cookie.cooksql_mainsync#_active" timeout="20">
+                #preserveSingleQuotes(sql)#
+            </cfquery>
+            <cfcatch>
+                <cfoutput>#serializeJSON({error="SQL execution failed", details=cfcatch.message, sql=sql, plan=plan, log=log})#</cfoutput><cfabort>
+            </cfcatch>
+        </cftry>
+
+        <!--- 8. Make pretty HTML table --->
+        <cfif data.recordCount>
+            <cfset prettyTable = "<div style='max-height: 200px;overflow: auto;'>">
+            <cfset prettyTable &= "<table class='biz-table'><tr>">
             <cfloop list="#data.columnlist#" index="col">
-                <cfset prettyTable &= "<td>" & encodeForHTML(data[col]) & "</td>">
+                <cfset prettyTable &= "<th>" & encodeForHTML(col) & "</th>">
             </cfloop>
             <cfset prettyTable &= "</tr>">
-        </cfloop>
-
-        <cfset prettyTable &= "</table>">
-        <cfset prettyTable &= "</div>">
-    <cfelse>
-        <cfset prettyTable = "No records found.">
+            <cfloop query="data">
+                <cfset prettyTable &= "<tr>">
+                <cfloop list="#data.columnlist#" index="col">
+                    <cfset prettyTable &= "<td>" & encodeForHTML(data[col]) & "</td>">
+                </cfloop>
+                <cfset prettyTable &= "</tr>">
+            </cfloop>
+            <cfset prettyTable &= "</table></div>">
+        <cfelse>
+            <cfset prettyTable = "No records found.">
+        </cfif>
     </cfif>
 
-    <!--- Generate AI summary of the results --->
-    <cfset summary = "Found #data.recordCount# records.">
-    <cfset aiSummary = "">
-    <cftry>
-        <cfset summaryPrompt = "You are an expert business analyst summarizer.\n\n" &
-            "User question: " & userMsg & "\n\n" &
-            "SQL statement executed:\n" & sql & "\n\n" &
-            "HTML table:\n" & prettyTable & "\n\n" &
-            "Provide a short summary in no more than 3 sentences that helps a business user understand the results." >
-        <cfset summarySession = LuceeCreateAISession(name="gpt001", systemMessage=summaryPrompt)>
-        <cfset aiSummary = LuceeInquiryAISession(summarySession, "Summarize the results")>
-        <cfif len(trim(aiSummary))>
-            <cfset summary = aiSummary>
-        </cfif>
-<<<<<<< HEAD
-        <cfcatch>
-            <!--- If summarization fails, fall back to basic summary --->
-        </cfcatch>
-    </cftry>
+    <!--- 9. If summary step is in plan, run summary agent --->
+    <cfif arrayFindNoCase(plan, "summary")>
+        <cfset summaryPrompt = "
+You are a business analyst summarizer.
+
+Your job is to read the user’s question, the SQL query, the SQL results, recent chat history, and relevant context.  
+Summarize the business insight or answer in 2-3 clear sentences, using plain language for a non-technical business user.
+
+**Instructions:**
+- Do not mention SQL, tables, or technical details.
+- Focus only on the business meaning and main insights in the result.
+- If the result is empty or no data matches, say so in business terms.
+- If previous summaries or follow-up examples are available, use them as a reference for tone and style.
+- Only output the summary, nothing else.
+
+**Inputs:**
+1. Follow-up Examples: #followup_examples#
+2. SQL Query: #sql#
+3. SQL Result Data: #serializeJSON(data)#
+4. Chat History: #serializeJSON(chatHistory)#
+5. Previous SQL: #prevSQL#
+6. Previous Summary: #prevSummary#
+7. User Question: #userMsg#
+
+">
+        <cfset summarySession = LuceeCreateAISession(name=aiEngine, systemMessage=summaryPrompt)>
+        <cfset summary = LuceeInquiryAISession(summarySession, userMsg)>
+        <cfset arrayAppend(log, "Summary Agent: " & summary)>
+    </cfif>
+
+    <!--- 10. Output --->
     <cfoutput>
     #serializeJSON({
-        summary = summary,
-        sql = sql,
-        schema = schema,
-        table = prettyTable,
-        rowCount = data.recordCount,
-        debug = { aiPrompt = aiPrompt, aiSql = aiSql, aiSummary = aiSummary }
+        PLAN = plan,
+        TABLE = prettyTable,
+        SQL = sql,
+        SUMMARY = summary,
+        LOG = log,
+        DEBUG = stepData
     })#
     </cfoutput>
-=======
-        <cfset summary = summaryResult>
-    <cfelseif plan.database>
-        <cfset summary = "Found #data.recordCount# records.">
-    </cfif>
 
-    <!--- Conversation agent --->
-    <cfset result = formatConversation(summary, sql, prettyTable)>
-    <cfset arrayAppend(session.history, { user=userMsg, summary=summary, sql=sql, table=prettyTable })>
-    <!--- Keep only last 20 exchanges --->
-    <cfloop condition="arrayLen(session.history) GT 20">
-        <cfset arrayDeleteAt(session.history, 1)>
-    </cfloop>
-    <cfset result.history = session.history>
-    <cfset result.rowCount = data.recordCount>
-    <cfset result.debug = { plan=plan, aiSql=aiSql, requestId=requestId }>
-    <cfif len(debugMsg)>
-        <cfset result.debug.message = debugMsg>
-    </cfif>
-    <cfoutput>#serializeJSON(result)#</cfoutput>
->>>>>>> e2dd4c6f100256763d75e3a0414c9fa134b75b43
     <cfcatch>
         <cfoutput>#serializeJSON({error="Unexpected server error", details=cfcatch.message})#</cfoutput>
     </cfcatch>
