@@ -63,7 +63,11 @@
     <!--- Summary agent --->
     <cfset summary = "">
     <cfif plan.summary>
-        <cfset summary = summarizeResults(userMsg, sql, prettyTable)>
+        <cfset summaryResult = summarizeResults(userMsg, sql, prettyTable)>
+        <cfif isStruct(summaryResult)>
+            <cfoutput>#serializeJSON({error=summaryResult.error ?: "AI session error", details=summaryResult.details})#</cfoutput><cfabort>
+        </cfif>
+        <cfset summary = summaryResult>
     <cfelseif plan.database>
         <cfset summary = "Found #data.recordCount# records.">
     </cfif>
