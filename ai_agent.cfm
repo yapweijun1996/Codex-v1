@@ -30,6 +30,7 @@
     <cfset sql = "">
     <cfset data = queryNew("")>
     <cfset aiSql = "">
+    <cfset debugMsg = "">
     <cfif plan.database>
         <cfset aiSql = generateSQL(schemaString, userMsg)>
         <cfset sql = aiSql>
@@ -44,6 +45,9 @@
                 <cfoutput>#serializeJSON({error="SQL execution failed", details=cfcatch.message, sql=sql})#</cfoutput><cfabort>
             </cfcatch>
         </cftry>
+        <cfif NOT data.recordCount>
+            <cfset debugMsg = "Query returned 0 rows"> 
+        </cfif>
     </cfif>
 
     <!--- Table agent --->
@@ -67,6 +71,9 @@
     <cfset result.rowCount = data.recordCount>
     <cfset result.schema = schema>
     <cfset result.debug = { plan=plan, aiSql=aiSql }>
+    <cfif len(debugMsg)>
+        <cfset result.debug.message = debugMsg>
+    </cfif>
     <cfoutput>#serializeJSON(result)#</cfoutput>
     <cfcatch>
         <cfoutput>#serializeJSON({error="Unexpected server error", details=cfcatch.message})#</cfoutput>
