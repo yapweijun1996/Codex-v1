@@ -14,6 +14,7 @@ This project is a simple CFML application showcasing an AI agent that generates 
 2. Ensure the datasource for your database is configured on the server.
 3. Set a cookie named `cooksql_mainsync` with the base name of the datasource. The application appends `_active` to this value when executing queries.
 4. Open `index.cfm` in your browser and ask a question about the data.
+5. Each session remembers only the last 20 exchanges to limit memory usage.
 
 ## Debug logs
 
