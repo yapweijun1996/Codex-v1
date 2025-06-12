@@ -131,6 +131,16 @@ Question: #userMsg#
         <cfswitch expression="#step#">
             <cfcase value="table">
     <!--- Table Agent: Choose tables/columns (now supports multi-table) --->
+    <cfset tableAgentSchema = {}>
+    
+	<cfloop collection="#parsedSchema#" item="tblName">
+		<cfset oneTable = parsedSchema[tblName]>
+		<cfset tableAgentSchema[tblName] = {
+			"description": oneTable["description"],
+			"document_types": structKeyExists(oneTable,"document_types") ? oneTable["document_types"] : {}
+		}>
+	</cfloop>
+
     <cfset tablePrompt = "
 #followup_examples#
 
@@ -141,7 +151,7 @@ Reply ONLY as JSON:
 {""tables"": [{""table"":""..."", ""columns"":[""...""...]}]}  (use multiple if needed)
 
 Schema:
-#schemaString#
+#serializeJSON(tableAgentSchema)#
 Chat history: #serializeJSON(chatHistory)#
 Previous SQL: #prevSQL#
 Previous summary: #prevSummary#
