@@ -80,7 +80,7 @@
     <cfreturn tableHTML>
 </cffunction>
 
-<cffunction name="summarizeResults" output="false" returnType="string">
+<cffunction name="summarizeResults" output="false" returnType="any">
     <cfargument name="userMsg" type="string" required="true">
     <cfargument name="sql" type="string" required="true">
     <cfargument name="tableHTML" type="string" required="true">
@@ -89,8 +89,16 @@
         "\n\nSQL statement executed:\n" & arguments.sql &
         "\n\nHTML table:\n" & arguments.tableHTML &
         "\n\nProvide a short summary in no more than 3 sentences that helps a business user understand the results." >
-    <cfset var summarySession = LuceeCreateAISession(name="gpt001", systemMessage=summaryPrompt)>
-    <cfset var aiSummary = LuceeInquiryAISession(summarySession, "Summarize the results")>
+    <cfset var summarySession = "">
+    <cfset var aiSummary = "">
+    <cftry>
+        <cfset summarySession = LuceeCreateAISession(name="gpt001", systemMessage=summaryPrompt)>
+        <cfset aiSummary = LuceeInquiryAISession(summarySession, "Summarize the results")>
+        <cfcatch>
+            <cflog type="error" text="summarizeResults: #cfcatch.message#"/>
+            <cfreturn { error="Summary failed", details=cfcatch.message }>
+        </cfcatch>
+    </cftry>
     <cfreturn aiSummary>
 </cffunction>
 
