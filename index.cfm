@@ -195,14 +195,31 @@
                 return;
             }
 
-            const temp_sql = j.SQL;
-            const temp_table = j.TABLE;
-            const temp_summary = j.SUMMARY;
+            if (Array.isArray(j.history)) {
+                $thread.innerHTML = '';
+                j.history.forEach(item => {
+                    const ue = document.createElement('div');
+                    ue.className = 'msg user';
+                    ue.textContent = item.user;
+                    $thread.appendChild(ue);
 
-            aiEl.innerHTML =
-                '<div><b>' + (temp_summary || '') + '</b></div>' +
-                (temp_sql ? `<div class="sql-debug">SQL: ${temp_sql}</div>` : '') +
-                (temp_table ? temp_table : '');
+                    const ae = document.createElement('div');
+                    ae.className = 'msg ai';
+                    ae.innerHTML =
+                        '<div><b>' + (item.summary || '') + '</b></div>' +
+                        (item.sql ? `<div class="sql-debug">SQL: ${item.sql}</div>` : '') +
+                        (item.table ? item.table : '');
+                    $thread.appendChild(ae);
+                });
+            } else {
+                const temp_sql = j.SQL;
+                const temp_table = j.TABLE;
+                const temp_summary = j.SUMMARY;
+                aiEl.innerHTML =
+                    '<div><b>' + (temp_summary || '') + '</b></div>' +
+                    (temp_sql ? `<div class="sql-debug">SQL: ${temp_sql}</div>` : '') +
+                    (temp_table ? temp_table : '');
+            }
         } catch (ex) {
             aiEl.innerHTML = '<b>Unexpected error:</b> ' + ex;
         }
