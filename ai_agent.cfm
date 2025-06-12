@@ -79,6 +79,10 @@
     <!--- Conversation agent --->
     <cfset result = formatConversation(summary, sql, prettyTable)>
     <cfset arrayAppend(session.history, { user=userMsg, summary=summary, sql=sql, table=prettyTable })>
+    <!--- Keep only last 20 exchanges --->
+    <cfloop condition="arrayLen(session.history) GT 20">
+        <cfset arrayDeleteAt(session.history, 1)>
+    </cfloop>
     <cfset result.history = session.history>
     <cfset result.rowCount = data.recordCount>
     <cfset result.schema = schema>
