@@ -40,7 +40,7 @@
     <cfset aiSql = aiSqlResult>
     <cfset sql = trim(aiSql)>
     <cfif NOT isValidSelect(sql)>
-        <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug={sql=aiSql, requestId=requestId}})#</cfoutput><cfabort>
+        <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug={requestId=requestId, plan=plan, aiResponse=aiSql}})#</cfoutput><cfabort>
     </cfif>
     <cfif right(sql,1) EQ ";">
         <cfset sql = left(sql, len(sql)-1)>
