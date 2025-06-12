@@ -133,6 +133,7 @@
             <div class="debug-box-header">
                 <strong>Debug Log</strong>
                 <button type="button" id="copyDebug" class="debug-copy-btn">Copy Log</button>
+                <button type="button" id="clearDebug" class="debug-copy-btn">Clear Log</button>
             </div>
             <pre id="debugContent"></pre>
         </div>
@@ -144,6 +145,7 @@
     const $debugBox = document.getElementById('debugBox');
     const $debugContent = document.getElementById('debugContent');
     const $copyDebug = document.getElementById('copyDebug');
+    const $clearDebug = document.getElementById('clearDebug');
 
     const debugLogs = [];
     ['log','warn','error'].forEach(fn => {
@@ -156,12 +158,17 @@
                 }
                 return String(a);
             }).join(' ');
-            debugLogs.push(fn.toUpperCase()+': '+msg);
+            debugLogs.push(new Date().toISOString()+' '+fn.toUpperCase()+': '+msg);
             $debugContent.textContent = debugLogs.join('\n');
             $debugBox.style.display = 'block';
         };
     });
     $copyDebug.onclick = () => navigator.clipboard.writeText($debugContent.textContent);
+    $clearDebug.onclick = () => {
+        debugLogs.length = 0;
+        $debugContent.textContent = '';
+        $debugBox.style.display = 'none';
+    };
     $msg.addEventListener('focus', () => {
         $msg.dispatchEvent(new Event('input', {bubbles: true}));
     });
