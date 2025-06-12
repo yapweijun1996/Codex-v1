@@ -74,6 +74,8 @@
       "Group related amount fields logically: nettot_local, amount_local, grosstot_local, subtot_local.",
       "For party/customer queries: Add AND party_desc IS NOT NULL AND party_desc != ''."
       "Always use date_trans (date of transaction) for any date filters or date range queries; do NOT use date_post (posting date).",
+      "Whenever selecting any amount column (such as nett amount, subtotal, total, etc.), always also select curr_short_forex in the result to show the currency code.",
+
     ],
     "common_queries": [
       {
@@ -154,6 +156,7 @@
       "For workflow-approved documents, filter by tag_wflow_app_yn = 'y'.",
       "For vendor joins, use party_unique (not party_code) for reliability.",
       "Always use date_trans (date of transaction) for any date filters or date range queries; do NOT use date_post (posting date).",
+      "Whenever selecting any amount column (such as nett amount, subtotal, total, etc.), always also select curr_short_forex in the result to show the currency code.",
 
     ],
     "common_queries": [
