@@ -1,6 +1,7 @@
 <cfsetting enablecfoutputonly="true">
 <cfcontent type="application/json">
 <cfinclude template="agents.cfm">
+<cfset requestId = createUUID()>
 
 <cftry>
     <!--- Initialize history array in the session --->
@@ -12,13 +13,13 @@
     <cfparam name="url.msg" default="">
     <cfset userMsg = trim(form.msg ?: url.msg ?: "")>
     <cfif !len(userMsg)>
-        <cfoutput>#serializeJSON({error="No question provided."})#</cfoutput><cfabort>
+        <cfoutput>#serializeJSON({error="No question provided.", debug={requestId=requestId}})#</cfoutput><cfabort>
     </cfif>
 
     <!--- 2. Load schema config --->
     <cfset schemaPath = expandPath("./schema_config.json")>
     <cfif not fileExists(schemaPath)>
-        <cfoutput>#serializeJSON({error="Missing schema_config.json."})#</cfoutput><cfabort>
+        <cfoutput>#serializeJSON({error="Missing schema_config.json.", debug={requestId=requestId}})#</cfoutput><cfabort>
     </cfif>
     <cfset schemaString = fileRead(schemaPath)>
     <cfset schema = deserializeJSON(schemaString)>
@@ -34,26 +35,27 @@
     <cfif plan.database>
     <cfset aiSqlResult = generateSQL(schemaString, userMsg)>
     <cfif isStruct(aiSqlResult)>
-        <cfoutput>#serializeJSON({error=aiSqlResult.error ?: "AI session error", details=aiSqlResult.details})#</cfoutput><cfabort>
+        <cfoutput>#serializeJSON({error=aiSqlResult.error ?: "AI session error", details=aiSqlResult.details, debug={requestId=requestId}})#</cfoutput><cfabort>
     </cfif>
     <cfset aiSql = aiSqlResult>
     <cfset sql = trim(aiSql)>
     <cfif NOT isValidSelect(sql)>
-        <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug=aiSql})#</cfoutput><cfabort>
+        <cfoutput>#serializeJSON({error="AI did not generate valid SQL", debug={sql=aiSql, requestId=requestId}})#</cfoutput><cfabort>
     </cfif>
     <cfif right(sql,1) EQ ";">
         <cfset sql = left(sql, len(sql)-1)>
     </cfif>
     <!--- Ensure the datasource cookie is present before querying --->
     <cfif NOT structKeyExists(cookie, "cooksql_mainsync")>
-        <cfoutput>#serializeJSON({error="Missing cookie 'cooksql_mainsync'."})#</cfoutput><cfabort>
+        <cfoutput>#serializeJSON({error="Missing cookie 'cooksql_mainsync'.", debug={requestId=requestId}})#</cfoutput><cfabort>
     </cfif>
+    <cflog type="information" text="requestId=#requestId# userMsg=#userMsg# sql=#sql#"/>
         <cftry>
             <cfquery name="data" datasource="#cookie.cooksql_mainsync#_active" timeout="20">
                 #preserveSingleQuotes(sql)#
             </cfquery>
             <cfcatch>
-                <cfoutput>#serializeJSON({error="SQL execution failed", details=cfcatch.message, sql=sql})#</cfoutput><cfabort>
+                <cfoutput>#serializeJSON({error="SQL execution failed", details=cfcatch.message, sql=sql, debug={requestId=requestId}})#</cfoutput><cfabort>
             </cfcatch>
         </cftry>
         <cfif NOT data.recordCount>
@@ -72,7 +74,7 @@
     <cfif plan.summary>
         <cfset summaryResult = summarizeResults(userMsg, sql, prettyTable)>
         <cfif isStruct(summaryResult)>
-            <cfoutput>#serializeJSON({error=summaryResult.error ?: "AI session error", details=summaryResult.details})#</cfoutput><cfabort>
+            <cfoutput>#serializeJSON({error=summaryResult.error ?: "AI session error", details=summaryResult.details, debug={requestId=requestId}})#</cfoutput><cfabort>
         </cfif>
         <cfset summary = summaryResult>
     <cfelseif plan.database>
@@ -89,13 +91,14 @@
     <cfset result.history = session.history>
     <cfset result.rowCount = data.recordCount>
     <cfset result.schema = schema>
-    <cfset result.debug = { plan=plan, aiSql=aiSql }>
+    <cfset result.debug = { plan=plan, aiSql=aiSql, requestId=requestId }>
     <cfif len(debugMsg)>
         <cfset result.debug.message = debugMsg>
     </cfif>
     <cfoutput>#serializeJSON(result)#</cfoutput>
     <cfcatch>
-        <cfoutput>#serializeJSON({error="Unexpected server error", details=cfcatch.message})#</cfoutput>
+        <cflog type="error" text="requestId=#requestId# message=#cfcatch.message# stacktrace=#cfcatch.stacktrace#"/>
+        <cfoutput>#serializeJSON({error="Unexpected server error", details=cfcatch.message, debug={requestId=requestId}})#</cfoutput>
     </cfcatch>
 </cftry>
 <cfabort>
