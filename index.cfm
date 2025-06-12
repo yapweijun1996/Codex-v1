@@ -197,7 +197,10 @@
             const r = await fetch('ai_agent.cfm', { method: 'POST', body: fd });
             const j = await r.json();
             console.log(j);
-            if (j.debug) console.log('debug:', j.debug);
+            if (j.debug) {
+                console.log('debug:', j.debug);
+                if (j.debug.aiResponse) console.log('aiResponse:', j.debug.aiResponse);
+            }
             if (j.error) {
                 aiEl.textContent = '';
                 const errLabel = document.createElement('b');
