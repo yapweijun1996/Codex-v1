@@ -87,7 +87,7 @@
 		
 		
 		<!--- 5. PLAN AGENT: Decide tool chain --->
-		<cfset aiEngine = "gemini002"> <!--- Change to your desired engine if needed: gemini002, gpt002 --->
+		<cfset aiEngine = "gpt001"> <!--- Change to your desired engine if needed: gemini002, gpt002, gpt001 --->
 		<cfset planPrompt = "
 		#followup_examples#
 		
