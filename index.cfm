@@ -145,9 +145,20 @@
 			}
 			
 			/* Optional: zebra stripes for rows */
-			table.biz-table tr:nth-child(even) td {
-				background: #fcfcfc;
-			}
+                        table.biz-table tr:nth-child(even) td {
+                                background: #fcfcfc;
+                        }
+                        table.biz-table th.sortable {
+                                cursor: pointer;
+                        }
+                        table.biz-table th.sortable[data-order="asc"]::after {
+                                content: " \25B2";
+                                font-size: .75em;
+                        }
+                        table.biz-table th.sortable[data-order="desc"]::after {
+                                content: " \25BC";
+                                font-size: .75em;
+                        }
 			.loading {
 				opacity: .7;
 				font-style: italic;
@@ -444,20 +455,67 @@
 					}
 					sumRow.style.background = '#eaf7ed';
 					sumRow.style.fontWeight = 'bold';
-					table.appendChild(sumRow);
-					table.dataset.summed = '1';
-				});
-			}
+                                table.appendChild(sumRow);
+                                table.dataset.summed = '1';
+                        });
+                    }
+
+                    function sortTable(table, idx, asc) {
+                            const rows = Array.from(table.querySelectorAll('tr'));
+                            const header = rows.shift();
+                            let sumRow = null;
+                            if (table.dataset.summed) sumRow = rows.pop();
+
+                            rows.sort((a,b) => {
+                                    const aText = a.cells[idx]?.textContent.trim() || '';
+                                    const bText = b.cells[idx]?.textContent.trim() || '';
+                                    const aNum = parseFloat(aText.replace(/[^0-9.\-]/g, ''));
+                                    const bNum = parseFloat(bText.replace(/[^0-9.\-]/g, ''));
+                                    if (!isNaN(aNum) && !isNaN(bNum)) return asc ? aNum - bNum : bNum - aNum;
+                                    return asc ? aText.localeCompare(bText) : bText.localeCompare(aText);
+                            });
+
+                            table.innerHTML = '';
+                            table.appendChild(header);
+                            rows.forEach(r => table.appendChild(r));
+                            if (sumRow) table.appendChild(sumRow);
+
+                            header.querySelectorAll('th').forEach(th => th.removeAttribute('data-order'));
+                            header.children[idx].dataset.order = asc ? 'asc' : 'desc';
+                    }
+
+                    function makeTablesSortable() {
+                            document.querySelectorAll('.biz-table').forEach(table => {
+                                    if (table.dataset.sortable) return;
+                                    const header = table.querySelector('tr');
+                                    if (!header) return;
+                                    header.querySelectorAll('th').forEach((th,i) => {
+                                            th.classList.add('sortable');
+                                            th.addEventListener('click', () => {
+                                                    const asc = th.dataset.order !== 'asc';
+                                                    sortTable(table, i, asc);
+                                            });
+                                    });
+                                    table.dataset.sortable = '1';
+                            });
+                    }
 			
 			// Watch for tables being added (new answers)
-			const observer = new MutationObserver(() => {
-				autoSumTable();
-			});
+                        const observer = new MutationObserver(() => {
+                                autoSumTable();
+                                makeTablesSortable();
+                        });
 			observer.observe(document.getElementById('chatbox'), { childList: true, subtree: true });
 			
 			// Run on initial load
-			window.addEventListener('DOMContentLoaded', autoSumTable);
-			window.addEventListener('load', autoSumTable);
+                        window.addEventListener('DOMContentLoaded', () => {
+                                autoSumTable();
+                                makeTablesSortable();
+                        });
+                        window.addEventListener('load', () => {
+                                autoSumTable();
+                                makeTablesSortable();
+                        });
 			
 			
 		</script>
