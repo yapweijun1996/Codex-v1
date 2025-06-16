@@ -82,7 +82,7 @@
 		- If the user's message is a follow-up, such as 'who again?', 'names only', 'repeat last', or is ambiguous, answer by using the previous result or summary directly, **without running new SQL or repeating the whole table** unless needed.
 		- Only run a new SQL if the user's request cannot be answered from the previous result.
 		- If unclear, ask the user for clarification.
-		- When possible, summarize and only show relevant info.
+		- When possible, summarize and only show relevant info. 
 		">
 		
 		
@@ -214,7 +214,7 @@
 					- For each column, use a descriptive alias with AS (e.g., staff_desc AS Salesperson).
 					- Do NOT generate DELETE, UPDATE, INSERT, ALTER, or DROP statements.
 					- Always include: WHERE tag_deleted_yn = 'n'
-					- Always include: LIMIT 1000
+					- Always include: LIMIT 10 to LIMIT 1000, depending on the situation.
 					- Use JOINs if needed for multiple tables.
 					- Output only the SQL. No explanations or comments.
 					
@@ -305,7 +305,7 @@
 			
 			<!--- 8. Make pretty HTML table --->
 			<cfif data.recordCount>
-				<cfset prettyTable = "<div style='max-height: 200px;overflow: auto;'>">
+				<cfset prettyTable = "<div style='max-height: 433px;overflow: auto;'>">
 				<cfset prettyTable &= "<table class='biz-table'><tr>">
 				<cfloop list="#data.columnlist#" index="col">
 					<cfset prettyTable &= "<th>" & encodeForHTML(col) & "</th>">
