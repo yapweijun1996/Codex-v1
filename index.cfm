@@ -147,20 +147,20 @@
 			}
 			
 			/* Optional: zebra stripes for rows */
-                        table.biz-table tr:nth-child(even) td {
-                                background: #fcfcfc;
-                        }
-                        table.biz-table th.sortable {
-                                cursor: pointer;
-                        }
-                        table.biz-table th.sortable[data-order="asc"]::after {
-                                content: " \25B2";
-                                font-size: .75em;
-                        }
-                        table.biz-table th.sortable[data-order="desc"]::after {
-                                content: " \25BC";
-                                font-size: .75em;
-                        }
+			table.biz-table tr:nth-child(even) td {
+				background: #fcfcfc;
+			}
+			table.biz-table th.sortable {
+				cursor: pointer;
+			}
+			table.biz-table th.sortable[data-order="asc"]::after {
+				content: " \25B2";
+				font-size: .75em;
+			}
+			table.biz-table th.sortable[data-order="desc"]::after {
+				content: " \25BC";
+				font-size: .75em;
+			}
 			.loading {
 				opacity: .7;
 				font-style: italic;
@@ -404,120 +404,126 @@
 			});
 			
 			function autoSumTable() {
-				// Keywords to match column headers (customize as needed)
-				const amountHeaders = [
-					'amount', 'total', 'sales', 'price', 'sum', 'qty', 'quantity', 'balance', 'cost'
-				];
-				
 				document.querySelectorAll('.biz-table').forEach(table => {
 					if (table.dataset.summed) return;
 					
-					const rows = table.querySelectorAll('tr');
-					if (rows.length < 2) return; // Not enough data
+					// Find header row
+					const headerRow = table.querySelector('tr');
+					if (!headerRow) return;
+					const headers = Array.from(headerRow.querySelectorAll('th'));
+					if (!headers.length) return;
 					
-					// Get header names
-					const headers = Array.from(rows[0].querySelectorAll('th')).map(th => th.textContent.trim().toLowerCase());
-					const sumIndexes = [];
-					headers.forEach((h, i) => {
-						if (amountHeaders.some(k => h.includes(k))) sumIndexes.push(i);
-					});
-					if (!sumIndexes.length) return; // No numeric columns
+					// Data rows (skip header)
+					const dataRows = Array.from(table.querySelectorAll('tr')).slice(1);
+					if (!dataRows.length) return;
 					
-					// Init sums
-					const sums = Array(headers.length).fill(null);
-					sumIndexes.forEach(i => sums[i] = 0);
+					const colCount = headers.length;
+					const isNumericCol = Array(colCount).fill(true);
 					
-					// Calculate sums
-					for (let r = 1; r < rows.length; r++) {
-						const cells = rows[r].querySelectorAll('td');
-						sumIndexes.forEach(i => {
-							if (cells[i]) {
-								let val = cells[i].textContent.replace(/[^0-9.\-]/g, '');
-								let num = parseFloat(val);
-								if (!isNaN(num)) sums[i] += num;
+					// Step 1: Detect which columns are numeric in ALL rows
+					for (let col = 0; col < colCount; col++) {
+						for (let r = 0; r < dataRows.length; r++) {
+							const cell = dataRows[r].querySelectorAll('td')[col];
+							if (!cell) { isNumericCol[col] = false; break; }
+							let val = cell.textContent.trim();
+							// Empty = not numeric, NaN = not numeric
+							if (val === '' || isNaN(Number(val))) {
+								isNumericCol[col] = false;
+								break;
 							}
-						});
+						}
 					}
 					
-					// If ALL sums are zero, don't show the total row at all
-					const hasNonzeroSum = sumIndexes.some(i => Math.abs(sums[i]) > 0.0001);
-					if (!hasNonzeroSum) return;
+					// Step 2: Sum only fully numeric columns
+					const sums = Array(colCount).fill(null);
+					for (let col = 0; col < colCount; col++) {
+						if (isNumericCol[col]) {
+							sums[col] = 0;
+							for (let r = 0; r < dataRows.length; r++) {
+								const cell = dataRows[r].querySelectorAll('td')[col];
+								sums[col] += Number(cell.textContent.trim());
+							}
+						}
+					}
 					
-					// Build the sum row
+					// If all sums are null or zero, skip
+					if (!sums.some(s => s !== null && Math.abs(s) > 0.0001)) return;
+					
+					// Build sum row
 					const sumRow = document.createElement('tr');
-					for (let i = 0; i < headers.length; i++) {
+					for (let i = 0; i < colCount; i++) {
 						const td = document.createElement('td');
 						if (sums[i] !== null && Math.abs(sums[i]) > 0.0001) {
 							td.innerHTML = `<b>Total: ${sums[i].toLocaleString(undefined, {maximumFractionDigits:2})}</b>`;
 							td.style.color = "#11974e";
-						} else {
-							td.innerHTML = '';
 						}
 						sumRow.appendChild(td);
 					}
 					sumRow.style.background = '#eaf7ed';
 					sumRow.style.fontWeight = 'bold';
-                                table.appendChild(sumRow);
-                                table.dataset.summed = '1';
-                        });
-                    }
-
-                    function sortTable(table, idx, asc) {
-                            const rows = Array.from(table.querySelectorAll('tr'));
-                            const header = rows.shift();
-                            let sumRow = null;
-                            if (table.dataset.summed) sumRow = rows.pop();
-
-                            rows.sort((a,b) => {
-                                    const aText = a.cells[idx]?.textContent.trim() || '';
-                                    const bText = b.cells[idx]?.textContent.trim() || '';
-                                    const aNum = parseFloat(aText.replace(/[^0-9.\-]/g, ''));
-                                    const bNum = parseFloat(bText.replace(/[^0-9.\-]/g, ''));
-                                    if (!isNaN(aNum) && !isNaN(bNum)) return asc ? aNum - bNum : bNum - aNum;
-                                    return asc ? aText.localeCompare(bText) : bText.localeCompare(aText);
-                            });
-
-                            table.innerHTML = '';
-                            table.appendChild(header);
-                            rows.forEach(r => table.appendChild(r));
-                            if (sumRow) table.appendChild(sumRow);
-
-                            header.querySelectorAll('th').forEach(th => th.removeAttribute('data-order'));
-                            header.children[idx].dataset.order = asc ? 'asc' : 'desc';
-                    }
-
-                    function makeTablesSortable() {
-                            document.querySelectorAll('.biz-table').forEach(table => {
-                                    if (table.dataset.sortable) return;
-                                    const header = table.querySelector('tr');
-                                    if (!header) return;
-                                    header.querySelectorAll('th').forEach((th,i) => {
-                                            th.classList.add('sortable');
-                                            th.addEventListener('click', () => {
-                                                    const asc = th.dataset.order !== 'asc';
-                                                    sortTable(table, i, asc);
-                                            });
-                                    });
-                                    table.dataset.sortable = '1';
-                            });
-                    }
+					
+					table.appendChild(sumRow);
+					table.dataset.summed = '1';
+				});
+			}
+			
+			
+			function sortTable(table, idx, asc) {
+				const rows = Array.from(table.querySelectorAll('tr'));
+				const header = rows.shift();
+				let sumRow = null;
+				if (table.dataset.summed) sumRow = rows.pop();
+				
+				rows.sort((a,b) => {
+					const aText = a.cells[idx]?.textContent.trim() || '';
+					const bText = b.cells[idx]?.textContent.trim() || '';
+					const aNum = parseFloat(aText.replace(/[^0-9.\-]/g, ''));
+					const bNum = parseFloat(bText.replace(/[^0-9.\-]/g, ''));
+					if (!isNaN(aNum) && !isNaN(bNum)) return asc ? aNum - bNum : bNum - aNum;
+					return asc ? aText.localeCompare(bText) : bText.localeCompare(aText);
+				});
+				
+				table.innerHTML = '';
+				table.appendChild(header);
+				rows.forEach(r => table.appendChild(r));
+				if (sumRow) table.appendChild(sumRow);
+				
+				header.querySelectorAll('th').forEach(th => th.removeAttribute('data-order'));
+				header.children[idx].dataset.order = asc ? 'asc' : 'desc';
+			}
+			
+			function makeTablesSortable() {
+				document.querySelectorAll('.biz-table').forEach(table => {
+					if (table.dataset.sortable) return;
+					const header = table.querySelector('tr');
+					if (!header) return;
+					header.querySelectorAll('th').forEach((th,i) => {
+						th.classList.add('sortable');
+						th.addEventListener('click', () => {
+							const asc = th.dataset.order !== 'asc';
+							sortTable(table, i, asc);
+						});
+					});
+					table.dataset.sortable = '1';
+				});
+			}
 			
 			// Watch for tables being added (new answers)
-                        const observer = new MutationObserver(() => {
-                                autoSumTable();
-                                makeTablesSortable();
-                        });
+			const observer = new MutationObserver(() => {
+				autoSumTable();
+				makeTablesSortable();
+			});
 			observer.observe(document.getElementById('chatbox'), { childList: true, subtree: true });
 			
 			// Run on initial load
-                        window.addEventListener('DOMContentLoaded', () => {
-                                autoSumTable();
-                                makeTablesSortable();
-                        });
-                        window.addEventListener('load', () => {
-                                autoSumTable();
-                                makeTablesSortable();
-                        });
+			window.addEventListener('DOMContentLoaded', () => {
+				autoSumTable();
+				makeTablesSortable();
+			});
+			window.addEventListener('load', () => {
+				autoSumTable();
+				makeTablesSortable();
+			});
 			
 			
 		</script>
