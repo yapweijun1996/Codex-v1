@@ -133,6 +133,8 @@
 				font-weight: bold;
 				color: #323232;
 				letter-spacing: 1px;
+				position: sticky;
+				top: 0;
 			}
 			
 			table.biz-table tr:hover td {
