@@ -7,7 +7,6 @@
     MIN_ROW_HEIGHT_PX: 1,
     EDGE_TOLERANCE_PX: 1,
     IMAGE_FORMAT: 'image/png',
-    BUTTON_BUSY_TEXT: 'Exporting...',
     DEBUG: true,
     LOG_PREFIX: '[export]'
   };
@@ -670,7 +669,6 @@
       evt.preventDefault();
       if (button.dataset.busy === '1') return;
       button.dataset.busy = '1';
-      const originalText = button.textContent;
       button.disabled = true;
       try {
         debugLog('Button clicked, starting export');
@@ -680,7 +678,6 @@
         errorLog('Export failed', err);
         alert('Export failed. See console for details.');
       } finally {
-        button.textContent = originalText;
         button.disabled = false;
         delete button.dataset.busy;
       }
