@@ -98,10 +98,35 @@
 
   const widthToBorderStyle = (widthPx, cssStyle) => {
     if (!widthPx || widthPx <= 0.5) return null;
-    if (!cssStyle || cssStyle === 'none' || cssStyle === 'hidden') return null;
-    if (widthPx < 1.5) return 'thin';
-    if (widthPx < 2.5) return 'medium';
-    return 'thick';
+    const normalizedStyle = (cssStyle || '').toLowerCase();
+    if (!normalizedStyle || normalizedStyle === 'none' || normalizedStyle === 'hidden') return null;
+
+    const styleByWidth = () => {
+      if (widthPx < 1.5) return 'thin';
+      if (widthPx < 2.5) return 'medium';
+      return 'thick';
+    };
+
+    switch (normalizedStyle) {
+      case 'solid':
+        return styleByWidth();
+      case 'dashed':
+        return widthPx < 2 ? 'dashed' : 'mediumDashed';
+      case 'dotted':
+        return widthPx < 2 ? 'dotted' : 'mediumDashDotDot';
+      case 'double':
+        return 'double';
+      case 'dash-dot':
+      case 'dashdot':
+      case 'dot-dash':
+        return widthPx < 2 ? 'dashDot' : 'mediumDashDot';
+      case 'dash-dot-dot':
+      case 'dashdotdot':
+      case 'dot-dot-dash':
+        return widthPx < 2 ? 'dashDotDot' : 'mediumDashDotDot';
+      default:
+        return styleByWidth();
+    }
   };
 
   const normalizeEdges = (edges) => {
