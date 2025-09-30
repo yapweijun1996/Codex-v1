@@ -671,7 +671,6 @@
       if (button.dataset.busy === '1') return;
       button.dataset.busy = '1';
       const originalText = button.textContent;
-      button.textContent = CONFIG.BUTTON_BUSY_TEXT;
       button.disabled = true;
       try {
         debugLog('Button clicked, starting export');
