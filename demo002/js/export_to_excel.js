@@ -8,7 +8,6 @@
     EDGE_TOLERANCE_PX: 1,
     IMAGE_FORMAT: 'image/png',
     BUTTON_BUSY_TEXT: 'Exporting...',
-    IMAGE_WARNING_TEXT: 'Some images could not be embedded. They may be missing in the Excel file.',
     DEBUG: true,
     LOG_PREFIX: '[export]'
   };
@@ -643,7 +642,6 @@
 
     if (failedImages.length) {
       warnLog('Images could not be embedded', failedImages.map((f) => f.element?.src || '(unknown src)'));
-      alert(CONFIG.IMAGE_WARNING_TEXT);
     }
 
     let buffer;
