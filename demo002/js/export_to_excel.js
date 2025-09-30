@@ -113,7 +113,7 @@
       case 'dashed':
         return widthPx < 2 ? 'dashed' : 'mediumDashed';
       case 'dotted':
-        return widthPx < 2 ? 'dotted' : 'mediumDashDotDot';
+        return 'dotted';
       case 'double':
         return 'double';
       case 'dash-dot':
