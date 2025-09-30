@@ -12,8 +12,6 @@
     LOG_PREFIX: '[export]'
   };
 
-  const COLOR_ALPHA_PREFIX = 'FF';
-
   const debugLog = (...args) => {
     if (!CONFIG.DEBUG) return;
     console.log(CONFIG.LOG_PREFIX, ...args);
@@ -94,7 +92,9 @@
     const rgb = parseRgb(value);
     if (!rgb || rgb.a === 0) return null;
     const toHex = (n) => n.toString(16).padStart(2, '0').toUpperCase();
-    return `${COLOR_ALPHA_PREFIX}${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
+    const alphaValue = Math.max(0, Math.min(255, Math.round(rgb.a * 255)));
+    const alphaHex = toHex(alphaValue);
+    return `${alphaHex}${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
   };
 
   const widthToBorderStyle = (widthPx, cssStyle) => {
