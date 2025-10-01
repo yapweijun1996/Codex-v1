@@ -264,15 +264,11 @@
     const columnEdges = normalizeEdges(colEdgeSet);
     const rowEdges = normalizeEdges(rowEdgeSet);
 
-    const leafCells = allCells.filter((cell) => !cell.querySelector('table'));
-    const cells = [];
-    const images = [];
-
-    for (const cell of leafCells) {
+    const describeCell = (cell) => {
       const rect = cell.getBoundingClientRect();
       const width = Math.round(rect.width);
       const height = Math.round(rect.height);
-      if (!width || !height) continue;
+      if (!width || !height) return null;
       const left = Math.round(rect.left - rootRect.left);
       const right = Math.round(rect.right - rootRect.left);
       const top = Math.round(rect.top - rootRect.top);
@@ -285,8 +281,41 @@
 
       if (colStartIndex === -1 || colEndIndex === -1 || rowStartIndex === -1 || rowEndIndex === -1) {
         console.warn('Skipping cell due to unmatched edges', cell);
-        continue;
+        return null;
       }
+
+      return {
+        rect,
+        width,
+        height,
+        left,
+        top,
+        colStartIndex,
+        colEndIndex,
+        rowStartIndex,
+        rowEndIndex
+      };
+    };
+
+    const leafCells = allCells.filter((cell) => !cell.querySelector('table'));
+    const cells = [];
+    const images = [];
+
+    for (const cell of leafCells) {
+      const descriptor = describeCell(cell);
+      if (!descriptor) continue;
+
+      const {
+        rect,
+        width,
+        height,
+        left,
+        top,
+        colStartIndex,
+        colEndIndex,
+        rowStartIndex,
+        rowEndIndex
+      } = descriptor;
 
       const textValue = getCellText(cell);
       const cs = window.getComputedStyle(cell);
@@ -341,6 +370,66 @@
       }
 
       cells.push(cellModel);
+    }
+
+    const nestedCells = allCells.filter((cell) => cell.querySelector('table'));
+
+    const mergeBorderStyle = (target, side, borderStyle) => {
+      if (!borderStyle) return;
+      target.styles.border = target.styles.border || {};
+      target.styles.border = {
+        ...target.styles.border,
+        [side]: { ...borderStyle }
+      };
+    };
+
+    for (const outerCell of nestedCells) {
+      const descriptor = describeCell(outerCell);
+      if (!descriptor) continue;
+      const borders = extractBorders(window.getComputedStyle(outerCell));
+      if (!borders) continue;
+
+      const colStart = descriptor.colStartIndex;
+      const colEnd = Math.max(descriptor.colStartIndex + 1, descriptor.colEndIndex);
+      const rowStart = descriptor.rowStartIndex;
+      const rowEnd = Math.max(descriptor.rowStartIndex + 1, descriptor.rowEndIndex);
+
+      const inRange = (cell) => {
+        return (
+          cell.colStart >= colStart &&
+          cell.colEnd <= colEnd &&
+          cell.rowStart >= rowStart &&
+          cell.rowEnd <= rowEnd
+        );
+      };
+
+      if (borders.top) {
+        const topCells = cells.filter((c) => inRange(c) && c.rowStart === rowStart);
+        for (const cell of topCells) {
+          mergeBorderStyle(cell, 'top', borders.top);
+        }
+      }
+
+      if (borders.bottom) {
+        const bottomCells = cells.filter((c) => inRange(c) && c.rowEnd === rowEnd);
+        for (const cell of bottomCells) {
+          mergeBorderStyle(cell, 'bottom', borders.bottom);
+        }
+      }
+
+      if (borders.left) {
+        const leftCells = cells.filter((c) => inRange(c) && c.colStart === colStart);
+        for (const cell of leftCells) {
+          mergeBorderStyle(cell, 'left', borders.left);
+        }
+      }
+
+      if (borders.right) {
+        const rightCells = cells.filter((c) => inRange(c) && c.colEnd === colEnd);
+        for (const cell of rightCells) {
+          mergeBorderStyle(cell, 'right', borders.right);
+        }
+      }
     }
 
     const columnWidthsPx = [];
