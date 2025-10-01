@@ -1,628 +1,910 @@
-<div class="exp_to_excel_button_content print-form">
-  <style>
-    :root {
-      --content-width: 750px;
-      --accent-color: #005f9e;
-      --border-color: #000000;
-      --subtle-border: #d8d8d8;
-      --header-bg: #f3f6fa;
-      --text-color: #000000;
-    }
 
-    .print-form {
-      width: var(--content-width);
-      margin: 0 auto;
-      background-color: #ffffff;
-      padding: 24px 28px 36px;
-      box-sizing: border-box;
-      border: 1px solid var(--subtle-border);
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-      border-radius: 8px;
-    }
+<div class="exp_to_excel_button_content document-wrapper">
+ <style>
+  :root {
+   color: #111827;
+   font-family: Arial, sans-serif;
+   font-size: 9pt;
+  }
 
-    .print-form table {
-      width: 100%;
-      table-layout: fixed;
-      border-collapse: collapse;
-    }
+  .document-wrapper {
+   width: 750px;
+   margin: 0 auto;
+   background: #ffffff;
+   border-radius: 16px;
+   padding: 28px 36px 42px;
+   box-shadow: 0 18px 30px rgba(15, 23, 42, 0.15);
+  }
 
-    .fontblack9a,
-    .fontblack9a td,
-    .fontblack9a span,
-    .fontblack9a_rowheader td,
-    .fontblack9a_rowitem td {
-      color: var(--text-color);
-      font-family: Arial, sans-serif;
-      font-size: 9pt;
-      line-height: 1.5;
-    }
+  .document-table {
+   width: 100%;
+   border-collapse: collapse;
+   table-layout: fixed;
+  }
 
-    .fontblack13a {
-      color: var(--text-color);
-      font-family: Arial, sans-serif;
-      font-size: 13pt;
-    }
+  .document-table tr > * {
+   vertical-align: top;
+  }
 
-    .section-spacing {
-      height: 15px;
-    }
+  .section-title {
+   font-size: 16pt;
+   font-weight: 700;
+   letter-spacing: 0.08em;
+   text-transform: uppercase;
+   color: #0f172a;
+  }
 
-    .table-spacer {
-      height: 10px;
-    }
+  .info-table .label {
+   font-weight: 700;
+   text-transform: uppercase;
+   padding: 2px 0;
+   color: #1f2937;
+  }
 
-    .logo-cell {
-      padding-bottom: 16px;
-      text-align: left;
-    }
+  .info-table .separator {
+   width: 12px;
+   text-align: center;
+   color: #94a3b8;
+  }
 
-    .logo-cell img {
-      width: 100%;
-      max-width: 720px;
-      height: auto;
-      border-radius: 6px;
-    }
+  .info-table .value {
+   padding: 2px 0;
+   color: #111827;
+  }
 
-    .section-heading {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      text-align: left;
-      border-bottom: 2px solid var(--accent-color);
-      display: inline-block;
-      padding-bottom: 6px;
-      color: var(--accent-color);
-    }
+  .info-table .block {
+   display: block;
+   padding: 2px 0;
+  }
 
-    .info-table {
-      border: 1px solid var(--subtle-border);
-      border-radius: 6px;
-      padding: 12px 16px;
-      background-color: #fafbfc;
-    }
+  .info-table .address {
+   margin-top: 4px;
+  }
 
-    .info-table td {
-      padding: 4px 0;
-      vertical-align: top;
-    }
+  .info-table .address .block {
+   padding: 0;
+  }
 
-    .info-label {
-      width: 110px;
-      text-transform: uppercase;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-    }
+  .info-table .spacer {
+   height: 10px;
+  }
 
-    .info-separator {
-      width: 12px;
-      text-align: center;
-      font-weight: 700;
-    }
+  .section-divider {
+   height: 18px;
+  }
 
-    .info-value {
-      color: #333333;
-    }
+  .table-header th {
+   border: 1px solid #111827;
+   padding: 8px 10px;
+   font-weight: 700;
+   background: linear-gradient(135deg, #e2e8f0, #f8fafc);
+   color: #0f172a;
+   text-align: center;
+   letter-spacing: 0.04em;
+  }
 
-    .info-address span {
-      display: block;
-    }
+  .table-row td {
+   border: 1px solid #111827;
+   padding: 7px 10px;
+   color: #111827;
+  }
 
-    .info-card {
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
+  .table-row .description {
+   font-weight: 500;
+  }
 
-    .info-card > div {
-      flex: 1;
-    }
+  .table-row .center {
+   text-align: center;
+  }
 
-    .table-group {
-      display: flex;
-      gap: 24px;
-    }
+  .table-row .right {
+   text-align: right;
+  }
 
-    .table-group > div {
-      flex: 1;
-    }
+  .table-row:nth-of-type(even) td {
+   background: #f8fafc;
+  }
 
-    #rowheader .header-row {
-      background-color: var(--header-bg);
-    }
+  .table-row img {
+   border-radius: 8px;
+   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+   margin-top: 10px;
+  }
 
-    #rowheader .header-row td {
-      border: 1px solid var(--border-color);
-      font-weight: 700;
-      text-align: center;
-      padding: 6px 4px;
-      letter-spacing: 0.6px;
-    }
+  .cell-content {
+   display: block;
+   padding: 4px 6px;
+  }
 
-    .item-table td {
-      border-right: 1px solid var(--border-color);
-      border-bottom: 1px solid var(--border-color);
-      padding: 6px 6px;
-    }
+  .cell-content .line {
+   display: block;
+  }
 
-    .item-table td:first-child {
-      border-left: 1px solid var(--border-color);
-    }
+  .currency {
+   display: flex;
+   justify-content: flex-end;
+   align-items: center;
+   gap: 6px;
+  }
 
-    .item-description {
-      display: block;
-      padding: 2px 0;
-    }
+  .currency .currency-label {
+   font-weight: 700;
+   color: #0f172a;
+  }
 
-    .align-top {
-      vertical-align: top;
-    }
+  .image-wrapper {
+   display: inline-block;
+   padding: 0 5px 5px 0;
+  }
 
-    .align-middle {
-      vertical-align: middle;
-    }
+  .image-wrapper img {
+   height: 200px;
+   width: auto;
+   object-fit: contain;
+  }
 
-    .align-left {
-      text-align: left;
-    }
+  .remarks-block {
+   padding-right: 26px;
+  }
 
-    .align-center {
-      text-align: center;
-    }
+  .remarks-block .title {
+   font-weight: 700;
+   text-transform: uppercase;
+   display: block;
+   padding-bottom: 4px;
+   color: #0f172a;
+  }
 
-    .align-right {
-      text-align: right;
-    }
+  .remarks-block .content {
+   display: block;
+   padding-bottom: 4px;
+   color: #1f2937;
+  }
 
-    .currency {
-      display: block;
-      min-width: 100px;
-      text-align: right;
-      position: relative;
-      padding-right: 8px;
-    }
+  .totals-table td {
+   border: 1px solid #111827;
+   padding: 8px 12px;
+  }
 
-    .currency-symbol {
-      position: absolute;
-      left: 0;
-      font-weight: inherit;
-    }
+  .totals-table .label {
+   font-weight: 700;
+   text-transform: uppercase;
+   background: #f8fafc;
+   color: #0f172a;
+  }
 
-    .image-gallery {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      padding: 6px 3px;
-    }
+  .totals-table .amount {
+   text-align: right;
+   font-weight: 700;
+   color: #0f172a;
+  }
 
-    .image-gallery img {
-      border-radius: 6px;
-      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
-      max-height: 200px;
-      width: auto;
-    }
+  .signature {
+   margin-top: 28px;
+   display: flex;
+   justify-content: flex-end;
+  }
 
-    .full-width-cell {
-      border-left: 1px solid var(--border-color);
-      border-right: 1px solid var(--border-color);
-      border-bottom: 1px solid var(--border-color);
-      padding: 12px 10px;
-    }
+  .signature .line {
+   width: 200px;
+   border-top: 1px solid #94a3b8;
+   margin-top: 56px;
+  }
 
-    .remarks-section {
-      display: flex;
-      gap: 24px;
-      border-top: 1px solid var(--subtle-border);
-      padding-top: 18px;
-      margin-top: 24px;
-    }
+  .footer-note {
+   margin-top: 24px;
+   font-size: 8pt;
+   color: #6b7280;
+   text-align: center;
+   letter-spacing: 0.04em;
+  }
 
-    .remarks-block {
-      flex: 1;
-      border: 1px solid var(--subtle-border);
-      border-radius: 6px;
-      padding: 12px 16px;
-      background-color: #fafbfc;
-    }
+  .html_to_excel_btn {
+   margin-top: 26px;
+   padding: 10px 20px;
+   background: linear-gradient(135deg, #1f2937, #0f172a);
+   border: none;
+   color: #ffffff;
+   border-radius: 8px;
+   font-weight: 600;
+   letter-spacing: 0.04em;
+   cursor: pointer;
+   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
 
-    .totals-block {
-      width: 230px;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      overflow: hidden;
-    }
+  .html_to_excel_btn:hover {
+   transform: translateY(-1px);
+   box-shadow: 0 12px 22px rgba(15, 23, 42, 0.22);
+  }
 
-    .totals-block tr + tr td {
-      border-top: 1px solid var(--border-color);
-    }
+  .html_to_excel_btn:active {
+   transform: translateY(0);
+   box-shadow: 0 8px 16px rgba(15, 23, 42, 0.16);
+  }
 
-    .totals-block td {
-      padding: 6px 10px;
-    }
+  .fontblack9a,
+  .fontblack9a_lrtb,
+  .fontblack9a_rtb,
+  .fontblack9a_lrb,
+  .fontblack9a_rb,
+  .fontblack9a_rowitem,
+  .fontblack9a_rowheader {
+   color: #111827;
+   font-family: Arial, sans-serif;
+   font-size: 9pt;
+  }
 
-    .totals-block .label {
-      text-transform: uppercase;
-      font-weight: 700;
-      letter-spacing: 0.6px;
-      background-color: var(--header-bg);
-      width: 130px;
-    }
+  .fontblack9a_lrtb,
+  .fontblack9a_rtb {
+   text-align: center;
+   font-weight: 600;
+   letter-spacing: 0.03em;
+  }
 
-    .totals-block .value {
-      font-weight: 700;
-      text-align: right;
-      position: relative;
-      padding-right: 12px;
-    }
+  .fontblack9a_lrtb {
+   border: 1px solid #111827;
+  }
 
-    .totals-block .value .currency-symbol {
-      left: 6px;
-    }
+  .fontblack9a_rtb {
+   border-top: 1px solid #111827;
+   border-bottom: 1px solid #111827;
+   border-right: 1px solid #111827;
+  }
 
-    .export-button {
-      margin-top: 24px;
-      padding: 10px 18px;
-      background-color: var(--accent-color);
-      color: #ffffff;
-      border: none;
-      border-radius: 4px;
-      font-size: 10pt;
-      font-family: Arial, sans-serif;
-      cursor: pointer;
-      transition: background-color 0.2s ease-in-out;
-    }
+  .fontblack9a_lrb {
+   border-left: 1px solid #111827;
+   border-right: 1px solid #111827;
+   border-bottom: 1px solid #111827;
+  }
 
-    .export-button:hover {
-      background-color: #004677;
-    }
+  .fontblack9a_rb {
+   border-right: 1px solid #111827;
+   border-bottom: 1px solid #111827;
+  }
 
-    .export-button:active {
-      background-color: #003352;
-    }
-
-    .hidden-preload {
-      display: none;
-    }
-  </style>
-
-  <table id="header" class="fontblack9a">
-    <tbody>
-      <tr>
-        <td class="logo-cell" colspan="3">
-          <img src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/userlogo/p11011004464072155/letterhead_logo-BG.jpg" alt="Company Letterhead Logo">
+  .fontblack13a {
+   color: #0f172a;
+   font-family: Arial, sans-serif;
+   font-size: 13pt;
+  }
+ </style>
+ <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" id="header" width="750">
+  <tbody>
+   <tr>
+    <td align="left" colspan="3" style="height: 151px;" width="750">
+     <img height="151" src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/userlogo/p11011004464072155/letterhead_logo-BG.jpg" width="720"/>
+    </td>
+   </tr>
+  </tbody>
+ </table>
+ <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table info-table" id="doc_info" style="table-layout: fixed;width:750px;">
+  <tbody>
+   <tr>
+    <td colspan="1" style="line-height: 15px;box-sizing: border-box;width:390px">
+    </td>
+    <td colspan="1" style="line-height: 15px;box-sizing: border-box;width:49px">
+    </td>
+    <td colspan="1" style="line-height: 15px;box-sizing: border-box;width:311px">
+    </td>
+   </tr>
+   <tr>
+    <td colspan="3" style="line-height: 15px;box-sizing: border-box;width:750px" valign="top">
+    </td>
+   </tr>
+   <tr>
+    <td colspan="3" style="line-height: 15px;box-sizing: border-box;width:750px" valign="top">
+     <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" style="width:100%;table-layout:fixed;">
+      <colgroup>
+       <col style="width: 420px;"/>
+       <col style="width: inherit;"/>
+      </colgroup>
+      <tbody>
+       <tr>
+        <td align="center" style="box-sizing: border-box; height: 22px;" valign="middle">
         </td>
-      </tr>
-    </tbody>
+        <td align="left" style="box-sizing: border-box; height: 22px;" valign="middle">
+         <span class="section-title">
+          QUOTATION
+         </span>
+        </td>
+       </tr>
+      </tbody>
+     </table>
+    </td>
+   </tr>
+   <tr style="height:15px">
+   </tr>
+   <tr>
+    <td colspan="3" style="line-height: 15px;box-sizing: border-box;width:750px" valign="top">
+     <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a" style="width:100%;table-layout:fixed;">
+      <colgroup>
+       <col style="width: inherit;"/>
+       <col style="width: 300px;"/>
+      </colgroup>
+      <tbody>
+       <tr>
+        <td style="box-sizing: border-box; height: 138px;" valign="top">
+         <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a" style="width:100%;table-layout:fixed;">
+          <colgroup>
+           <col style="width: 88px;"/>
+           <col style="width: 10px;"/>
+           <col style="width: inherit;"/>
+          </colgroup>
+          <tbody>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Quote To
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td colspan="3" style="box-sizing: border-box; height: 87px;" valign="top">
+             <span class="block value">
+              <span class="block value">
+               AA Advent Devices (Asia) Limited - US
+              </span>
+              <span class="block value">
+               Unit 838, Shatin Galleria
+              </span>
+              <span class="block value">
+               28-24 Shan Mei Avenue, Fo Tan
+              </span>
+              <span class="block value">
+               Shenzhen
+              </span>
+              <span class="block value">
+               China 5849-03
+              </span>
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Attn
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+              hacky ding
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Re
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+              t6tteases
+             </span>
+            </td>
+           </tr>
+          </tbody>
+         </table>
+        </td>
+        <td style="box-sizing: border-box; height: 138px;" valign="top">
+         <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a" style="width:100%;table-layout:fixed;">
+          <colgroup>
+           <col style="width: 105px;"/>
+           <col style="width: 10px;"/>
+           <col style="width: inherit;"/>
+          </colgroup>
+          <tbody>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Ref No
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+              DQ1124
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Date
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+              20/08/2025
+             </span>
+            </td>
+           </tr>
+           <tr style="height: 10px;">
+           </tr>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Salesperson
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+              KIM MENG TAN
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Currency
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+              USD
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block label">
+              <b>
+               Page
+              </b>
+             </span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block separator">:</span>
+            </td>
+            <td style="box-sizing: border-box; height: 17px;" valign="top">
+             <span class="block value">
+              <span class="temp_page_no_processed">
+               1
+              </span>
+              of
+              <span class="temp_page_no_tot_processed">
+               1
+              </span>
+             </span>
+            </td>
+           </tr>
+          </tbody>
+         </table>
+        </td>
+       </tr>
+       <tr style="height:10px;">
+       </tr>
+      </tbody>
+     </table>
+    </td>
+   </tr>
+  </tbody>
+ </table>
+ <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowheader document-table" id="rowheader" style="table-layout: fixed;width:750px;">
+  <tbody>
+   <tr>
+    <td style="line-height: 15px;box-sizing: border-box;width:750">
+     <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table table-header" style="table-layout: fixed;width:100%">
+      <colgroup>
+       <col style="width:339px;"/>
+       <col style="width:111px;"/>
+       <col style="width:80px;"/>
+       <col style="width:33px;"/>
+       <col style="width:88px;"/>
+       <col style="width:99px;"/>
+      </colgroup>
+      <thead>
+       <tr>
+        <th class="fontblack9a_lrtb">
+         DESCRIPTION
+        </th>
+        <th class="fontblack9a_rtb">
+         MODEL
+        </th>
+        <th class="fontblack9a_rtb">
+         COLOUR
+        </th>
+        <th class="fontblack9a_rtb">
+         QTY
+        </th>
+        <th class="fontblack9a_rtb">
+         U/RATE
+        </th>
+        <th class="fontblack9a_rtb">
+         TOTAL
+        </th>
+       </tr>
+      </thead>
+     </table>
+    </td>
+   </tr>
+  </tbody>
+ </table>
+ <div id="rowdetails">
+  <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowitem document-table" id="row1" style="table-layout: fixed;width:750px">
+   <tbody>
+    <tr class="table-row">
+     <td style="line-height: 15px;box-sizing: border-box;width:750px">
+      <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" style="table-layout: fixed;width:100%">
+       <tbody>
+       <tr class="table-row">
+         <td align="left" class="fontblack9a_lrb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 339px; border-left: 1px solid black; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           <span class="line">
+            Kohler Chalice undercounter lavatory w/ overflow
+           </span>
+          </span>
+         </td>
+         <td align="left" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 111px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           97011T-0
+          </span>
+         </td>
+         <td align="left" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 80px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           White
+          </span>
+         </td>
+         <td align="center" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 33px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           2
+          </span>
+         </td>
+         <td align="right" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 88px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content currency">
+           <span class="currency-label">
+            US$
+           </span>
+           103.0000
+          </span>
+         </td>
+         <td align="right" class="fontblack9a_rb" colspan="1" id="rowAmt1" style="line-height: 15px; box-sizing: border-box; width: 99px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content currency">
+           <span class="currency-label">
+            US$
+           </span>
+           206.00
+          </span>
+         </td>
+        </tr>
+       </tbody>
+      </table>
+     </td>
+    </tr>
+   </tbody>
   </table>
-
-  <table id="doc_info" class="fontblack9a">
-    <tbody>
-      <tr class="section-spacing"></tr>
-      <tr>
-        <td colspan="3">
-          <span class="section-heading">QUOTATION</span>
-        </td>
-      </tr>
-      <tr class="section-spacing"></tr>
-      <tr>
-        <td colspan="3">
-          <div class="table-group">
-            <div class="info-card">
-              <table class="info-table">
-                <tbody>
-                  <tr>
-                    <td class="info-label">Quote To</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value info-address">
-                      <span>AA Advent Devices (Asia) Limited - US</span>
-                      <span>Unit 838, Shatin Galleria</span>
-                      <span>28-24 Shan Mei Avenue, Fo Tan</span>
-                      <span>Shenzhen</span>
-                      <span>China 5849-03</span>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="info-label">Attn</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value">hacky ding</td>
-                  </tr>
-                  <tr>
-                    <td class="info-label">Re</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value">t6tteases</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div class="info-card">
-              <table class="info-table">
-                <tbody>
-                  <tr>
-                    <td class="info-label">Ref No</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value">DQ1124</td>
-                  </tr>
-                  <tr>
-                    <td class="info-label">Date</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value">20/08/2025</td>
-                  </tr>
-                  <tr>
-                    <td class="info-label">Salesperson</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value">KIM MENG TAN</td>
-                  </tr>
-                  <tr>
-                    <td class="info-label">Currency</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value">USD</td>
-                  </tr>
-                  <tr>
-                    <td class="info-label">Page</td>
-                    <td class="info-separator">:</td>
-                    <td class="info-value"><span class="temp_page_no_processed">1</span> of <span class="temp_page_no_tot_processed">1</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </td>
-      </tr>
-    </tbody>
+  <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowitem document-table" id="row2" style="table-layout: fixed;width:750px">
+   <tbody>
+    <tr class="table-row">
+     <td style="line-height: 15px;box-sizing: border-box;width:750px">
+      <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" style="table-layout: fixed;width:100%">
+       <tbody>
+       <tr class="table-row">
+         <td align="left" class="fontblack9a_lrb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 339px; border-left: 1px solid black; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           <span class="line">
+            H+M CP modern bottle trap
+           </span>
+          </span>
+         </td>
+         <td align="left" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 111px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           A187A
+          </span>
+         </td>
+         <td align="left" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 80px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           Chrome
+          </span>
+         </td>
+         <td align="center" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 33px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           2
+          </span>
+         </td>
+         <td align="right" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 88px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content currency">
+           <span class="currency-label">
+            US$
+           </span>
+           0.0000
+          </span>
+         </td>
+         <td align="right" class="fontblack9a_rb" colspan="1" id="rowAmt2" style="line-height: 15px; box-sizing: border-box; width: 99px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content currency">
+           <span class="currency-label">
+            US$
+           </span>
+           0.00
+          </span>
+         </td>
+        </tr>
+       </tbody>
+      </table>
+     </td>
+    </tr>
+   </tbody>
   </table>
-
-  <table id="rowheader" class="fontblack9a_rowheader">
-    <tbody>
-      <tr>
-        <td>
-          <table class="fontblack9a">
-            <colgroup>
-              <col style="width: 339px;">
-              <col style="width: 111px;">
-              <col style="width: 80px;">
-              <col style="width: 33px;">
-              <col style="width: 88px;">
-              <col style="width: 99px;">
-            </colgroup>
-            <tbody>
-              <tr class="header-row">
-                <td>DESCRIPTION</td>
-                <td>MODEL</td>
-                <td>COLOUR</td>
-                <td>QTY</td>
-                <td>U/RATE</td>
-                <td>TOTAL</td>
-              </tr>
-            </tbody>
-          </table>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-
-  <div id="rowdetails">
-    <table id="row1" class="fontblack9a_rowitem">
-      <tbody>
-        <tr>
-          <td>
-            <table class="fontblack9a item-table">
-              <colgroup>
-                <col style="width: 339px;">
-                <col style="width: 111px;">
-                <col style="width: 80px;">
-                <col style="width: 33px;">
-                <col style="width: 88px;">
-                <col style="width: 99px;">
-              </colgroup>
-              <tbody>
-                <tr>
-                  <td class="align-top">
-                    <span class="item-description">Kohler Chalice undercounter lavatory w/ overflow</span>
-                  </td>
-                  <td class="align-top">97011T-0</td>
-                  <td class="align-top">White</td>
-                  <td class="align-center align-top">2</td>
-                  <td class="align-right align-top">
-                    <span class="currency"><span class="currency-symbol">US$</span>103.0000</span>
-                  </td>
-                  <td id="rowAmt1" class="align-right align-top">
-                    <span class="currency"><span class="currency-symbol">US$</span>206.00</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <table id="row2" class="fontblack9a_rowitem">
-      <tbody>
-        <tr>
-          <td>
-            <table class="fontblack9a item-table">
-              <colgroup>
-                <col style="width: 339px;">
-                <col style="width: 111px;">
-                <col style="width: 80px;">
-                <col style="width: 33px;">
-                <col style="width: 88px;">
-                <col style="width: 99px;">
-              </colgroup>
-              <tbody>
-                <tr>
-                  <td class="align-top">
-                    <span class="item-description">H+M CP modern bottle trap</span>
-                  </td>
-                  <td class="align-top">A187A</td>
-                  <td class="align-top">Chrome</td>
-                  <td class="align-center align-top">2</td>
-                  <td class="align-right align-top">
-                    <span class="currency"><span class="currency-symbol">US$</span>0.0000</span>
-                  </td>
-                  <td id="rowAmt2" class="align-right align-top">
-                    <span class="currency"><span class="currency-symbol">US$</span>0.00</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div class="hidden-preload">
-      <link rel="preload" as="image" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCgv1gguSOtO%2FFXxLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BNTKxcjI1egF7EPKT0o%3D">
-      <link rel="prefetch" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCgv1gguSOtO%2FFXxLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BNTKxcjI1egF7EPKT0o%3D" as="image">
-    </div>
-
-    <table id="row3" class="fontblack9a_rowitem">
-      <tbody>
-        <tr>
-          <td>
-            <table class="fontblack9a item-table">
-              <colgroup>
-                <col style="width: 339px;">
-                <col style="width: 111px;">
-                <col style="width: 80px;">
-                <col style="width: 33px;">
-                <col style="width: 88px;">
-                <col style="width: 99px;">
-              </colgroup>
-              <tbody>
-                <tr>
-                  <td class="full-width-cell" colspan="6">
-                    <img fetchpriority="high" src="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCgv1gguSOtO%2FFXxLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BNTKxcjI1egF7EPKT0o%3D" alt="Product Reference" class="img_modal_view">
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <table id="row4" class="fontblack9a_rowitem">
-      <tbody>
-        <tr>
-          <td>
-            <table class="fontblack9a item-table">
-              <colgroup>
-                <col style="width: 339px;">
-                <col style="width: 111px;">
-                <col style="width: 80px;">
-                <col style="width: 33px;">
-                <col style="width: 88px;">
-                <col style="width: 99px;">
-              </colgroup>
-              <tbody>
-                <tr>
-                  <td class="align-top">
-                    <span class="item-description">0.5MM 4B</span>
-                    <span class="item-description">SS PLATE AISI304 0.5MM 4B/PVC 4 X 8</span>
-                    <span class="item-description">78R-0092-A / Delphi <br><img src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_304_cold_drawn_stainless_steel_flat_bar_summ No,78.jpg" height="100" width="100" alt="Stainless Steel Plate"></span>
-                  </td>
-                  <td class="align-top"></td>
-                  <td class="align-top"></td>
-                  <td class="align-center align-top">1</td>
-                  <td class="align-right align-top">
-                    <span class="currency"><span class="currency-symbol">US$</span>11.0000</span>
-                  </td>
-                  <td id="rowAmt4" class="align-right align-top">
-                    <span class="currency"><span class="currency-symbol">US$</span>11.00</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <table id="row5" class="fontblack9a_rowitem">
-      <tbody>
-        <tr>
-          <td>
-            <table class="fontblack9a item-table">
-              <colgroup>
-                <col style="width: 339px;">
-                <col style="width: 111px;">
-                <col style="width: 80px;">
-                <col style="width: 33px;">
-                <col style="width: 88px;">
-                <col style="width: 99px;">
-              </colgroup>
-              <tbody>
-                <tr>
-                  <td class="full-width-cell" colspan="6">
-                    <div class="image-gallery">
-                      <img src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_304_cold_drawn_stainless_steel_flat_bar_summ No,78.jpg" alt="Product Image 1" class="img_modal_view">
-                      <img src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_WngrDrw5390.jpg" alt="Product Image 2" class="img_modal_view">
-                      <img src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_WngrDrw2107.jpg" alt="Product Image 3" class="img_modal_view">
-                      <img src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_TSK-30554_Quotation_-_F2.jpg" alt="Product Image 4" class="img_modal_view">
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div class="hidden-preload">
-      <link rel="preload" as="image" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCoq0QoqSOBJ%2FlH%2BLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BtHNx8zI3u8H6EzKT0o%3D">
-      <link rel="prefetch" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCoq0QoqSOBJ%2FlH%2BLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BtHNx8zI3u8H6EzKT0o%3D" as="image">
-    </div>
-
-    <table id="row7" class="fontblack9a_rowitem">
-      <tbody>
-        <tr>
-          <td colspan="6">
-            <table class="fontblack9a"></table>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+  <div style="display:none;">
+   <link as="image" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCgv1gguSOtO%2FFXxLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BNTKxcjI1egF7EPKT0o%3D" rel="preload"/>
+   <link as="image" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCgv1gguSOtO%2FFXxLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BNTKxcjI1egF7EPKT0o%3D" rel="prefetch"/>
   </div>
-
-  <script language="JavaScript">
-    <!--
-    maxRow = 7;
-    //-->
-  </script>
-
-  <table id="footer" class="fontblack9a">
-    <tbody>
-      <tr>
-        <td>
-          <div class="remarks-section">
-            <div class="remarks-block">
-              <span><strong>Remarks:</strong></span>
-              <span>t6tteases</span>
-            </div>
-            <table class="totals-block">
-              <tbody>
-                <tr>
-                  <td class="label">Sub Total</td>
-                  <td class="value"><span class="currency-symbol">US$</span>217.00</td>
-                </tr>
-                <tr>
-                  <td class="label">GST</td>
-                  <td class="value"><span class="currency-symbol">US$</span>0.00</td>
-                </tr>
-                <tr>
-                  <td class="label">Grand Total</td>
-                  <td class="value"><span class="currency-symbol">US$</span>217.00</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </td>
-      </tr>
-    </tbody>
+  <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowitem document-table" id="row3" style="table-layout: fixed;width:750px">
+   <tbody>
+    <tr class="table-row">
+     <td style="line-height: 15px;box-sizing: border-box;width:750px">
+      <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" style="table-layout: fixed;width:100%">
+       <tbody>
+       <tr class="table-row">
+         <td align="left" class="fontblack9a_lrb" colspan="6" style="line-height: 15px; box-sizing: border-box; width: 750px; border-left: 1px solid black; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           <span style="padding: 0px 5px 5px 0px; height: 200px; width: auto; display: inline-block;">
+            <img align="middle" class="img_modal_view" fetchpriority="high" src="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCgv1gguSOtO%2FFXxLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BNTKxcjI1egF7EPKT0o%3D" style="height: 200px; width: auto;"/>
+           </span>
+          </span>
+         </td>
+        </tr>
+       </tbody>
+      </table>
+     </td>
+    </tr>
+   </tbody>
   </table>
-
-  <button class="html_to_excel_btn export-button">Export Full Page to Excel (.xlsx)</button>
-  <script src="vendor/exceljs.min.js"></script>
-  <script src="js/export_to_excel.js"></script>
-</div>
+  <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowitem document-table" id="row4" style="table-layout: fixed;width:750px">
+   <tbody>
+    <tr class="table-row">
+     <td style="line-height: 15px;box-sizing: border-box;width:750px">
+      <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" style="table-layout: fixed;width:100%">
+       <tbody>
+       <tr class="table-row">
+         <td align="left" class="fontblack9a_lrb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 339px; border-left: 1px solid black; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           <span class="line">
+            0.5MM 4B
+           </span>
+           <span class="line">
+            SS PLATE AISI304 0.5MM 4B/PVC 4 X 8
+           </span>
+           <span class="line">
+            78R-0092-A / Delphi
+            <br/>
+            <img height="100" src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_304_cold_drawn_stainless_steel_flat_bar_summ No,78.jpg" width="100"/>
+           </span>
+          </span>
+         </td>
+         <td align="left" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 111px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+          </span>
+         </td>
+         <td align="left" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 80px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+          </span>
+         </td>
+         <td align="center" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 33px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           1
+          </span>
+         </td>
+         <td align="right" class="fontblack9a_rb" colspan="1" style="line-height: 15px; box-sizing: border-box; width: 88px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content currency">
+           <span class="currency-label">
+            US$
+           </span>
+           11.0000
+          </span>
+         </td>
+         <td align="right" class="fontblack9a_rb" colspan="1" id="rowAmt4" style="line-height: 15px; box-sizing: border-box; width: 99px; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content currency">
+           <span class="currency-label">
+            US$
+           </span>
+           11.00
+          </span>
+         </td>
+        </tr>
+       </tbody>
+      </table>
+     </td>
+    </tr>
+   </tbody>
+  </table>
+  <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowitem document-table" id="row5" style="table-layout: fixed;width:750px">
+   <tbody>
+    <tr class="table-row">
+     <td style="line-height: 15px;box-sizing: border-box;width:750px">
+      <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" style="table-layout: fixed;width:100%">
+       <tbody>
+       <tr class="table-row">
+         <td align="left" class="fontblack9a_lrb" colspan="6" style="line-height: 15px; box-sizing: border-box; width: 750px; border-left: 1px solid black; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           <span style="padding: 0px 5px 5px 0px; height: 200px; width: 200px; display: inline-block;">
+            <img align="middle" class="img_modal_view" src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_304_cold_drawn_stainless_steel_flat_bar_summ No,78.jpg" style="height: 200px; width: 200px;"/>
+           </span>
+           <span style="padding: 0px 5px 5px 0px; height: 200px; width: 299px; display: inline-block;">
+            <img align="middle" class="img_modal_view" src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_WngrDrw5390.jpg" style="height: 200px; width: 299px;"/>
+           </span>
+           <span style="padding: 0px 5px 5px 0px; height: 200px; width: 167px; display: inline-block;">
+            <img align="middle" class="img_modal_view" src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_WngrDrw2107.jpg" style="height: 200px; width: 167px;"/>
+           </span>
+           <span style="padding: 0px 5px 5px 0px; height: 200px; width: 303px; display: inline-block;">
+            <img align="middle" class="img_modal_view" src="./v50mainstore/demo2011mfn/p11011004464072155/contentstore/stkimg/p11011004464072155/p110119190623113504988/0.5MM 4B_TSK-30554_Quotation_-_F2.jpg" style="height: 200px; width: 303px;"/>
+           </span>
+          </span>
+         </td>
+        </tr>
+       </tbody>
+      </table>
+     </td>
+    </tr>
+   </tbody>
+  </table>
+  <div style="display:none;">
+   <link as="image" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCoq0QoqSOBJ%2FlH%2BLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BtHNx8zI3u8H6EzKT0o%3D" rel="preload"/>
+   <link as="image" href="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCoq0QoqSOBJ%2FlH%2BLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BtHNx8zI3u8H6EzKT0o%3D" rel="prefetch"/>
+  </div>
+  <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowitem document-table" id="row6" style="table-layout: fixed;width:750px">
+   <tbody>
+    <tr class="table-row">
+     <td style="line-height: 15px;box-sizing: border-box;width:750px">
+      <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" style="table-layout: fixed;width:100%">
+       <tbody>
+       <tr class="table-row">
+         <td align="left" class="fontblack9a_lrb" colspan="6" style="line-height: 15px; box-sizing: border-box; width: 750px; border-left: 1px solid black; border-right: 1px solid black; border-bottom: 1px solid black;" valign="Top">
+          <span class="cell-content">
+           <span class="image-wrapper">
+            <img align="middle" class="img_modal_view" fetchpriority="high" src="docm_download.cfm?docid=c%2FvKxw4h%2Bs8nzCoq0QoqSOBJ%2FlH%2BLGGOXo%2FJms3e%2FMFBqVmYMpGUxqfHz9Qd1ykqy%2B3O7Ml9r4xSu%2B3S%2FwfNB34T0f%2FpydVRC8qljo3JF2VmB9AZ8iTIz8f8%2BtHNx8zI3u8H6EzKT0o%3D"/>
+           </span>
+          </span>
+         </td>
+        </tr>
+       </tbody>
+      </table>
+     </td>
+    </tr>
+   </tbody>
+  </table>
+  <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a_rowitem document-table" id="row7" style="width:750px">
+   <tbody>
+    <tr class="table-row">
+     <td colspan="6" style="width: 750px; height: 0px;">
+      <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a" style="width:100%;table-layout:fixed;">
+      </table>
+     </td>
+    </tr>
+   </tbody>
+  </table>
+ </div>
+ <script language="JavaScript">
+  <!--
+maxRow = 7;
+//-->
+ </script>
+ <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table" id="footer" style="table-layout: fixed;width:750px">
+  <tbody>
+   <tr>
+    <td style="line-height: 15px;box-sizing: border-box;width:750px">
+     <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a" style="width:100%;table-layout:fixed;">
+      <colgroup>
+       <col style="width:inherit;"/>
+       <col style="width:221px;"/>
+      </colgroup>
+      <tbody>
+       <tr>
+        <td align="left" class="fontblack9a" style="box-sizing: border-box; height: 66px;" valign="top">
+         <div class="remarks-block">
+          <span class="title">
+           Remarks:
+          </span>
+          <span class="content">
+           t6tteases
+          </span>
+         </div>
+        </td>
+        <td align="left" class="fontblack9a" style="box-sizing: border-box; height: 66px;" valign="top">
+         <table border="0" cellpadding="0" cellspacing="0" class="fontblack9a document-table totals-table" style="width:inherit;table-layout:fixed;">
+          <colgroup>
+           <col style="width:122px;"/>
+           <col style="width:99px;"/>
+          </colgroup>
+          <tbody>
+           <tr>
+            <td class="fontblack9a_lrb label">
+             <span class="cell-content">
+              Sub Total
+             </span>
+            </td>
+            <td class="fontblack9a_rb amount">
+             <span class="cell-content currency">
+              <span class="currency-label">
+               US$
+              </span>
+              217.00
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td class="fontblack9a_lrb label">
+             <span class="cell-content">
+              GST
+             </span>
+            </td>
+            <td class="fontblack9a_rb amount">
+             <span class="cell-content currency">
+              <span class="currency-label">
+               US$
+              </span>
+              0.00
+             </span>
+            </td>
+           </tr>
+           <tr>
+            <td class="fontblack9a_lrb label">
+             <span class="cell-content">
+              Grand Total
+             </span>
+            </td>
+            <td class="fontblack9a_rb amount">
+             <span class="cell-content currency">
+              <span class="currency-label">
+               US$
+              </span>
+              217.00
+             </span>
+            </td>
+           </tr>
+          </tbody>
+         </table>
+        </td>
+       </tr>
+      </tbody>
+     </table>
+    </td>
+   </tr>
+  </tbody>
+ </table>
+ <!-- ExcelJS bundled for offline use -->
+ <button class="html_to_excel_btn">
+  Export Full Page to Excel (.xlsx)
+ </button>
+ <script src="vendor/exceljs.min.js">
+ </script>
+ <script src="js/export_to_excel.js">
+ </script>
