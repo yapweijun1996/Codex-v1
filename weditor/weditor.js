@@ -190,7 +190,7 @@
         footer.appendChild(fl); footer.appendChild(footerRight);
         page.appendChild(footer);
       }
-      return { page, content, headerNode:header, footerNode:footer, footerRight };
+      return { page, content, headerNode:header, footerNode:footer, footerRight, explicit:false };
     }
     function paginate(rawHTML, state){
       const {headerEnabled, footerEnabled, headerHTML, footerHTML}=state;
@@ -222,8 +222,9 @@
       const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML});
       const measContent=measPage.content; measWrap.appendChild(measPage.page);
       const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML}); let used=0;
-      function push(){ pages.push(cur); }
-      function next(){ push(); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML}); used=0; }
+      function hasContent(pg){ return pg && pg.content && pg.content.childNodes && pg.content.childNodes.length>0; }
+      function push(force){ if(force || hasContent(cur) || cur.explicit){ pages.push(cur); } }
+      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML}); cur.explicit=!!force; used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
         for(let k=0;k<imgs.length;k++){
@@ -237,12 +238,12 @@
       }
       for(let i=0;i<linear.length;i++){
         const it=linear[i];
-        if(it.t==="break"){ next(); continue; }
+        if(it.t==="break"){ next(true); continue; }
         const block=it.node;
         measContent.innerHTML=""; const probe=block.cloneNode(true); probe.style.margin="0"; ensureMeasuredBlock(probe, A4W - 2*PAD);
         measContent.appendChild(probe);
         const rect=probe.getBoundingClientRect(); const bh=rect && rect.height ? rect.height : 18;
-        if(used>0 && used+bh>AVAIL) next();
+        if(used>0 && used+bh>AVAIL) next(false);
         cur.content.appendChild(block); used+=bh;
         if(used>AVAIL){
           const imgs=cur.content.lastChild.querySelectorAll ? cur.content.lastChild.querySelectorAll("img") : [];
@@ -254,7 +255,8 @@
           used=Math.min(AVAIL-1, h2 + (used - bh));
         }
       }
-      push();
+      push(false);
+      if(!pages.length){ pages.push(cur); }
       const total=pages.length, dateStr=(new Date()).toISOString().slice(0,10);
       for(let i=0;i<pages.length;i++){
         const pg=pages[i];
