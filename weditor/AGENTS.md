@@ -34,6 +34,11 @@
 * Generate response to user.
 * Reply me in mandarin english mixed.
 * Provide 3 option to user to choose for next step. eg: A, B, C
+* Append exactly one final line:
+  Running model: <MODEL_NAME>
+  - Nothing after that line. No extra spaces, no code fences.
+  - If the model name is unknown, use: Running model: unknown
+
 
 ---
 
