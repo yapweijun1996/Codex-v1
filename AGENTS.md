@@ -5,7 +5,7 @@
 
 ### Main Rules
 * Think hard about this.
-* You must master HTML CSS JavaScript.
+* You must master HTML CSS JavaScript, any think not sure can review css.txt, html.txt or javascript.txt.
 * reply in mandarin english mixed.
 * step by step with small action by todo list.
 * reply me in listing format, eg: 1,2,3.....
@@ -26,6 +26,8 @@
 * ⚠️ Blind spot?
 * ❌ Likely bug/failure mode?
 * 🔄 Is the code reversible or safe to test?
+* Suggestion from engineer View.
+* Suggestion from user view.
 
 ---
 

@@ -70,59 +70,32 @@
   const Normalizer=(function(){
     const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|HR|IMG)$/i;
     function isBlock(el){ return el && el.nodeType===1 && BLOCK.test(el.tagName); }
-    function hasBlockDescendant(node){
-      if(!node || node.nodeType!==1) return false;
-      const walker=document.createTreeWalker(node, NodeFilter.SHOW_ELEMENT, null);
-      let current;
-      while((current=walker.nextNode())){
-        if(isBlock(current)) return true;
-      }
-      return false;
-    }
-    function splitHeadingNode(heading){
-      if(!heading || heading.nodeType!==1) return;
-      if(!hasBlockDescendant(heading)) return;
-      const headingOnly=heading.cloneNode(false);
-      const after=document.createDocumentFragment();
-      function processChild(child, target){
-        if(!child){ return; }
-        if(child.nodeType===3 || child.nodeType===8){
-          target.appendChild(child);
-          return;
-        }
-        if(child.nodeType!==1){
-          target.appendChild(child);
-          return;
-        }
-        if(isBlock(child)){
-          after.appendChild(child);
-          return;
-        }
-        if(hasBlockDescendant(child)){
-          const clone=child.cloneNode(false);
-          target.appendChild(clone);
-          const inner=Array.prototype.slice.call(child.childNodes);
-          for(let k=0;k<inner.length;k++) processChild(inner[k], clone);
-          if(!clone.hasChildNodes()) clone.remove();
-          child.remove();
-          return;
-        }
-        target.appendChild(child);
-      }
-      const children=Array.prototype.slice.call(heading.childNodes);
-      for(let i=0;i<children.length;i++) processChild(children[i], headingOnly);
-      if(headingOnly.hasChildNodes()) heading.replaceWith(headingOnly, after);
-      else heading.replaceWith(after);
-    }
     function fixStructure(root){
       if(!root) return;
       const nodes=[]; const cn=root.childNodes;
       for(let i=0;i<cn.length;i++){ const nd=cn[i]; if(nd.nodeType===1 || (nd.nodeType===3 && nd.nodeValue.trim())) nodes.push(nd); }
       if(nodes.length===1 && nodes[0].nodeType===1 && /^H[1-6]$/.test(nodes[0].tagName)){
-        splitHeadingNode(nodes[0]);
+        const h=nodes[0];
+        let hasBlock=false;
+        for(let i=0;i<h.children.length;i++){ if(isBlock(h.children[i])){ hasBlock=true; break; } }
+        if(hasBlock){
+          const headingOnly=h.cloneNode(false); headingOnly.textContent=h.textContent||"";
+          const after=document.createDocumentFragment();
+          const kids=Array.prototype.slice.call(h.childNodes);
+          for(let i=0;i<kids.length;i++){ const ch=kids[i]; if(ch.nodeType===1 && isBlock(ch)) after.appendChild(ch); }
+          h.replaceWith(headingOnly, after);
+        }
       }
-      const hs=root.querySelectorAll ? Array.prototype.slice.call(root.querySelectorAll("h1,h2,h3,h4,h5,h6")) : [];
-      for(let i=0;i<hs.length;i++) splitHeadingNode(hs[i]);
+      const hs=root.querySelectorAll ? root.querySelectorAll("h1,h2,h3,h4,h5,h6") : [];
+      for(let i=0;i<hs.length;i++){
+        const hh=hs[i], blocks=[];
+        for(let j=0;j<hh.children.length;j++){ const cc=hh.children[j]; if(isBlock(cc)) blocks.push(cc); }
+        if(blocks.length){
+          const frag=document.createDocumentFragment();
+          for(let j=0;j<blocks.length;j++) frag.appendChild(blocks[j]);
+          hh.parentNode.insertBefore(frag, hh.nextSibling);
+        }
+      }
     }
     return { fixStructure };
   })();
