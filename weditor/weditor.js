@@ -109,24 +109,39 @@
   })();
   const Breaks=(function(){
     function insert(targetEl){
+      function liftNodeToTarget(node){
+        while(node.parentNode && node.parentNode!==targetEl){
+          const parent=node.parentNode;
+          const clone=parent.cloneNode(false);
+          let sib=node.nextSibling;
+          while(sib){ const next=sib.nextSibling; clone.appendChild(sib); sib=next; }
+          const host=parent.parentNode;
+          if(!host) break;
+          if(clone.childNodes.length){ host.insertBefore(clone, parent.nextSibling); }
+          const ref=clone.childNodes.length ? clone : parent.nextSibling;
+          host.insertBefore(node, ref);
+          if(!parent.hasChildNodes()) parent.remove();
+          if(clone.childNodes.length===0 && clone.parentNode) clone.remove();
+        }
+      }
       let sel=window.getSelection ? window.getSelection() : null;
       if(!sel || sel.rangeCount===0 || !targetEl.contains(sel.anchorNode)){
         WDom.placeCaretAtEnd(targetEl);
       }
       Normalizer.fixStructure(targetEl);
       const sel2=window.getSelection ? window.getSelection() : null;
-      const range=(sel2 && sel2.rangeCount) ? sel2.getRangeAt(0).cloneRange() : null;
+      const baseRange=(sel2 && sel2.rangeCount) ? sel2.getRangeAt(0).cloneRange() : null;
       const comment=document.createComment("page:break");
-      if(range && range.startContainer===targetEl){
-        const idx=Math.min(range.startOffset, targetEl.childNodes.length);
-        const ref=targetEl.childNodes[idx] || null;
-        targetEl.insertBefore(comment, ref);
+      if(baseRange){
+        const range=baseRange.cloneRange();
+        range.collapse(true);
+        range.insertNode(comment);
+        liftNodeToTarget(comment);
+        if(comment.previousSibling && comment.previousSibling.nodeType===3 && !comment.previousSibling.nodeValue.trim()){
+          comment.parentNode.removeChild(comment.previousSibling);
+        }
       }else{
-        let top = range ? range.startContainer : targetEl.lastChild;
-        while(top && top.parentNode!==targetEl){ top=top.parentNode; }
-        if(!top){ targetEl.appendChild(comment); }
-        else if(top.nextSibling){ targetEl.insertBefore(comment, top.nextSibling); }
-        else { targetEl.appendChild(comment); }
+        targetEl.appendChild(comment);
       }
       const p=document.createElement("p"); p.innerHTML="<br>";
       if(comment.nextSibling) targetEl.insertBefore(p, comment.nextSibling); else targetEl.appendChild(p);
