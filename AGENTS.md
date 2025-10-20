@@ -26,6 +26,8 @@
 * ⚠️ Blind spot?
 * ❌ Likely bug/failure mode?
 * 🔄 Is the code reversible or safe to test?
+* Suggestion from engineer View.
+* Suggestion from user view.
 
 ---
 
