@@ -72,6 +72,7 @@
     function isBlock(el){ return el && el.nodeType===1 && BLOCK.test(el.tagName); }
     const WORD_LIST_RE=/mso-list\s*:/i;
     const WORD_CLASS_RE=/^mso/i;
+    const WORD_LIST_CLASS_RE=/^mso(listparagraph|listcontinue)/i;
     const BULLET_RE=/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+$/;
     const ORDERED_MARK_RE=/^(\(*([0-9]+|[ivxlcdm]+)\)|([0-9]+|[ivxlcdm]+))[\.|\)]\s*/i;
     const TAB_STOP_RE=/tab-stops?/i;
@@ -123,7 +124,7 @@
     function isWordListPara(node){ if(!node || node.nodeType!==1 || node.tagName!=="P") return false;
       const cls=node.getAttribute("class")||"";
       if(WORD_LIST_RE.test(node.getAttribute("style")||"")) return true;
-      if(cls && cls.split(/\s+/).some(function(token){ return WORD_CLASS_RE.test(token); })) return true;
+      if(cls && cls.split(/\s+/).some(function(token){ return WORD_LIST_CLASS_RE.test(token); })) return true;
       return false;
     }
     function detectListType(node){ const text=(node.textContent||"").trim(); if(ORDERED_MARK_RE.test(text)) return "ol"; return "ul"; }
