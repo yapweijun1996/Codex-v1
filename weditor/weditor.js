@@ -70,8 +70,102 @@
   const Normalizer=(function(){
     const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|HR|IMG)$/i;
     function isBlock(el){ return el && el.nodeType===1 && BLOCK.test(el.tagName); }
+    const WORD_LIST_RE=/mso-list\s*:/i;
+    const WORD_CLASS_RE=/^mso/i;
+    const BULLET_RE=/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+$/;
+    const ORDERED_MARK_RE=/^(\(*([0-9]+|[ivxlcdm]+)\)|([0-9]+|[ivxlcdm]+))[\.|\)]\s*/i;
+    const TAB_STOP_RE=/tab-stops?/i;
+    function prepareWordArtifacts(root){
+      function walk(node){
+        if(!node || node.nodeType!==1) return;
+        if(/^(O:P)$/i.test(node.tagName||"")){
+          const parent=node.parentNode; if(parent){
+            let child=node.firstChild;
+            while(child){ const next=child.nextSibling; if(child.nodeType===1) walk(child); parent.insertBefore(child, node); child=next; }
+            parent.removeChild(node);
+          }
+          return;
+        }
+        if(node.tagName==="SPAN"){ const style=(node.getAttribute("style")||"");
+          if(/mso-list\s*:\s*ignore/i.test(style)){ const parent=node.parentNode; if(parent){
+              let child=node.firstChild;
+              while(child){ const next=child.nextSibling; if(child.nodeType===1) walk(child); parent.insertBefore(child, node); child=next; }
+              parent.removeChild(node);
+            }
+            return; }
+        }
+        let child=node.firstChild;
+        while(child){ const next=child.nextSibling; if(child.nodeType===1) walk(child); child=next; }
+      }
+      walk(root);
+    }
+    function cleanWordArtifacts(root){
+      function walk(node){
+        if(!node || node.nodeType!==1) return;
+        const cls=(node.getAttribute("class")||"").split(/\s+/).filter(function(token){ return token && !WORD_CLASS_RE.test(token); });
+        if(cls.length){ node.setAttribute("class", cls.join(" ")); } else { node.removeAttribute("class"); }
+        const style=node.getAttribute("style");
+        if(style){
+          const cleaned=style.split(";").map(function(rule){ return rule.trim(); }).filter(function(rule){
+            if(!rule) return false;
+            if(/^mso-/i.test(rule)) return false;
+            if(TAB_STOP_RE.test(rule)) return false;
+            return true;
+          });
+          if(cleaned.length){ node.setAttribute("style", cleaned.join("; ")); }
+          else { node.removeAttribute("style"); }
+        }
+        let child=node.firstChild;
+        while(child){ const next=child.nextSibling; if(child.nodeType===1) walk(child); child=next; }
+      }
+      walk(root);
+    }
+    function isWordListPara(node){ if(!node || node.nodeType!==1 || node.tagName!=="P") return false;
+      const cls=node.getAttribute("class")||"";
+      if(WORD_LIST_RE.test(node.getAttribute("style")||"")) return true;
+      if(cls && cls.split(/\s+/).some(function(token){ return WORD_CLASS_RE.test(token); })) return true;
+      return false;
+    }
+    function detectListType(node){ const text=(node.textContent||"").trim(); if(ORDERED_MARK_RE.test(text)) return "ol"; return "ul"; }
+    function stripLeadingBullets(li){
+      while(li.firstChild && li.firstChild.nodeType===3 && BULLET_RE.test(li.firstChild.nodeValue||"")){ li.removeChild(li.firstChild); }
+      if(li.firstChild && li.firstChild.nodeType===3){
+        li.firstChild.nodeValue = li.firstChild.nodeValue.replace(/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+/, "");
+        li.firstChild.nodeValue = li.firstChild.nodeValue.replace(ORDERED_MARK_RE, "");
+        if(!li.firstChild.nodeValue.length){ li.removeChild(li.firstChild); }
+      }
+      while(li.firstChild && li.firstChild.nodeType===3 && !(li.firstChild.nodeValue||"").trim()){ li.removeChild(li.firstChild); }
+    }
+    function convertWordLists(container){
+      let node=container.firstChild; let activeList=null; let activeType="";
+      while(node){ const next=node.nextSibling;
+        if(node.nodeType===8){ container.removeChild(node); node=next; continue; }
+        if(node.nodeType===3 && !(node.nodeValue||"").trim()){ container.removeChild(node); node=next; continue; }
+        if(node.nodeType===1 && node.tagName==="P" && isWordListPara(node)){
+          const type=detectListType(node);
+          if(!activeList || activeType!==type){
+            activeList=document.createElement(type);
+            container.insertBefore(activeList, node);
+            activeType=type;
+          }
+          const li=document.createElement("li");
+          while(node.firstChild){ li.appendChild(node.firstChild); }
+          stripLeadingBullets(li);
+          activeList.appendChild(li);
+          container.removeChild(node);
+          node=next;
+          continue;
+        }
+        activeList=null; activeType="";
+        if(node && node.nodeType===1) convertWordLists(node);
+        node=next;
+      }
+    }
     function fixStructure(root){
       if(!root) return;
+      prepareWordArtifacts(root);
+      convertWordLists(root);
+      cleanWordArtifacts(root);
       const nodes=[]; const cn=root.childNodes;
       for(let i=0;i<cn.length;i++){ const nd=cn[i]; if(nd.nodeType===1 || (nd.nodeType===3 && nd.nodeValue.trim())) nodes.push(nd); }
       if(nodes.length===1 && nodes[0].nodeType===1 && /^H[1-6]$/.test(nodes[0].tagName)){
