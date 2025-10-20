@@ -348,6 +348,7 @@
           else { const wrap=document.createElement("div"); wrap.style.cssText="margin:.6em 0"; wrap.appendChild(n.cloneNode(true)); linear.push({t:"block", node:wrap}); }
         }
       }
+      const CONTENT_WIDTH=A4W - 2*PAD;
       const measWrap=document.createElement("div"); measWrap.style.cssText="position:absolute;left:-99999px;top:-99999px;visibility:hidden;width:"+A4W+"px";
       document.body.appendChild(measWrap);
       const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML});
@@ -371,7 +372,8 @@
         const it=linear[i];
         if(it.t==="break"){ next(true); continue; }
         const block=it.node;
-        measContent.innerHTML=""; const probe=block.cloneNode(true); probe.style.margin="0"; ensureMeasuredBlock(probe, A4W - 2*PAD);
+        ensureMeasuredBlock(block, CONTENT_WIDTH);
+        measContent.innerHTML=""; const probe=block.cloneNode(true); probe.style.margin="0"; ensureMeasuredBlock(probe, CONTENT_WIDTH);
         measContent.appendChild(probe);
         const rect=probe.getBoundingClientRect(); const bh=rect && rect.height ? rect.height : 18;
         if(used>0 && used+bh>AVAIL) next(false);
@@ -380,7 +382,7 @@
           const imgs=cur.content.lastChild.querySelectorAll ? cur.content.lastChild.querySelectorAll("img") : [];
           const remaining=AVAIL - (used - bh) - 10;
           for(let z=0;z<imgs.length;z++){ if(remaining>0){ imgs[z].style.maxHeight=remaining+"px"; imgs[z].style.height="auto"; imgs[z].style.maxWidth="100%"; } }
-          measContent.innerHTML=""; const probe2=cur.content.lastChild.cloneNode(true); probe2.style.margin="0"; ensureMeasuredBlock(probe2, A4W - 2*PAD);
+          measContent.innerHTML=""; const probe2=cur.content.lastChild.cloneNode(true); probe2.style.margin="0"; ensureMeasuredBlock(probe2, CONTENT_WIDTH);
           measContent.appendChild(probe2);
           const rect2=probe2.getBoundingClientRect(); const h2=rect2 && rect2.height ? rect2.height : (AVAIL-1);
           used=Math.min(AVAIL-1, h2 + (used - bh));
