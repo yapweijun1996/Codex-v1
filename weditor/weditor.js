@@ -129,11 +129,47 @@
     }
     function detectListType(node){ const text=(node.textContent||"").trim(); if(ORDERED_MARK_RE.test(text)) return "ol"; return "ul"; }
     function stripLeadingBullets(li){
+      function pruneEmpty(node){
+        while(node && node!==li && node.nodeType===1 && !node.firstChild){
+          const parent=node.parentNode;
+          if(!parent) break;
+          parent.removeChild(node);
+          node=parent;
+        }
+      }
+      function stripFromText(textNode){
+        if(!textNode) return false;
+        let value=textNode.nodeValue||"";
+        const original=value;
+        value=value.replace(/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+/, "");
+        value=value.replace(ORDERED_MARK_RE, "");
+        if(value===original) return false;
+        if(value.length){ textNode.nodeValue=value; }
+        else {
+          const parent=textNode.parentNode;
+          if(parent) parent.removeChild(textNode);
+          pruneEmpty(parent);
+        }
+        return true;
+      }
+      function findFirstText(node){
+        if(!node) return null;
+        if(node.nodeType===3 && (node.nodeValue||"").length) return node;
+        if(node.nodeType!==1) return null;
+        let child=node.firstChild;
+        while(child){
+          const found=findFirstText(child);
+          if(found) return found;
+          child=child.nextSibling;
+        }
+        return null;
+      }
       while(li.firstChild && li.firstChild.nodeType===3 && BULLET_RE.test(li.firstChild.nodeValue||"")){ li.removeChild(li.firstChild); }
       if(li.firstChild && li.firstChild.nodeType===3){
-        li.firstChild.nodeValue = li.firstChild.nodeValue.replace(/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+/, "");
-        li.firstChild.nodeValue = li.firstChild.nodeValue.replace(ORDERED_MARK_RE, "");
-        if(!li.firstChild.nodeValue.length){ li.removeChild(li.firstChild); }
+        stripFromText(li.firstChild);
+      } else if(li.firstChild && li.firstChild.nodeType===1){
+        const textNode=findFirstText(li.firstChild);
+        if(textNode) stripFromText(textNode);
       }
       while(li.firstChild && li.firstChild.nodeType===3 && !(li.firstChild.nodeValue||"").trim()){ li.removeChild(li.firstChild); }
     }
