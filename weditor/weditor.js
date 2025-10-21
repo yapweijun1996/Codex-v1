@@ -589,8 +589,10 @@
         if(!activeImg || !editor.contains(activeImg)){ hideOverlay(); return; }
         const rect=activeImg.getBoundingClientRect();
         const hostRect=editor.getBoundingClientRect();
-        const left=rect.left-hostRect.left+editor.scrollLeft;
-        const top=rect.top-hostRect.top+editor.scrollTop;
+        const clientLeft=editor.clientLeft||0;
+        const clientTop=editor.clientTop||0;
+        const left=rect.left-hostRect.left+editor.scrollLeft-clientLeft;
+        const top=rect.top-hostRect.top+editor.scrollTop-clientTop;
         overlay.style.transform="translate("+left+"px,"+top+"px)";
         overlay.style.width=rect.width+"px";
         overlay.style.height=rect.height+"px";
