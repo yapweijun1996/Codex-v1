@@ -464,6 +464,7 @@
       const computed=window.getComputedStyle(editor);
       if(computed.position === "static") editor.style.position="relative";
       const overlay=document.createElement("div");
+      overlay.setAttribute("data-weditor-overlay", "true");
       overlay.style.position="absolute";
       overlay.style.border="1px dashed "+WCfg.UI.brand;
       overlay.style.borderRadius="4px";
@@ -530,7 +531,22 @@
       window.addEventListener("resize", scheduleOverlay);
       editor.addEventListener("blur", hideOverlay);
       editor.addEventListener("keydown", function(ev){ if(ev.key==="Escape") hideOverlay(); });
-      const observer=new MutationObserver(function(){ if(activeImg && !editor.contains(activeImg)) hideOverlay(); scheduleOverlay(); });
+      const observer=new MutationObserver(function(records){
+        if(records && records.length){
+          let ignore=true;
+          for(let i=0;i<records.length;i++){
+            const record=records[i];
+            if(record.target===overlay || (record.target && overlay.contains(record.target))){
+              continue;
+            }
+            ignore=false;
+            break;
+          }
+          if(ignore) return;
+        }
+        if(activeImg && !editor.contains(activeImg)) hideOverlay();
+        scheduleOverlay();
+      });
       observer.observe(editor, { childList:true, subtree:true, attributes:true });
       let resizing=false;
       handle.addEventListener("pointerdown", function(ev){
@@ -703,7 +719,15 @@
         toggle,
         editor,
         focus:function(){ if(toggle.checked){ WDom.placeCaretAtEnd(editor); } else { editor.blur(); } },
-        getHTML:function(){ Normalizer.fixStructure(editor); return editor.innerHTML; }
+        getHTML:function(){
+          Normalizer.fixStructure(editor);
+          const clone=editor.cloneNode(true);
+          const overlays=clone.querySelectorAll('[data-weditor-overlay]');
+          overlays.forEach(function(node){ node.remove(); });
+          const activeImgs=clone.querySelectorAll('.weditor-hf-img-active');
+          activeImgs.forEach(function(img){ img.classList.remove('weditor-hf-img-active'); });
+          return clone.innerHTML;
+        }
       };
     }
     function open(inst, ctx){
