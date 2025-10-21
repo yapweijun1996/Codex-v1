@@ -31,12 +31,22 @@
       box-sizing: border-box;
     }
     .img_collage img {
-      object-fit: contain !important;
-      object-position: center center !important;
       display: block;
       image-rendering: auto;
       -webkit-user-drag: none;
       user-select: none;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .img_collage__tile {
+      position: absolute;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+      padding: 0;
+      border: 0;
     }
   </style>
 </head>
@@ -183,6 +193,53 @@
       if (img.complete && img.naturalWidth>0) { res(); return; }
       img.addEventListener('load', res, {once:true});
       img.addEventListener('error', res, {once:true});
+    });
+  }
+
+  function findRootChild(img, root) {
+    let node = img;
+    while (node && node.parentNode) {
+      const parent = node.parentNode;
+      if (parent === root) {
+        if (node.classList && node.classList.contains('img_collage__tile')) {
+          return null;
+        }
+        return node;
+      }
+      if (!(parent instanceof HTMLElement)) break;
+      if (parent.classList && parent.classList.contains('img_collage__tile')) {
+        return null;
+      }
+      node = parent;
+    }
+    return null;
+  }
+
+  function ensureTiles(root, imgs) {
+    return imgs.map((img, index) => {
+      const rootChild = findRootChild(img, root);
+      let tile = img.__collageTile;
+      const needsNewTile = !tile || tile.parentNode !== root;
+
+      if (needsNewTile) {
+        tile = document.createElement('div');
+        tile.className = 'img_collage__tile';
+        if (rootChild && rootChild.parentNode === root) {
+          root.insertBefore(tile, rootChild);
+          tile.appendChild(rootChild);
+        } else {
+          root.appendChild(tile);
+          tile.appendChild(img);
+        }
+        img.__collageTile = tile;
+      } else if (rootChild && rootChild.parentNode !== tile) {
+        tile.appendChild(rootChild);
+      } else if (!tile.contains(img)) {
+        tile.appendChild(img);
+      }
+
+      tile.dataset.index = index;
+      return tile;
     });
   }
 
@@ -695,7 +752,7 @@
   }
 
   // ---------- Absolute placement ----------
-  function place(root, imgs, positions) {
+  function place(root, tiles, imgs, positions) {
     root.style.position = 'relative';
     root.style.overflow = 'hidden';
     const animate = ((root.dataset.animate || 'true') + '').toLowerCase() !== 'false';
@@ -704,24 +761,44 @@
       const P = positions[p];
       const i = (P.idx != null) ? P.idx : p; // 支援兩種格式
       const el = imgs[i];
-      const s = el.style;
-      s.position = 'absolute';
-      s.margin = '0'; s.padding = '0'; s.border = '0';
-      s.maxWidth = 'none'; s.maxHeight = 'none';
-      try { s.setProperty('object-fit', 'contain', 'important'); } catch(_) {}
-      try { s.setProperty('object-position', 'center center', 'important'); } catch(_) {}
+      const tile = tiles[i];
+      if (!el || !tile) continue;
+      const tileStyle = tile.style;
+      tileStyle.position = 'absolute';
+      tileStyle.margin = '0';
+      tileStyle.padding = '0';
+      tileStyle.border = '0';
+      tileStyle.display = 'flex';
+      tileStyle.alignItems = 'center';
+      tileStyle.justifyContent = 'center';
+      tileStyle.overflow = 'hidden';
+      tileStyle.left = P.x + 'px';
+      tileStyle.top  = P.y + 'px';
+      tileStyle.width  = P.width + 'px';
+      tileStyle.height = P.height + 'px';
       // Smooth transitions only after first layout
       if (animate && !first) {
-        s.transition = 'left 160ms ease, top 160ms ease, width 160ms ease, height 160ms ease';
-        s.willChange = 'left, top, width, height';
+        tileStyle.transition = 'left 160ms ease, top 160ms ease, width 160ms ease, height 160ms ease';
+        tileStyle.willChange = 'left, top, width, height';
       } else {
-        s.transition = 'none';
-        s.willChange = '';
+        tileStyle.transition = 'none';
+        tileStyle.willChange = '';
       }
-      s.left = P.x + 'px';
-      s.top  = P.y + 'px';
-      s.width  = P.width + 'px';
-      s.height = P.height + 'px';
+      const s = el.style;
+      s.position = 'static';
+      s.margin = '0';
+      s.padding = '0';
+      s.border = '0';
+      s.maxWidth = '100%';
+      s.maxHeight = '100%';
+      s.width = 'auto';
+      s.height = 'auto';
+      s.display = 'block';
+      s.flexShrink = '0';
+      s.transition = 'none';
+      s.willChange = '';
+      try { s.removeProperty('object-fit'); } catch(_) {}
+      try { s.removeProperty('object-position'); } catch(_) {}
     }
     // Debug: log first 10 tiles' box sizes vs natural aspect when enabled
     if (DEBUG_ENABLED && window.__COLLAGE_LOG_TILES) {
@@ -772,6 +849,7 @@
     else if (imgsCount > 16) effMinUtil = Math.max(effMinUtil, 0.92);
 
     const imgs = Array.from(root.querySelectorAll('img'));
+    const tiles = ensureTiles(root, imgs);
     if (!imgs.length || W <= 0 || H <= 0) return;
 
     const aspects = imgs.map(img => {
@@ -788,7 +866,7 @@
     const Nsmall = aspects.length;
     if (Nsmall <= 4) {
       const positionsSmall = buildSmallSetPositions(aspects, W, H, hgap, vgap);
-      place(root, imgs, positionsSmall);
+      place(root, tiles, imgs, positionsSmall);
       log('[SmallSet] layout used', { N: Nsmall });
       return;
     }
@@ -804,7 +882,7 @@
 
         // 若欄式利用率太低 → 自動改用 row 方案以補滿空白
         if (util >= effMinUtil) {
-          place(root, imgs, positions);
+          place(root, tiles, imgs, positions);
           log('[ColumnNoCrop] === 佈局完成 ===');
           return;
         } else {
@@ -840,7 +918,7 @@
     const opts = { mosaic: useMosaic, jitter: clampRange(jitter, 0, 1), pboost: clampRange(pboost, 0, 1), align: 'center' };
     const sol = solveBalancedNoCrop(aspects, W, H, hgap, vgap, opts);
     if (sol) {
-      place(root, imgs, sol.pos);
+      place(root, tiles, imgs, sol.pos);
       log('[BalancedNoCrop] Utilization', (sol.util * 100).toFixed(2) + '%');
       log('[BalancedNoCrop] === 佈局完成 ===');
     }
