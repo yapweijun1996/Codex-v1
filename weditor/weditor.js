@@ -27,7 +27,7 @@
       hfSection:{ display:"flex", flexDirection:"column", gap:"10px", padding:"16px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#faf9f8" },
       hfToggleRow:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfToggleLabel:{ font:"14px/1.4 Segoe UI,system-ui", color:UI.text, display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" },
-      hfTextarea:{ width:"100%", minHeight:"96px", border:"1px solid "+UI.borderSubtle, borderRadius:"8px", padding:"10px 12px", font:"13px/1.5 ui-monospace,monospace", color:UI.text, resize:"vertical", background:"#fff", boxSizing:"border-box" },
+      hfEditable:{ width:"100%", minHeight:"96px", border:"1px solid "+UI.borderSubtle, borderRadius:"8px", padding:"10px 12px", font:"14px/1.5 Segoe UI,system-ui", color:UI.text, background:"#fff", boxSizing:"border-box", outline:"none", overflowY:"auto", whiteSpace:"pre-wrap", wordBreak:"break-word" },
       hfHint:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
@@ -463,8 +463,15 @@
       const labelSpan=document.createElement("span"); labelSpan.textContent=titleText; labelWrap.appendChild(labelSpan);
       toggleRow.appendChild(labelWrap);
       const status=document.createElement("span"); status.style.cssText="font:12px/1.4 Segoe UI,system-ui;color:"+WCfg.UI.textDim+";text-transform:uppercase;letter-spacing:.04em"; toggleRow.appendChild(status);
-      const textarea=document.createElement("textarea"); applyStyles(textarea, WCfg.Style.hfTextarea); textarea.value=html;
-      textarea.setAttribute("aria-label", titleText+" HTML"); wrap.appendChild(textarea);
+      const editor=document.createElement("div"); applyStyles(editor, WCfg.Style.hfEditable);
+      editor.setAttribute("role","textbox");
+      editor.setAttribute("aria-label", titleText+" content");
+      editor.setAttribute("aria-multiline","true");
+      editor.contentEditable="true";
+      editor.tabIndex=0;
+      editor.innerHTML = Sanitizer.clean(html || "");
+      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); }, 0); });
+      wrap.appendChild(editor);
       const uploaderRow=document.createElement("div");
       uploaderRow.style.display="flex";
       uploaderRow.style.alignItems="center";
@@ -481,7 +488,7 @@
       fileInput.accept="image/png,image/jpeg";
       fileInput.style.display="none";
       const tip=document.createElement("div");
-      tip.textContent="Upload .png / .jpg 會自動插入 <img> 標籤";
+      tip.textContent="Upload .png / .jpg 會自動插入 <img>，可直接在上方編輯區拖曳調整";
       tip.style.font="12px/1.4 Segoe UI,system-ui";
       tip.style.color=WCfg.UI.textDim;
       uploaderRow.appendChild(uploadBtn);
@@ -489,19 +496,33 @@
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
       function insertSnippet(snippet){
-        textarea.focus();
-        try{
-          const start=textarea.selectionStart||0;
-          const end=textarea.selectionEnd||0;
-          if(typeof textarea.setRangeText==="function"){
-            textarea.setRangeText(snippet, start, end, "end");
-          } else {
-            const value=textarea.value||"";
-            textarea.value=value.slice(0,start)+snippet+value.slice(end);
+        editor.focus();
+        const sel=window.getSelection();
+        if(!sel) return;
+        let range=null;
+        if(sel.rangeCount>0){
+          range=sel.getRangeAt(0);
+          if(!editor.contains(range.commonAncestorContainer)){
+            range=document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(false);
           }
-          const caret=start+snippet.length;
-          if(typeof textarea.setSelectionRange==="function") textarea.setSelectionRange(caret, caret);
-        }catch(err){ textarea.value += (textarea.value?"\n":"")+snippet; }
+        } else {
+          range=document.createRange();
+          range.selectNodeContents(editor);
+          range.collapse(false);
+        }
+        if(!range){ return; }
+        const temp=document.createElement("div"); temp.innerHTML=snippet;
+        const frag=document.createDocumentFragment(); let last=null; let node;
+        while((node=temp.firstChild)){ last=node; frag.appendChild(node); }
+        range.deleteContents(); range.insertNode(frag);
+        if(last){
+          range.setStartAfter(last);
+          range.setEndAfter(last);
+          sel.removeAllRanges(); sel.addRange(range);
+        }
+        Normalizer.fixStructure(editor);
       }
       function toAltText(name){
         if(!name) return "Uploaded image";
@@ -528,10 +549,28 @@
         for(let i=0;i<codes.length;i++){ const code=codes[i]; code.style.background="#f3f2f1"; code.style.borderRadius="4px"; code.style.padding="2px 6px"; code.style.fontFamily="ui-monospace,monospace"; code.style.fontSize="12px"; }
         wrap.appendChild(hint);
       }
-      function sync(){ const on=!!toggle.checked; textarea.disabled=!on; textarea.style.opacity=on?"1":"0.55"; status.textContent = on?"Enabled":"Disabled"; }
+      function sync(){
+        const on=!!toggle.checked;
+        editor.setAttribute("contenteditable", on?"true":"false");
+        editor.setAttribute("aria-disabled", on?"false":"true");
+        editor.tabIndex = on ? 0 : -1;
+        editor.style.opacity=on?"1":"0.55";
+        editor.style.pointerEvents=on?"auto":"none";
+        uploadBtn.disabled=!on;
+        uploadBtn.style.opacity=on?"1":"0.55";
+        uploadBtn.style.cursor=on?"pointer":"not-allowed";
+        fileInput.disabled=!on;
+        status.textContent = on?"Enabled":"Disabled";
+      }
       toggle.addEventListener("change", sync);
       sync();
-      return { el:wrap, toggle, textarea };
+      return {
+        el:wrap,
+        toggle,
+        editor,
+        focus:function(){ if(toggle.checked){ WDom.placeCaretAtEnd(editor); } else { editor.blur(); } },
+        getHTML:function(){ Normalizer.fixStructure(editor); return editor.innerHTML; }
+      };
     }
     function open(inst, ctx){
       A11y.lockScroll();
@@ -566,8 +605,8 @@
       function saveAndClose(){
         inst.headerEnabled = !!headerSection.toggle.checked;
         inst.footerEnabled = !!footerSection.toggle.checked;
-        inst.headerHTML = Sanitizer.clean(headerSection.textarea.value);
-        inst.footerHTML = Sanitizer.clean(footerSection.textarea.value);
+        inst.headerHTML = Sanitizer.clean(headerSection.getHTML());
+        inst.footerHTML = Sanitizer.clean(footerSection.getHTML());
         if(ctx && ctx.refreshPreview) ctx.refreshPreview();
         OutputBinding.syncDebounced(inst);
         close();
@@ -579,10 +618,10 @@
       save.onclick=function(){ saveAndClose(); };
       bg.addEventListener("click", function(e){ if(e.target===bg) close(); });
       window.setTimeout(function(){
-        headerSection.textarea.focus();
-        if(headerSection.textarea.setSelectionRange){
-          const len=headerSection.textarea.value.length;
-          headerSection.textarea.setSelectionRange(len, len);
+        if(headerSection.toggle.checked){
+          headerSection.focus();
+        } else if(footerSection.toggle.checked){
+          footerSection.focus();
         }
       }, 0);
     }
