@@ -18,7 +18,18 @@
       left:{ flex:"1", minWidth:"0", overflow:"auto", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", background:UI.canvas },
       rightWrap:{ width:"46vw", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", borderLeft:"1px solid "+UI.border, background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
-      pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto"
+      pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
+      hfModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
+      hfHead:{ padding:"18px 22px", borderBottom:"1px solid "+UI.border, display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
+      hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
+      hfClose:{ border:"0", background:"transparent", color:UI.textDim, font:"20px/1 Segoe UI,system-ui", cursor:"pointer", padding:"4px", borderRadius:"6px" },
+      hfBody:{ padding:"20px", display:"grid", gap:"18px", overflowY:"auto", flex:"1", minHeight:"0" },
+      hfSection:{ display:"flex", flexDirection:"column", gap:"10px", padding:"16px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#faf9f8" },
+      hfToggleRow:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
+      hfToggleLabel:{ font:"14px/1.4 Segoe UI,system-ui", color:UI.text, display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" },
+      hfTextarea:{ width:"100%", minHeight:"96px", border:"1px solid "+UI.borderSubtle, borderRadius:"8px", padding:"10px 12px", font:"13px/1.5 ui-monospace,monospace", color:UI.text, resize:"vertical", background:"#fff" },
+      hfHint:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,Style };
   })();
@@ -304,7 +315,7 @@
       if(headerEnabled){
         header=document.createElement("div");
         header.className="weditor_page-header";
-        header.style.cssText="position:absolute;left:0;right:0;top:0;height:"+effH+"px;padding:12px 18px;border-bottom:1px solid "+UI.border+";background:#fff;color:"+UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center";
+        header.style.cssText="position:absolute;left:0;right:0;top:0;height:"+effH+"px;padding:12px 18px;border-bottom:1px solid "+UI.border+";background:#fff;color:"+UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box";
         header.innerHTML=headerHTML;
         page.appendChild(header);
       }
@@ -315,9 +326,9 @@
       if(footerEnabled){
         footer=document.createElement("div");
         footer.className="weditor_page-footer";
-        footer.style.cssText="position:absolute;left:0;right:0;bottom:0;height:"+effF+"px;padding:10px 18px;border-top:1px solid "+UI.border+";background:#fff;color:"+UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between";
-        const fl=document.createElement("div"); fl.className="weditor_page-footer-left"; fl.innerHTML=footerHTML;
-        footerRight=document.createElement("div"); footerRight.className="weditor_page-footer-right"; footerRight.style.cssText="color:"+UI.textDim+";font:12px Segoe UI,system-ui"; footerRight.textContent="Page "+pageNo;
+        footer.style.cssText="position:absolute;left:0;right:0;bottom:0;height:"+effF+"px;padding:10px 18px;border-top:1px solid "+UI.border+";background:#fff;color:"+UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box";
+        const fl=document.createElement("div"); fl.className="weditor_page-footer-left"; fl.style.cssText="flex:1 1 auto;min-width:160px"; fl.innerHTML=footerHTML;
+        footerRight=document.createElement("div"); footerRight.className="weditor_page-footer-right"; footerRight.style.cssText="color:"+UI.textDim+";font:12px Segoe UI,system-ui;flex:0 0 auto"; footerRight.textContent="Page "+pageNo;
         footer.appendChild(fl); footer.appendChild(footerRight);
         page.appendChild(footer);
       }
@@ -437,6 +448,86 @@
                pagedHTML+
                "</body>";
       w.document.open(); w.document.write(html); w.document.close();
+    }
+    return { open };
+  })();
+  const HFEditor=(function(){
+    let uid=0;
+    function section(kind, titleText, description, enabled, html){
+      const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
+      const toggleRow=document.createElement("div"); applyStyles(toggleRow, WCfg.Style.hfToggleRow); wrap.appendChild(toggleRow);
+      const toggleId="weditor-hf-"+kind+"-"+(++uid);
+      const toggle=document.createElement("input"); toggle.type="checkbox"; toggle.id=toggleId; toggle.checked=!!enabled; toggle.style.transform="scale(1.2)"; toggle.style.marginRight="2px";
+      const labelWrap=document.createElement("label"); applyStyles(labelWrap, WCfg.Style.hfToggleLabel); labelWrap.setAttribute("for", toggleId);
+      labelWrap.appendChild(toggle);
+      const labelSpan=document.createElement("span"); labelSpan.textContent=titleText; labelWrap.appendChild(labelSpan);
+      toggleRow.appendChild(labelWrap);
+      const status=document.createElement("span"); status.style.cssText="font:12px/1.4 Segoe UI,system-ui;color:"+WCfg.UI.textDim+";text-transform:uppercase;letter-spacing:.04em"; toggleRow.appendChild(status);
+      const textarea=document.createElement("textarea"); applyStyles(textarea, WCfg.Style.hfTextarea); textarea.value=html;
+      textarea.setAttribute("aria-label", titleText+" HTML"); wrap.appendChild(textarea);
+      if(description){
+        const hint=document.createElement("div"); applyStyles(hint, WCfg.Style.hfHint); hint.innerHTML=description;
+        const codes=hint.querySelectorAll("code");
+        for(let i=0;i<codes.length;i++){ const code=codes[i]; code.style.background="#f3f2f1"; code.style.borderRadius="4px"; code.style.padding="2px 6px"; code.style.fontFamily="ui-monospace,monospace"; code.style.fontSize="12px"; }
+        wrap.appendChild(hint);
+      }
+      function sync(){ const on=!!toggle.checked; textarea.disabled=!on; textarea.style.opacity=on?"1":"0.55"; status.textContent = on?"Enabled":"Disabled"; }
+      toggle.addEventListener("change", sync);
+      sync();
+      return { el:wrap, toggle, textarea };
+    }
+    function open(inst, ctx){
+      A11y.lockScroll();
+      const bg=document.createElement("div"); applyStyles(bg, WCfg.Style.modalBg);
+      const panel=document.createElement("div"); applyStyles(panel, WCfg.Style.hfModal); panel.setAttribute("role","dialog"); panel.setAttribute("aria-modal","true"); panel.setAttribute("tabindex","-1");
+      const head=document.createElement("div"); applyStyles(head, WCfg.Style.hfHead);
+      const title=document.createElement("h2"); applyStyles(title, WCfg.Style.hfTitle); title.id="weditor-hf-title"; title.textContent="Header & Footer";
+      head.appendChild(title);
+      const closeBtn=document.createElement("button"); closeBtn.type="button"; closeBtn.innerHTML="&times;"; applyStyles(closeBtn, WCfg.Style.hfClose); closeBtn.setAttribute("aria-label","Close header and footer dialog");
+      closeBtn.onmouseenter=function(){ closeBtn.style.background="#f3f2f1"; };
+      closeBtn.onmouseleave=function(){ closeBtn.style.background="transparent"; };
+      head.appendChild(closeBtn);
+      panel.appendChild(head);
+      panel.setAttribute("aria-labelledby", title.id);
+      const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
+      const tokenHint="Tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
+      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML);
+      const footerSection=section("footer","Footer", tokenHint+" · Right slot auto shows page counter", inst.footerEnabled, inst.footerHTML);
+      body.appendChild(headerSection.el);
+      body.appendChild(footerSection.el);
+      panel.appendChild(body);
+      const footer=document.createElement("div"); applyStyles(footer, WCfg.Style.hfFooter);
+      const cancel=WDom.btn("Cancel", false, "Dismiss without saving");
+      const save=WDom.btn("Save changes", true, "Apply header and footer");
+      footer.appendChild(cancel);
+      footer.appendChild(save);
+      panel.appendChild(footer);
+      bg.appendChild(panel);
+      document.body.appendChild(bg);
+      panel.focus();
+      function close(){ if(bg.parentNode) bg.parentNode.removeChild(bg); A11y.unlockScroll(); document.removeEventListener("keydown", onKey); }
+      function saveAndClose(){
+        inst.headerEnabled = !!headerSection.toggle.checked;
+        inst.footerEnabled = !!footerSection.toggle.checked;
+        inst.headerHTML = Sanitizer.clean(headerSection.textarea.value);
+        inst.footerHTML = Sanitizer.clean(footerSection.textarea.value);
+        if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+        OutputBinding.syncDebounced(inst);
+        close();
+      }
+      function onKey(ev){ if(ev.key === "Escape"){ ev.preventDefault(); close(); } if(ev.key === "Enter" && (ev.metaKey||ev.ctrlKey)){ ev.preventDefault(); saveAndClose(); } }
+      document.addEventListener("keydown", onKey);
+      closeBtn.onclick=function(){ close(); };
+      cancel.onclick=function(){ close(); };
+      save.onclick=function(){ saveAndClose(); };
+      bg.addEventListener("click", function(e){ if(e.target===bg) close(); });
+      window.setTimeout(function(){
+        headerSection.textarea.focus();
+        if(headerSection.textarea.setSelectionRange){
+          const len=headerSection.textarea.value.length;
+          headerSection.textarea.setSelectionRange(len, len);
+        }
+      }, 0);
     }
     return { open };
   })();
@@ -561,10 +652,7 @@
     "break.remove":{ label:"Remove Break", kind:"button", ariaLabel:"Remove page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; if(Breaks.remove(target)){ if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
-      run:function(inst, arg){ const h=prompt("Header HTML (tokens: {{page}} {{total}} {{date}})", inst.headerHTML); if(h==null) return;
-                               const f=prompt("Footer HTML (tokens: {{page}} {{total}} {{date}})", inst.footerHTML); if(f==null) return;
-                               inst.headerHTML=Sanitizer.clean(h); inst.footerHTML=Sanitizer.clean(f);
-                               if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
+      run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
       run:function(inst){ inst.headerEnabled = !inst.headerEnabled; OutputBinding.syncDebounced(inst); } },
     "toggle.footer":{ label:"Footer", kind:"toggle", ariaLabel:"Toggle footer", getActive:function(inst){ return !!inst.footerEnabled; },
@@ -606,7 +694,7 @@
       const instances=[]; for(let k=0;k<nodes.length;k++){ instances.push(new WEditorInstance(nodes[k])); } return instances;
     }
     function from(el){ return new WEditorInstance(el); }
-    return { initAll, from, version:"1.6.0" };
+    return { initAll, from, version:"1.7.0" };
   })();
   window.WEditor=WEditor;
   document.addEventListener("DOMContentLoaded", function(){ WEditor.initAll(); });
