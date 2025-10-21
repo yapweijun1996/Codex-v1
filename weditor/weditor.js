@@ -464,6 +464,7 @@
       const computed=window.getComputedStyle(editor);
       if(computed.position === "static") editor.style.position="relative";
       const overlay=document.createElement("div");
+      overlay.setAttribute("data-weditor-overlay","1");
       overlay.style.position="absolute";
       overlay.style.border="1px dashed "+WCfg.UI.brand;
       overlay.style.borderRadius="4px";
@@ -474,6 +475,7 @@
       overlay.style.left="0";
       overlay.style.top="0";
       const handle=document.createElement("div");
+      handle.setAttribute("data-weditor-overlay","1");
       handle.style.position="absolute";
       handle.style.width="14px";
       handle.style.height="14px";
@@ -530,7 +532,19 @@
       window.addEventListener("resize", scheduleOverlay);
       editor.addEventListener("blur", hideOverlay);
       editor.addEventListener("keydown", function(ev){ if(ev.key==="Escape") hideOverlay(); });
-      const observer=new MutationObserver(function(){ if(activeImg && !editor.contains(activeImg)) hideOverlay(); scheduleOverlay(); });
+      const observer=new MutationObserver(function(records){
+        let relevant=false;
+        for(let i=0;i<records.length;i++){
+          const target=records[i].target;
+          if(!target) continue;
+          if(target.nodeType===1 && target.getAttribute && target.getAttribute("data-weditor-overlay")){ continue; }
+          if(overlay.contains(target)){ continue; }
+          relevant=true; break;
+        }
+        if(!relevant) return;
+        if(activeImg && !editor.contains(activeImg)) hideOverlay();
+        scheduleOverlay();
+      });
       observer.observe(editor, { childList:true, subtree:true, attributes:true });
       let resizing=false;
       handle.addEventListener("pointerdown", function(ev){
@@ -703,7 +717,15 @@
         toggle,
         editor,
         focus:function(){ if(toggle.checked){ WDom.placeCaretAtEnd(editor); } else { editor.blur(); } },
-        getHTML:function(){ Normalizer.fixStructure(editor); return editor.innerHTML; }
+        getHTML:function(){
+          Normalizer.fixStructure(editor);
+          const clone=editor.cloneNode(true);
+          const overlays=clone.querySelectorAll('[data-weditor-overlay]');
+          for(let i=0;i<overlays.length;i++){ const el=overlays[i]; if(el && el.parentNode) el.parentNode.removeChild(el); }
+          const actives=clone.querySelectorAll('.weditor-hf-img-active');
+          for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
+          return clone.innerHTML;
+        }
       };
     }
     function open(inst, ctx){
