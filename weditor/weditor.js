@@ -27,7 +27,7 @@
       hfSection:{ display:"flex", flexDirection:"column", gap:"10px", padding:"16px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#faf9f8" },
       hfToggleRow:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfToggleLabel:{ font:"14px/1.4 Segoe UI,system-ui", color:UI.text, display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" },
-      hfTextarea:{ width:"100%", minHeight:"96px", border:"1px solid "+UI.borderSubtle, borderRadius:"8px", padding:"10px 12px", font:"13px/1.5 ui-monospace,monospace", color:UI.text, resize:"vertical", background:"#fff" },
+      hfTextarea:{ width:"100%", minHeight:"96px", border:"1px solid "+UI.borderSubtle, borderRadius:"8px", padding:"10px 12px", font:"13px/1.5 ui-monospace,monospace", color:UI.text, resize:"vertical", background:"#fff", boxSizing:"border-box" },
       hfHint:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
@@ -465,6 +465,63 @@
       const status=document.createElement("span"); status.style.cssText="font:12px/1.4 Segoe UI,system-ui;color:"+WCfg.UI.textDim+";text-transform:uppercase;letter-spacing:.04em"; toggleRow.appendChild(status);
       const textarea=document.createElement("textarea"); applyStyles(textarea, WCfg.Style.hfTextarea); textarea.value=html;
       textarea.setAttribute("aria-label", titleText+" HTML"); wrap.appendChild(textarea);
+      const uploaderRow=document.createElement("div");
+      uploaderRow.style.display="flex";
+      uploaderRow.style.alignItems="center";
+      uploaderRow.style.flexWrap="wrap";
+      uploaderRow.style.gap="10px";
+      uploaderRow.style.marginTop="6px";
+      const uploadBtn=WDom.btn("Insert image", false, "Upload PNG or JPG");
+      uploadBtn.style.padding="6px 10px";
+      uploadBtn.style.fontSize="12px";
+      uploadBtn.style.lineHeight="1.2";
+      uploadBtn.style.alignSelf="flex-start";
+      const fileInput=document.createElement("input");
+      fileInput.type="file";
+      fileInput.accept="image/png,image/jpeg";
+      fileInput.style.display="none";
+      const tip=document.createElement("div");
+      tip.textContent="Upload .png / .jpg 會自動插入 <img> 標籤";
+      tip.style.font="12px/1.4 Segoe UI,system-ui";
+      tip.style.color=WCfg.UI.textDim;
+      uploaderRow.appendChild(uploadBtn);
+      uploaderRow.appendChild(tip);
+      wrap.appendChild(uploaderRow);
+      wrap.appendChild(fileInput);
+      function insertSnippet(snippet){
+        textarea.focus();
+        try{
+          const start=textarea.selectionStart||0;
+          const end=textarea.selectionEnd||0;
+          if(typeof textarea.setRangeText==="function"){
+            textarea.setRangeText(snippet, start, end, "end");
+          } else {
+            const value=textarea.value||"";
+            textarea.value=value.slice(0,start)+snippet+value.slice(end);
+          }
+          const caret=start+snippet.length;
+          if(typeof textarea.setSelectionRange==="function") textarea.setSelectionRange(caret, caret);
+        }catch(err){ textarea.value += (textarea.value?"\n":"")+snippet; }
+      }
+      function toAltText(name){
+        if(!name) return "Uploaded image";
+        return name.replace(/\.[^.]+$/,"").replace(/[^a-z0-9\s_-]/gi," ").trim()||"Uploaded image";
+      }
+      uploadBtn.addEventListener("click", function(){ fileInput.value=""; fileInput.click(); });
+      fileInput.addEventListener("change", function(){
+        const file=(fileInput.files&&fileInput.files[0])||null;
+        if(!file) return;
+        if(file.type && !(file.type==="image/png" || file.type==="image/jpeg")) return;
+        const reader=new FileReader();
+        reader.onload=function(){
+          const dataUrl=reader.result;
+          if(typeof dataUrl!=="string") return;
+          const alt=toAltText(file.name||"");
+          const snippet='<img src="'+dataUrl+'" alt="'+alt+'" style="max-height:40px;object-fit:contain;">';
+          insertSnippet(snippet);
+        };
+        reader.readAsDataURL(file);
+      });
       if(description){
         const hint=document.createElement("div"); applyStyles(hint, WCfg.Style.hfHint); hint.innerHTML=description;
         const codes=hint.querySelectorAll("code");
