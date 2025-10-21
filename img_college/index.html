@@ -196,16 +196,48 @@
     });
   }
 
+  function findRootChild(img, root) {
+    let node = img;
+    while (node && node.parentNode) {
+      const parent = node.parentNode;
+      if (parent === root) {
+        if (node.classList && node.classList.contains('img_collage__tile')) {
+          return null;
+        }
+        return node;
+      }
+      if (!(parent instanceof HTMLElement)) break;
+      if (parent.classList && parent.classList.contains('img_collage__tile')) {
+        return null;
+      }
+      node = parent;
+    }
+    return null;
+  }
+
   function ensureTiles(root, imgs) {
     return imgs.map((img, index) => {
+      const rootChild = findRootChild(img, root);
       let tile = img.__collageTile;
-      if (!tile || tile.parentNode !== root) {
+      const needsNewTile = !tile || tile.parentNode !== root;
+
+      if (needsNewTile) {
         tile = document.createElement('div');
         tile.className = 'img_collage__tile';
-        root.insertBefore(tile, img);
-        tile.appendChild(img);
+        if (rootChild && rootChild.parentNode === root) {
+          root.insertBefore(tile, rootChild);
+          tile.appendChild(rootChild);
+        } else {
+          root.appendChild(tile);
+          tile.appendChild(img);
+        }
         img.__collageTile = tile;
+      } else if (rootChild && rootChild.parentNode !== tile) {
+        tile.appendChild(rootChild);
+      } else if (!tile.contains(img)) {
+        tile.appendChild(img);
       }
+
       tile.dataset.index = index;
       return tile;
     });
