@@ -16,6 +16,8 @@
       tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
+      fsTopActionWrap:{ position:"fixed", top:"18px", right:"18px", zIndex:"2147483001", display:"flex", alignItems:"center", justifyContent:"flex-end" },
+      fsTopActionBtn:{ boxShadow:"0 8px 24px rgba(0,0,0,.14)", borderRadius:"999px", padding:"10px 18px" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
       controlWrap:{ display:"inline-flex", alignItems:"center", gap:"6px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
@@ -1738,6 +1740,12 @@
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
+      const topActionWrap=document.createElement("div"); applyStyles(topActionWrap, WCfg.Style.fsTopActionWrap);
+      const topSaveClose=WDom.btn("Save & Close", true, "Save changes and close");
+      applyStyles(topSaveClose, WCfg.Style.fsTopActionBtn);
+      topSaveClose.onclick=function(e){ e.preventDefault(); ctx.saveClose(); };
+      topActionWrap.appendChild(topSaveClose);
+      bg.appendChild(topActionWrap);
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
       function layout(){
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
@@ -1816,6 +1824,7 @@
         bg.style.opacity = "0";
         window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
         bg.removeAttribute("data-weditor-modal");
+        if(topActionWrap.parentNode){ topActionWrap.parentNode.removeChild(topActionWrap); }
       }
       bg.__weditorClose = cleanup;
     }
