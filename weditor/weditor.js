@@ -64,6 +64,57 @@
     return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,Style };
   })();
   function applyStyles(el, styles){ for(const k in styles){ el.style[k]=styles[k]; } }
+  const StyleMirror=(function(){
+    const FALLBACK={
+      fontFamily:'"Segoe UI", system-ui, -apple-system, Arial, sans-serif',
+      fontSize:'15px',
+      lineHeight:'1.6',
+      color:WCfg.UI.text,
+      letterSpacing:'normal'
+    };
+    function cloneDefaults(){ return { fontFamily:FALLBACK.fontFamily, fontSize:FALLBACK.fontSize, lineHeight:FALLBACK.lineHeight, color:FALLBACK.color, letterSpacing:FALLBACK.letterSpacing }; }
+    function capture(el){
+      const style=cloneDefaults();
+      if(!el || !window.getComputedStyle){ return style; }
+      const computed=window.getComputedStyle(el);
+      if(computed.fontFamily && computed.fontFamily.trim()){ style.fontFamily=computed.fontFamily; }
+      if(computed.fontSize && computed.fontSize.trim()){ style.fontSize=computed.fontSize; }
+      const lh=computed.lineHeight && computed.lineHeight.trim();
+      if(lh && lh!=="normal" && lh!=="0") style.lineHeight=lh;
+      const color=computed.color && computed.color.trim();
+      if(color) style.color=color;
+      const letterSpacing=computed.letterSpacing && computed.letterSpacing.trim();
+      if(letterSpacing && letterSpacing!=="normal" && letterSpacing!=="0px") style.letterSpacing=letterSpacing;
+      return style;
+    }
+    function apply(target, style){
+      if(!target || !style) return;
+      if(style.fontFamily) target.style.fontFamily=style.fontFamily;
+      if(style.fontSize) target.style.fontSize=style.fontSize;
+      if(style.lineHeight) target.style.lineHeight=style.lineHeight;
+      if(style.color) target.style.color=style.color;
+      if(style.letterSpacing){ target.style.letterSpacing=style.letterSpacing; }
+    }
+    function merge(base, override){
+      const merged=cloneDefaults();
+      if(base && typeof base==="object"){
+        if(base.fontFamily) merged.fontFamily=base.fontFamily;
+        if(base.fontSize) merged.fontSize=base.fontSize;
+        if(base.lineHeight) merged.lineHeight=base.lineHeight;
+        if(base.color) merged.color=base.color;
+        if(base.letterSpacing) merged.letterSpacing=base.letterSpacing;
+      }
+      if(override && typeof override==="object"){
+        if(override.fontFamily) merged.fontFamily=override.fontFamily;
+        if(override.fontSize) merged.fontSize=override.fontSize;
+        if(override.lineHeight) merged.lineHeight=override.lineHeight;
+        if(override.color) merged.color=override.color;
+        if(override.letterSpacing) merged.letterSpacing=override.letterSpacing;
+      }
+      return merged;
+    }
+    return { capture, apply, merge, defaults:cloneDefaults };
+  })();
   const WDom=(function(){
     function btn(label, primary, title){
       const b=document.createElement("button"); b.type="button"; b.textContent=label; if(title) b.title=title;
@@ -370,6 +421,7 @@
       const headerHeight=opts.headerHeight!=null ? opts.headerHeight : (headerEnabled?WCfg.HDR_H:0);
       const footerHeight=opts.footerHeight!=null ? opts.footerHeight : (footerEnabled?WCfg.FTR_H:0);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
+      const textStyle=StyleMirror.merge(null, opts.textStyle);
       const page=document.createElement("div");
       page.setAttribute("data-page", String(pageNo));
       page.style.cssText="width:"+A4W+"px;height:"+A4H+"px;"+Style.pageFrame+";";
@@ -391,7 +443,14 @@
       }
       const content=document.createElement("div");
       content.className="weditor_page-content";
-      content.style.cssText="position:absolute;left:0;right:0;top:"+(headerEnabled?headerHeight:0)+"px;bottom:"+(footerEnabled?footerHeight:0)+"px;padding:"+PAD+"px;overflow:hidden;font:14px/1.6 Segoe UI,system-ui;color:"+UI.text;
+      content.style.position="absolute";
+      content.style.left="0";
+      content.style.right="0";
+      content.style.top=(headerEnabled?headerHeight:0)+"px";
+      content.style.bottom=(footerEnabled?footerHeight:0)+"px";
+      content.style.padding=PAD+"px";
+      content.style.overflow="hidden";
+      StyleMirror.apply(content, textStyle);
       page.appendChild(content);
       if(footerEnabled){
         footer=document.createElement("div");
@@ -460,6 +519,7 @@
       const headerAlign=HFAlign.normalize(state.headerAlign);
       const footerAlign=HFAlign.normalize(state.footerAlign);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
+      const textStyle=StyleMirror.capture(state && state.el ? state.el : null);
       const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign);
       const headerHeight=layout.headerHeight;
       const footerHeight=layout.footerHeight;
@@ -488,12 +548,12 @@
       const CONTENT_WIDTH=A4W - 2*PAD;
       const measWrap=document.createElement("div"); measWrap.style.cssText="position:absolute;left:-99999px;top:-99999px;visibility:hidden;width:"+A4W+"px";
       document.body.appendChild(measWrap);
-      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign});
+      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle});
       const measContent=measPage.content; measWrap.appendChild(measPage.page);
-      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign}); let used=0;
+      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); let used=0;
       function hasContent(pg){ return pg && pg.content && pg.content.childNodes && pg.content.childNodes.length>0; }
       function push(force){ if(force || hasContent(cur) || cur.explicit){ pages.push(cur); } }
-      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign}); cur.explicit=!!force; used=0; }
+      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); cur.explicit=!!force; used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
         for(let k=0;k<imgs.length;k++){
