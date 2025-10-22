@@ -16,7 +16,7 @@
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"#fff", zIndex:"9999", display:"flex", flexDirection:"column", alignItems:"stretch", padding:"0", opacity:"0", transition:"opacity .2s ease" },
       modal:{ width:"100%", maxWidth:"none", height:"100%", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"0", boxShadow:"none", overflow:"hidden" },
       split:{ flex:"1", minHeight:"0", display:"flex", background:"#fff" },
-      left:{ flex:"1", minWidth:"0", overflow:"auto", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", background:"#fff" },
+      left:{ flex:"1", minWidth:"0", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", alignContent:"start", background:"#fff", overflowX:"hidden", overflowY:"auto" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
@@ -1108,22 +1108,67 @@
       modal.appendChild(cmdBarWrap); modal.appendChild(split); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
       window.setTimeout(function(){ area.focus(); },0);
-      layout(); const onR=function(){ layout(); }; window.addEventListener("resize", onR);
+      layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); }, 0); });
       let t=null; area.addEventListener("input", function(){ if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
       render();
-      function render(){
-        left.innerHTML="";
+      function render(attempt){
+        attempt = attempt || 0;
         const out=Paginator.paginate(area.innerHTML, inst);
+        const computed=window.getComputedStyle(left);
+        const paddingLeft=parseFloat(computed.paddingLeft||"0")||0;
+        const paddingRight=parseFloat(computed.paddingRight||"0")||0;
+        const available=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
+        let scale=available>0 ? Math.min(1, available / WCfg.A4W) : 1;
+        if(!isFinite(scale) || scale<=0){ scale=1; }
+        const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
+        const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
+        const frag=document.createDocumentFragment();
         for(let i=0;i<out.pages.length;i++){
-          left.appendChild(out.pages[i]);
+          const page=out.pages[i];
+          page.style.margin="0";
+          page.style.transform="";
+          page.style.transformOrigin="";
+          const wrap=document.createElement("div");
+          wrap.style.width=WCfg.A4W+"px";
+          wrap.style.height=WCfg.A4H+"px";
+          wrap.style.transformOrigin="top left";
+          wrap.style.transform="scale("+scale+")";
+          wrap.style.display="flex";
+          wrap.style.alignItems="flex-start";
+          wrap.style.justifyContent="flex-start";
+          wrap.style.position="absolute";
+          wrap.style.left="0";
+          wrap.style.top="0";
+          wrap.style.maxWidth="100%";
+          wrap.style.overflow="visible";
+          const outer=document.createElement("div");
+          outer.style.width=scaledWidth+"px";
+          outer.style.height=scaledHeight+"px";
+          outer.style.display="block";
+          outer.style.position="relative";
+          outer.style.maxWidth="100%";
+          outer.style.margin="0 auto";
+          outer.style.overflow="visible";
+          wrap.appendChild(page);
+          outer.appendChild(wrap);
+          frag.appendChild(outer);
           if(i<out.pages.length-1){
             const br=document.createElement("div");
             br.textContent="Page Break";
-            br.style.cssText="width:"+WCfg.A4W+"px;text-align:center;color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;margin:6px 0 2px 0;border-top:1px dashed "+WCfg.UI.borderSubtle+";opacity:.7";
-            left.appendChild(br);
+            br.style.cssText="width:"+scaledWidth+"px;text-align:center;color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;margin:6px 0 2px 0;border-top:1px dashed "+WCfg.UI.borderSubtle+";opacity:.7";
+            frag.appendChild(br);
           }
         }
+        left.innerHTML="";
+        left.appendChild(frag);
+        if(attempt>=2){ return; }
+        window.requestAnimationFrame(function(){
+          const adjustedAvailable=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
+          if(Math.abs(adjustedAvailable - available)>0.5){
+            render(attempt+1);
+          }
+        });
       }
       function cleanup(){
         window.removeEventListener("resize", onR);
