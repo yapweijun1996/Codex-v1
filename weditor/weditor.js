@@ -28,10 +28,10 @@
       hfHead:{ padding:"18px 22px", borderBottom:"1px solid "+UI.border, display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
       hfClose:{ border:"0", background:"transparent", color:UI.textDim, font:"20px/1 Segoe UI,system-ui", cursor:"pointer", padding:"4px", borderRadius:"6px" },
-      hfBody:{ padding:"20px", display:"grid", gap:"18px", overflowY:"auto", flex:"1", minHeight:"0" },
-      hfSection:{ display:"flex", flexDirection:"column", gap:"10px", padding:"16px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#faf9f8" },
+      hfBody:{ padding:"20px", display:"grid", gap:"18px", overflowY:"auto", flex:"1", minHeight:"0", gridTemplateColumns:"minmax(0,1fr)" },
+      hfSection:{ display:"flex", flexDirection:"column", gap:"12px", padding:"18px", border:"1px solid "+UI.borderSubtle, borderRadius:"12px", background:"#faf9f8" },
       hfToggleRow:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
-      hfToggleLabel:{ font:"14px/1.4 Segoe UI,system-ui", color:UI.text, display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" },
+      hfToggleLabel:{ font:"15px/1.4 Segoe UI,system-ui", color:UI.text, display:"flex", alignItems:"center", gap:"10px", cursor:"pointer", fontWeight:"600" },
       hfAlignRow:{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", padding:"4px 2px 0" },
       hfAlignGroup:{ display:"inline-flex", border:"1px solid "+UI.borderSubtle, borderRadius:"999px", overflow:"hidden", background:"#fff" },
       hfAlignBtn:{ border:"0", background:"transparent", padding:"6px 12px", font:"12px/1.2 Segoe UI,system-ui", color:UI.textDim, cursor:"pointer", transition:"all .2s ease", minWidth:"48px" },
@@ -41,7 +41,25 @@
       hfCanvasStage:{ position:"relative", width:"100%", display:"flex", justifyContent:"center" },
       hfCanvasPage:{ position:"relative", width:"100%", maxWidth:innerHFWidth+"px", background:"#fff", border:"1px dashed "+UI.borderSubtle, borderRadius:"10px", padding:"12px", boxSizing:"border-box", boxShadow:"inset 0 0 0 1px rgba(15,108,189,.08)" },
       hfHint:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
-      hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
+      hfTokenRow:{ display:"flex", flexDirection:"column", gap:"6px" },
+      hfTokenChipWrap:{ display:"flex", flexWrap:"wrap", gap:"8px" },
+      hfTokenChip:{ border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, padding:"4px 10px", borderRadius:"999px", font:"12px/1.3 Segoe UI,system-ui", cursor:"pointer", transition:"all .2s ease" },
+      hfTemplateWrap:{ display:"flex", flexDirection:"column", gap:"8px", background:"#fff", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", padding:"12px" },
+      hfTemplateTitle:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim, textTransform:"uppercase", letterSpacing:".04em" },
+      hfTemplateGrid:{ display:"grid", gap:"10px" },
+      hfTemplateCard:{ border:"1px solid "+UI.borderSubtle, borderRadius:"10px", padding:"12px", background:"#fafafa", textAlign:"left", cursor:"pointer", transition:"all .2s ease", display:"flex", flexDirection:"column", gap:"6px" },
+      hfTemplateLabel:{ font:"13px/1.3 Segoe UI,system-ui", color:UI.text, fontWeight:"600" },
+      hfTemplateDesc:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      hfPreviewPanel:{ display:"flex", flexDirection:"column", gap:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"14px", padding:"16px", background:"#fff", boxShadow:"0 12px 32px rgba(0,0,0,.08)" },
+      hfPreviewTitle:{ font:"14px/1.3 Segoe UI,system-ui", color:UI.text, fontWeight:"600" },
+      hfPreviewSubtitle:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      hfPreviewPage:{ border:"1px solid "+UI.borderSubtle, borderRadius:"12px", background:"#fff", padding:"12px", display:"flex", flexDirection:"column", gap:"12px", minHeight:"240px", boxShadow:"inset 0 1px 6px rgba(0,0,0,.08)" },
+      hfPreviewHeader:{ minHeight:"48px", borderBottom:"1px dashed "+UI.borderSubtle, display:"flex", alignItems:"center", justifyContent:"center", padding:"8px", font:"13px/1.4 Segoe UI,system-ui", color:UI.text, gap:"8px", flexWrap:"wrap" },
+      hfPreviewBody:{ flex:"1", background:"repeating-linear-gradient( to bottom, rgba(15,108,189,.08), rgba(15,108,189,.08) 1px, transparent 1px, transparent 18px )", borderRadius:"8px", padding:"12px", display:"flex", flexDirection:"column", gap:"8px", justifyContent:"center", color:UI.textDim, font:"12px/1.4 Segoe UI,system-ui", textAlign:"center" },
+      hfPreviewFooter:{ minHeight:"40px", borderTop:"1px dashed "+UI.borderSubtle, display:"flex", alignItems:"center", justifyContent:"center", padding:"8px", font:"12px/1.4 Segoe UI,system-ui", color:UI.text, gap:"8px", flexWrap:"wrap" },
+      hfPreviewEmpty:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim, fontStyle:"italic" },
+      hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" },
+      hfFormWrap:{ display:"grid", gap:"18px", alignContent:"start" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,Style };
   })();
@@ -747,19 +765,108 @@
     let uid=0;
     const TOKEN_OPTIONS=[
       { value:"{{date}}", label:"📅 Date 日期" },
-      { value:"{{page}}", label:"📄 Page Number 頁碼" },
+      { value:"{{page}}", label:"📄 Page 頁碼" },
       { value:"{{total}}", label:"📘 Total Pages 總頁數" }
     ];
-    function section(kind, titleText, description, enabled, html, align){
+    const HEADER_TEMPLATES=[
+      {
+        id:"letterhead",
+        label:"🏢 Company Letterhead 公司抬頭",
+        desc:"Logo + 地址 + 聯絡方式",
+        align:"left",
+        html:'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;width:100%;">'+
+          '<div style="display:flex;align-items:center;gap:12px;">'+
+            '<div style="width:38px;height:38px;border-radius:10px;background:#0f6cbd;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;">AC</div>'+
+            '<div><div style="font-weight:600;font-size:15px;">Acme Corporation</div><div style="font-size:12px;color:#666;">Innovation Partner</div></div>'+
+          '</div>'+
+          '<div style="font-size:12px;line-height:1.5;text-align:right;color:#444;">123 Business Park<br>+1 (555) 000-1234<br>hello@acme.com</div>'+
+        '</div>'
+      },
+      {
+        id:"invoice",
+        label:"🧾 Invoice / Quotation",
+        desc:"左 Logo · 右 發票資訊",
+        align:"left",
+        html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;">'+
+          '<div style="display:flex;flex-direction:column;gap:4px;">'+
+            '<div style="font-size:12px;color:#666;">Prepared for</div>'+
+            '<div style="font-weight:600;font-size:15px;">Client Name</div>'+
+          '</div>'+
+          '<div style="text-align:right;font-size:12px;line-height:1.5;color:#444;">Invoice No. <strong>INV-1024</strong><br>Date {{date}}</div>'+
+        '</div>'
+      },
+      {
+        id:"report",
+        label:"📊 Project Report 報告",
+        desc:"置中專案名稱 + 日期",
+        align:"center",
+        html:'<div style="width:100%;text-align:center;display:flex;flex-direction:column;gap:4px;">'+
+          '<div style="font-weight:700;font-size:16px;letter-spacing:.04em;text-transform:uppercase;">Project Atlas Summary</div>'+
+          '<div style="font-size:12px;color:#555;">Updated {{date}}</div>'+
+        '</div>'
+      },
+      {
+        id:"meeting",
+        label:"🗓️ Meeting Minutes 會議紀錄",
+        desc:"左專案 · 右日期/地點",
+        align:"left",
+        html:'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;width:100%;">'+
+          '<div><div style="font-size:12px;color:#666;">Meeting</div><div style="font-weight:600;font-size:15px;">Weekly Sync</div></div>'+
+          '<div style="text-align:right;font-size:12px;color:#444;">{{date}} · HQ Room 3A</div>'+
+        '</div>'
+      }
+    ];
+    const FOOTER_TEMPLATES=[
+      {
+        id:"invoice_footer",
+        label:"📄 Invoice Footer",
+        desc:"左致謝 · 右 頁碼",
+        align:"right",
+        html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;">'+
+          '<span style="font-size:12px;color:#444;">Thank you for your business!</span>'+
+          '<span style="font-weight:600;">Page {{page}} of {{total}}</span>'+
+        '</div>'
+      },
+      {
+        id:"confidential",
+        label:"🔒 Confidential 保密",
+        desc:"置中保密聲明",
+        align:"center",
+        html:'<div style="width:100%;text-align:center;font-size:12px;">Confidential · Internal Use Only · {{date}}</div>'
+      },
+      {
+        id:"contact",
+        label:"☎️ Contact Info",
+        desc:"左地址 · 右網站",
+        align:"left",
+        html:'<div style="display:flex;justify-content:space-between;gap:16px;width:100%;">'+
+          '<span style="font-size:12px;color:#444;">Acme Corp · 123 Business Park · +1 (555) 000-1234</span>'+
+          '<span style="font-size:12px;color:#0f6cbd;">www.acme.com</span>'+
+        '</div>'
+      },
+      {
+        id:"project_version",
+        label:"📌 Report Version",
+        desc:"左版本 · 右更新時間",
+        align:"right",
+        html:'<div style="display:flex;justify-content:space-between;gap:12px;width:100%;">'+
+          '<span style="font-size:12px;color:#444;">Version v1.2</span>'+
+          '<span style="font-size:12px;color:#444;">Updated {{date}}</span>'+
+        '</div>'
+      }
+    ];
+    function section(kind, titleText, description, enabled, html, align, onChange){
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
+      const interactiveControls=[];
+      function registerControl(btn){ interactiveControls.push(btn); return btn; }
       const toggleRow=document.createElement("div"); applyStyles(toggleRow, WCfg.Style.hfToggleRow); wrap.appendChild(toggleRow);
       const toggleId="weditor-hf-"+kind+"-"+(++uid);
-      const toggle=document.createElement("input"); toggle.type="checkbox"; toggle.id=toggleId; toggle.checked=!!enabled; toggle.style.transform="scale(1.2)"; toggle.style.marginRight="2px";
+      const toggle=document.createElement("input"); toggle.type="checkbox"; toggle.id=toggleId; toggle.checked=!!enabled; toggle.style.transform="scale(1.1)"; toggle.style.marginRight="6px";
       const labelWrap=document.createElement("label"); applyStyles(labelWrap, WCfg.Style.hfToggleLabel); labelWrap.setAttribute("for", toggleId);
       labelWrap.appendChild(toggle);
       const labelSpan=document.createElement("span"); labelSpan.textContent=titleText; labelWrap.appendChild(labelSpan);
       toggleRow.appendChild(labelWrap);
-      const status=document.createElement("span"); status.style.cssText="font:12px/1.4 Segoe UI,system-ui;color:"+WCfg.UI.textDim+";text-transform:uppercase;letter-spacing:.04em"; toggleRow.appendChild(status);
+      const status=document.createElement("span"); status.style.cssText="font:12px/1.4 Segoe UI,system-ui;color:"+WCfg.UI.textDim+";letter-spacing:.04em;text-transform:uppercase"; toggleRow.appendChild(status);
       const editor=document.createElement("div"); applyStyles(editor, WCfg.Style.hfEditable);
       editor.setAttribute("role","textbox");
       editor.setAttribute("aria-label", titleText+" content");
@@ -768,6 +875,7 @@
       editor.tabIndex=0;
       editor.innerHTML = Sanitizer.clean(html || "");
       let alignValue=HFAlign.normalize(align);
+      function notifyChange(){ if(typeof onChange === "function") onChange(); }
       function enforceImageSizing(target){
         const imgs=target.querySelectorAll ? target.querySelectorAll("img") : [];
         for(let i=0;i<imgs.length;i++){
@@ -778,42 +886,31 @@
         }
       }
       enforceImageSizing(editor);
-      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); }, 0); });
-      editor.addEventListener("input", function(){ enforceImageSizing(editor); });
-      const tokenRow=document.createElement("div");
-      tokenRow.style.display="flex";
-      tokenRow.style.alignItems="center";
-      tokenRow.style.gap="8px";
-      tokenRow.style.flexWrap="wrap";
-      const tokenLabel=document.createElement("span");
-      tokenLabel.textContent="🧩 Insert Token 插入變量";
-      tokenLabel.style.font="12px/1.4 Segoe UI,system-ui";
-      tokenLabel.style.color=WCfg.UI.textDim;
-      tokenRow.appendChild(tokenLabel);
-      const tokenSelect=document.createElement("select");
-      tokenSelect.setAttribute("aria-label","Insert token for "+titleText);
-      tokenSelect.style.padding="6px 10px";
-      tokenSelect.style.border="1px solid "+WCfg.UI.borderSubtle;
-      tokenSelect.style.borderRadius="6px";
-      tokenSelect.style.font="12px/1.4 Segoe UI,system-ui";
-      tokenSelect.style.background="#fff";
-      const placeholderOption=document.createElement("option");
-      placeholderOption.value="";
-      placeholderOption.textContent="Choose token 選擇";
-      tokenSelect.appendChild(placeholderOption);
+      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); notifyChange(); }, 0); });
+      editor.addEventListener("input", function(){ enforceImageSizing(editor); notifyChange(); });
+      const tokenRow=document.createElement("div"); applyStyles(tokenRow, WCfg.Style.hfTokenRow);
+      const tokenLabel=document.createElement("div"); tokenLabel.textContent="Smart tokens 智能變數"; tokenLabel.style.font="12px/1.4 Segoe UI,system-ui"; tokenLabel.style.color=WCfg.UI.textDim; tokenRow.appendChild(tokenLabel);
+      const chipWrap=document.createElement("div"); applyStyles(chipWrap, WCfg.Style.hfTokenChipWrap);
       for(let i=0;i<TOKEN_OPTIONS.length;i++){
-        const opt=document.createElement("option");
-        opt.value=TOKEN_OPTIONS[i].value;
-        opt.textContent=TOKEN_OPTIONS[i].label;
-        tokenSelect.appendChild(opt);
+        const opt=TOKEN_OPTIONS[i];
+        const chip=document.createElement("button");
+        chip.type="button";
+        applyStyles(chip, WCfg.Style.hfTokenChip);
+        chip.textContent=opt.label;
+        chip.setAttribute("data-token", opt.value);
+        chip.addEventListener("mouseenter", function(){ chip.style.background="#f3f2f1"; });
+        chip.addEventListener("mouseleave", function(){ chip.style.background="#fff"; });
+        chip.addEventListener("click", function(){ if(!toggle.checked) return; insertSnippet(opt.value); notifyChange(); });
+        registerControl(chip);
+        chipWrap.appendChild(chip);
       }
-      tokenSelect.addEventListener("change", function(){
-        if(!toggle.checked){ tokenSelect.value=""; return; }
-        const tokenValue=tokenSelect.value;
-        if(tokenValue){ insertSnippet(tokenValue); }
-        tokenSelect.value="";
-      });
-      tokenRow.appendChild(tokenSelect);
+      tokenRow.appendChild(chipWrap);
+      if(description){
+        const hint=document.createElement("div"); applyStyles(hint, WCfg.Style.hfHint); hint.innerHTML=description;
+        const codes=hint.querySelectorAll("code");
+        for(let i=0;i<codes.length;i++){ const code=codes[i]; code.style.background="#f3f2f1"; code.style.borderRadius="4px"; code.style.padding="2px 6px"; code.style.fontFamily="ui-monospace,monospace"; code.style.fontSize="12px"; }
+        tokenRow.appendChild(hint);
+      }
       wrap.appendChild(tokenRow);
       const alignRow=document.createElement("div"); applyStyles(alignRow, WCfg.Style.hfAlignRow);
       const alignLabel=document.createElement("span");
@@ -839,87 +936,51 @@
         btn.setAttribute("data-align", opt.value);
         btn.setAttribute("aria-pressed","false");
         if(i<alignOptions.length-1) btn.style.borderRight="1px solid "+WCfg.UI.borderSubtle;
-        btn.addEventListener("click", function(){ if(!toggle.checked) return; setAlign(opt.value); });
+        btn.addEventListener("click", function(){ if(!toggle.checked) return; setAlign(opt.value); notifyChange(); });
         alignGroup.appendChild(btn);
         alignButtons.push({ value:opt.value, button:btn });
+        registerControl(btn);
       }
       alignRow.appendChild(alignLabel);
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
-      const templateButtons=[];
-      if(kind==="footer"){
-        const templateBox=document.createElement("div");
-        templateBox.style.display="flex";
-        templateBox.style.flexDirection="column";
-        templateBox.style.gap="8px";
-        templateBox.style.background="#fff";
-        templateBox.style.border="1px solid "+WCfg.UI.borderSubtle;
-        templateBox.style.borderRadius="8px";
-        templateBox.style.padding="12px";
-        const templateTitle=document.createElement("div");
-        templateTitle.textContent="Footer layout 模板 Preview";
-        templateTitle.style.font="12px/1.4 Segoe UI,system-ui";
-        templateTitle.style.fontWeight="600";
-        templateTitle.style.color=WCfg.UI.text;
-        templateBox.appendChild(templateTitle);
-        const templateHint=document.createElement("div");
-        templateHint.textContent="點擊套用：左 Confidential · 中 {{date}} · 右 Page {{page}} of {{total}}";
-        templateHint.style.font="11px/1.4 Segoe UI,system-ui";
-        templateHint.style.color=WCfg.UI.textDim;
-        templateBox.appendChild(templateHint);
-        const templateOption=document.createElement("button");
-        templateOption.type="button";
-        templateOption.style.display="flex";
-        templateOption.style.alignItems="center";
-        templateOption.style.justifyContent="space-between";
-        templateOption.style.gap="12px";
-        templateOption.style.padding="10px 12px";
-        templateOption.style.border="1px solid "+WCfg.UI.borderSubtle;
-        templateOption.style.borderRadius="6px";
-        templateOption.style.background="#fafafa";
-        templateOption.style.font="12px/1.4 Segoe UI,system-ui";
-        templateOption.style.color=WCfg.UI.text;
-        templateOption.style.cursor="pointer";
-        templateOption.innerHTML='<span style="flex:1;text-align:left;">左 · Confidential</span><span style="flex:1;text-align:center;">中 · {{date}}</span><span style="flex:1;text-align:right;">右 · Page {{page}} of {{total}}</span>';
-        const templateHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;">'+
-          '<span style="text-align:left;">Confidential</span>'+
-          '<span style="text-align:center;">{{date}}</span>'+
-          '<span style="text-align:right;">Page {{page}} of {{total}}</span>'+
-        '</div>';
-        templateOption.addEventListener("click", function(){
-          if(!toggle.checked) return;
-          editor.innerHTML=Sanitizer.clean(templateHTML);
-          Normalizer.fixStructure(editor);
-          enforceImageSizing(editor);
-          setAlign("left");
-          WDom.placeCaretAtEnd(editor);
-        });
-        templateOption.addEventListener("mouseenter", function(){ templateOption.style.background="#f3f2f1"; });
-        templateOption.addEventListener("mouseleave", function(){ templateOption.style.background="#fafafa"; });
-        templateButtons.push(templateOption);
-        templateBox.appendChild(templateOption);
-        wrap.appendChild(templateBox);
-      }
-      function updateAlignUI(){
-        HFAlign.applyEditor(editor, alignValue);
-        for(let i=0;i<alignButtons.length;i++){
-          const item=alignButtons[i];
-          const active=item.value===alignValue;
-          item.button.setAttribute("aria-pressed", active?"true":"false");
-          item.button.style.background=active?"#e6f2fb":"#fff";
-          item.button.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
-          item.button.style.fontWeight=active?"600":"400";
+      const templates = kind==="header" ? HEADER_TEMPLATES : FOOTER_TEMPLATES;
+      if(templates && templates.length){
+        const templateWrap=document.createElement("div"); applyStyles(templateWrap, WCfg.Style.hfTemplateWrap);
+        const templateTitle=document.createElement("div"); applyStyles(templateTitle, WCfg.Style.hfTemplateTitle);
+        templateTitle.textContent="Template gallery 模板庫";
+        templateWrap.appendChild(templateTitle);
+        const templateGrid=document.createElement("div"); applyStyles(templateGrid, WCfg.Style.hfTemplateGrid);
+        templateWrap.appendChild(templateGrid);
+        for(let t=0;t<templates.length;t++){
+          const tpl=templates[t];
+          const card=document.createElement("button");
+          card.type="button";
+          applyStyles(card, WCfg.Style.hfTemplateCard);
+          const cardLabel=document.createElement("div"); applyStyles(cardLabel, WCfg.Style.hfTemplateLabel); cardLabel.textContent=tpl.label;
+          const cardDesc=document.createElement("div"); applyStyles(cardDesc, WCfg.Style.hfTemplateDesc); cardDesc.textContent=tpl.desc;
+          card.appendChild(cardLabel);
+          card.appendChild(cardDesc);
+          card.addEventListener("mouseenter", function(){ card.style.background="#f3f2f1"; });
+          card.addEventListener("mouseleave", function(){ card.style.background="#fafafa"; });
+          card.addEventListener("click", function(){
+            if(!toggle.checked){ toggle.checked=true; sync(); }
+            editor.innerHTML=Sanitizer.clean(tpl.html||"");
+            alignValue=HFAlign.normalize(tpl.align||alignValue);
+            updateAlignUI();
+            Normalizer.fixStructure(editor);
+            enforceImageSizing(editor);
+            WDom.placeCaretAtEnd(editor);
+            notifyChange();
+          });
+          registerControl(card);
+          templateGrid.appendChild(card);
         }
+        wrap.appendChild(templateWrap);
       }
-      function setAlign(next){
-        const norm=HFAlign.normalize(next);
-        alignValue=norm;
-        updateAlignUI();
-      }
-      updateAlignUI();
       const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.hfCanvas);
       const guide=document.createElement("div"); applyStyles(guide, WCfg.Style.hfCanvasGuide);
-      guide.textContent="PAGE WIDTH GUIDE · 可視寬度約 "+(WCfg.A4W-36)+"px";
+      guide.textContent="Editable area 可視寬度約 "+(WCfg.A4W-36)+"px";
       canvas.appendChild(guide);
       const stage=document.createElement("div"); applyStyles(stage, WCfg.Style.hfCanvasStage);
       const pageBox=document.createElement("div"); applyStyles(pageBox, WCfg.Style.hfCanvasPage);
@@ -933,7 +994,7 @@
       uploaderRow.style.flexWrap="wrap";
       uploaderRow.style.gap="10px";
       uploaderRow.style.marginTop="6px";
-      const uploadBtn=WDom.btn("Insert image", false, "Upload PNG or JPG");
+      const uploadBtn=registerControl(WDom.btn("Insert image 圖片", false, "Upload PNG or JPG"));
       uploadBtn.style.padding="6px 10px";
       uploadBtn.style.fontSize="12px";
       uploadBtn.style.lineHeight="1.2";
@@ -943,7 +1004,7 @@
       fileInput.accept="image/png,image/jpeg";
       fileInput.style.display="none";
       const tip=document.createElement("div");
-      tip.textContent="Upload .png / .jpg 會自動插入 <img>，可直接在上方編輯區拖曳調整";
+      tip.textContent="上傳 PNG / JPG → 自動插入，可拖曳調整大小";
       tip.style.font="12px/1.4 Segoe UI,system-ui";
       tip.style.color=WCfg.UI.textDim;
       uploaderRow.appendChild(uploadBtn);
@@ -996,46 +1057,46 @@
           const alt=toAltText(file.name||"");
           const snippet='<img src="'+dataUrl+'" alt="'+alt+'" style="max-width:100%;height:auto;object-fit:contain;">';
           insertSnippet(snippet);
+          notifyChange();
         };
         reader.readAsDataURL(file);
       });
-      if(description){
-        const hint=document.createElement("div"); applyStyles(hint, WCfg.Style.hfHint); hint.innerHTML=description;
-        const codes=hint.querySelectorAll("code");
-        for(let i=0;i<codes.length;i++){ const code=codes[i]; code.style.background="#f3f2f1"; code.style.borderRadius="4px"; code.style.padding="2px 6px"; code.style.fontFamily="ui-monospace,monospace"; code.style.fontSize="12px"; }
-        wrap.appendChild(hint);
+      function updateAlignUI(){
+        HFAlign.applyEditor(editor, alignValue);
+        for(let i=0;i<alignButtons.length;i++){
+          const item=alignButtons[i];
+          const active=item.value===alignValue;
+          item.button.setAttribute("aria-pressed", active?"true":"false");
+          item.button.style.background=active?"#e6f2fb":"#fff";
+          item.button.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
+          item.button.style.fontWeight=active?"600":"400";
+        }
       }
+      function setAlign(next){
+        const norm=HFAlign.normalize(next);
+        alignValue=norm;
+        updateAlignUI();
+      }
+      updateAlignUI();
       function sync(){
         const on=!!toggle.checked;
         editor.setAttribute("contenteditable", on?"true":"false");
         editor.setAttribute("aria-disabled", on?"false":"true");
         editor.tabIndex = on ? 0 : -1;
-        editor.style.opacity=on?"1":"0.55";
+        editor.style.opacity=on?"1":"0.45";
         editor.style.pointerEvents=on?"auto":"none";
         if(!on && editor.__weditorHideOverlay) editor.__weditorHideOverlay();
-        uploadBtn.disabled=!on;
-        uploadBtn.style.opacity=on?"1":"0.55";
-        uploadBtn.style.cursor=on?"pointer":"not-allowed";
+        for(let i=0;i<interactiveControls.length;i++){
+          const ctrl=interactiveControls[i];
+          ctrl.disabled=!on;
+          ctrl.style.opacity=on?"1":"0.55";
+          ctrl.style.cursor=on?"pointer":"not-allowed";
+        }
         fileInput.disabled=!on;
-        tokenSelect.disabled=!on;
-        tokenSelect.style.opacity=on?"1":"0.55";
-        tokenSelect.style.cursor=on?"pointer":"not-allowed";
-        for(let t=0;t<templateButtons.length;t++){
-          const btn=templateButtons[t];
-          btn.disabled=!on;
-          btn.style.opacity=on?"1":"0.55";
-          btn.style.cursor=on?"pointer":"not-allowed";
-        }
-        status.textContent = on?"Enabled":"Disabled";
-        for(let i=0;i<alignButtons.length;i++){
-          const btn=alignButtons[i].button;
-          btn.disabled=!on;
-          btn.style.opacity=on?"1":"0.55";
-          btn.style.cursor=on?"pointer":"not-allowed";
-        }
+        status.textContent = on?"ON · 已啟用":"OFF · 未顯示";
         updateAlignUI();
       }
-      toggle.addEventListener("change", sync);
+      toggle.addEventListener("change", function(){ sync(); notifyChange(); });
       sync();
       return {
         el:wrap,
@@ -1052,6 +1113,57 @@
           return clone.innerHTML;
         },
         getAlign:function(){ return alignValue; }
+      };
+    }
+    function createPreviewPanel(){
+      const wrap=document.createElement("aside"); applyStyles(wrap, WCfg.Style.hfPreviewPanel);
+      wrap.setAttribute("aria-live","polite");
+      wrap.setAttribute("aria-label","Header and footer live preview");
+      wrap.style.alignSelf="start";
+      const title=document.createElement("div"); applyStyles(title, WCfg.Style.hfPreviewTitle); title.textContent="Live preview 即時預覽"; wrap.appendChild(title);
+      const subtitle=document.createElement("div"); applyStyles(subtitle, WCfg.Style.hfPreviewSubtitle); subtitle.textContent="變數自動帶入 sample data"; wrap.appendChild(subtitle);
+      const page=document.createElement("div"); applyStyles(page, WCfg.Style.hfPreviewPage);
+      const header=document.createElement("div"); applyStyles(header, WCfg.Style.hfPreviewHeader);
+      const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfPreviewBody); body.innerHTML="<div>Document content 預覽頁面</div><div>即時更新</div>";
+      const footer=document.createElement("div"); applyStyles(footer, WCfg.Style.hfPreviewFooter);
+      page.appendChild(header);
+      page.appendChild(body);
+      page.appendChild(footer);
+      wrap.appendChild(page);
+      function makeEmpty(message){
+        const span=document.createElement("span"); applyStyles(span, WCfg.Style.hfPreviewEmpty); span.textContent=message; return span;
+      }
+      function applyContent(target, enabled, html, align, applyAlignFn, emptyMessage, disabledMessage){
+        target.innerHTML="";
+        if(!enabled){
+          target.style.opacity="0.55";
+          target.style.justifyContent="center";
+          target.style.textAlign="center";
+          target.appendChild(makeEmpty(disabledMessage));
+          return;
+        }
+        const sampleCtx={ page:1, total:12, date:new Date().toLocaleDateString() };
+        const clean=Sanitizer.clean(html||"");
+        const temp=document.createElement("div"); temp.innerHTML=clean;
+        Tokens.apply(temp, sampleCtx);
+        const rendered=temp.innerHTML.trim();
+        if(rendered){
+          target.innerHTML=rendered;
+        } else {
+          target.appendChild(makeEmpty(emptyMessage));
+        }
+        target.style.opacity="1";
+        applyAlignFn(target, align);
+        const norm=HFAlign.normalize(align);
+        target.style.justifyContent = norm==="center"?"center":(norm==="right"?"flex-end":"flex-start");
+        target.style.textAlign = norm;
+      }
+      return {
+        el:wrap,
+        update:function(state){
+          applyContent(header, state.headerEnabled, state.headerHTML, state.headerAlign, HFAlign.applyHeader, "Start typing header 開始編輯標頭", "Header hidden 未顯示");
+          applyContent(footer, state.footerEnabled, state.footerHTML, state.footerAlign, HFAlign.applyFooter, "Start typing footer 開始編輯頁尾", "Footer hidden 未顯示");
+        }
       };
     }
     function open(inst, ctx){
@@ -1075,12 +1187,31 @@
       panel.appendChild(head);
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
+      const previewPanel=createPreviewPanel();
+      const formWrap=document.createElement("div"); applyStyles(formWrap, WCfg.Style.hfFormWrap);
       const tokenHint="Tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
-      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
-      const footerSection=section("footer","Footer", tokenHint+" · Right slot auto shows page counter", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
-      body.appendChild(headerSection.el);
-      body.appendChild(footerSection.el);
+      let headerSection=null;
+      let footerSection=null;
+      function refreshPreview(){
+        if(!previewPanel) return;
+        if(!headerSection || !footerSection) return;
+        previewPanel.update({
+          headerEnabled: !!headerSection.toggle.checked,
+          headerHTML: Sanitizer.clean(headerSection.getHTML()),
+          headerAlign: headerSection.getAlign(),
+          footerEnabled: !!footerSection.toggle.checked,
+          footerHTML: Sanitizer.clean(footerSection.getHTML()),
+          footerAlign: footerSection.getAlign()
+        });
+      }
+      headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign, refreshPreview);
+      footerSection=section("footer","Footer", tokenHint+" · Right slot auto shows page counter", inst.footerEnabled, inst.footerHTML, inst.footerAlign, refreshPreview);
+      formWrap.appendChild(headerSection.el);
+      formWrap.appendChild(footerSection.el);
+      body.appendChild(formWrap);
+      body.appendChild(previewPanel.el);
       panel.appendChild(body);
+      refreshPreview();
       const footer=document.createElement("div"); applyStyles(footer, WCfg.Style.hfFooter);
       const cancel=WDom.btn("Cancel", false, "Dismiss without saving");
       const save=WDom.btn("Save changes", true, "Apply header and footer");
@@ -1102,6 +1233,10 @@
           panel.style.height="100%";
           panel.style.borderRadius="0";
           panel.style.boxShadow="none";
+          body.style.gridTemplateColumns="minmax(0,1fr)";
+          body.style.alignItems="stretch";
+          previewPanel.el.style.position="relative";
+          previewPanel.el.style.top="auto";
         } else {
           bg.style.alignItems="center";
           bg.style.justifyContent="center";
@@ -1112,6 +1247,10 @@
           panel.style.height="auto";
           panel.style.borderRadius=baseModalStyle.borderRadius||"14px";
           panel.style.boxShadow=baseModalStyle.boxShadow||"0 20px 44px rgba(0,0,0,.18)";
+          body.style.gridTemplateColumns="minmax(0,1fr) minmax(240px, 340px)";
+          body.style.alignItems="start";
+          previewPanel.el.style.position="sticky";
+          previewPanel.el.style.top="16px";
         }
       }
       applyLayout();
