@@ -15,6 +15,7 @@
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
+      select:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", font:"13px/1.2 Segoe UI,system-ui", cursor:"pointer", minHeight:"32px" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
@@ -129,10 +130,22 @@
       b.style.background = active?"#e6f2fb":"#fff"; b.style.borderColor = active?WCfg.UI.brand:"#c8c6c4";
       return b;
     }
+    function select(options){
+      const sel=document.createElement("select");
+      applyStyles(sel, WCfg.Style.select);
+      for(let i=0;i<(options||[]).length;i++){
+        const optMeta=options[i];
+        const opt=document.createElement("option");
+        opt.value=optMeta && optMeta.value!=null ? String(optMeta.value) : "";
+        opt.textContent=optMeta && optMeta.label!=null ? String(optMeta.label) : opt.value;
+        sel.appendChild(opt);
+      }
+      return sel;
+    }
     function title(text){ const d=document.createElement("div"); d.textContent=text; applyStyles(d, WCfg.Style.title); return d; }
     function placeCaretAtEnd(el){ el.focus(); const r=document.createRange(); r.selectNodeContents(el); r.collapse(false); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }
     function openBlank(){ const w=window.open("","_blank"); if(!w) alert("Please allow popups."); return w; }
-    return { btn,toggle,title,placeCaretAtEnd,openBlank };
+    return { btn,toggle,title,placeCaretAtEnd,openBlank,select };
   })();
   const A11y=(function(){
     let locks=0, prev="";
@@ -321,6 +334,114 @@
       }
     }
     return { fixStructure };
+  })();
+  const SelectionUtils=(function(){
+    function ensureEditable(inst){
+      if(!inst || !inst.el) return null;
+      const el=inst.el;
+      if(typeof el.focus==="function") el.focus();
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel){ return null; }
+      if(sel.rangeCount===0){
+        const range=el.ownerDocument.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        return range;
+      }
+      let range=sel.getRangeAt(0);
+      if(!el.contains(range.commonAncestorContainer)){
+        const fallback=el.ownerDocument.createRange();
+        fallback.selectNodeContents(el);
+        fallback.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(fallback);
+        range=fallback;
+      }
+      return range;
+    }
+    function currentRange(inst){
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(inst && inst.el && !inst.el.contains(range.commonAncestorContainer)) return null;
+      return range;
+    }
+    function focusNode(inst){
+      const range=currentRange(inst);
+      if(!range) return null;
+      let node=range.startContainer;
+      if(node && node.nodeType===3) node=node.parentNode;
+      if(node && inst && inst.el && !inst.el.contains(node)) return null;
+      return node || null;
+    }
+    function selectionIn(inst){
+      if(!inst || !inst.el) return false;
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel || sel.rangeCount===0) return false;
+      return inst.el.contains(sel.anchorNode);
+    }
+    return { ensureEditable, currentRange, focusNode, selectionIn };
+  })();
+  const InlineStyler=(function(){
+    function apply(inst, style){
+      const range=SelectionUtils.ensureEditable(inst);
+      if(!range) return false;
+      const doc=inst.el.ownerDocument;
+      if(!doc) return false;
+      if(range.collapsed){
+        const marker=doc.createElement("span");
+        for(const key in style){ if(Object.prototype.hasOwnProperty.call(style, key) && style[key]!=null){ marker.style[key]=style[key]; } }
+        marker.appendChild(doc.createTextNode("\u200B"));
+        range.insertNode(marker);
+        const textNode=marker.firstChild;
+        if(textNode){
+          range.setStart(textNode, textNode.nodeValue.length);
+          range.setEnd(textNode, textNode.nodeValue.length);
+        } else {
+          range.setStartAfter(marker);
+          range.setEndAfter(marker);
+        }
+        const sel=window.getSelection ? window.getSelection() : null;
+        if(sel){ sel.removeAllRanges(); sel.addRange(range); }
+        Normalizer.fixStructure(inst.el);
+        return true;
+      }
+      const wrapper=doc.createElement("span");
+      for(const key in style){ if(Object.prototype.hasOwnProperty.call(style, key) && style[key]!=null){ wrapper.style[key]=style[key]; } }
+      const fragment=range.extractContents();
+      wrapper.appendChild(fragment);
+      range.insertNode(wrapper);
+      range.selectNodeContents(wrapper);
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(sel){ sel.removeAllRanges(); sel.addRange(range); }
+      Normalizer.fixStructure(inst.el);
+      return true;
+    }
+    return { apply };
+  })();
+  const InlineCommand=(function(){
+    function exec(inst, command, value){
+      if(!inst || !inst.el) return false;
+      const doc=inst.el.ownerDocument;
+      if(!doc || typeof doc.execCommand!=="function") return false;
+      SelectionUtils.ensureEditable(inst);
+      let success=false;
+      try{ doc.execCommand("styleWithCSS", false, true); }catch(e){}
+      try{ success = !!doc.execCommand(command, false, value); }
+      catch(e){ success=false; }
+      Normalizer.fixStructure(inst.el);
+      return success;
+    }
+    function query(inst, command){
+      if(!inst || !inst.el) return false;
+      const doc=inst.el.ownerDocument;
+      if(!doc || typeof doc.queryCommandState!=="function") return false;
+      try{ return !!doc.queryCommandState(command); }
+      catch(e){ return false; }
+    }
+    return { exec, query };
   })();
   const HFAlign=(function(){
     const allowed={ left:"left", center:"center", right:"right" };
@@ -1533,8 +1654,33 @@
     return { resolve, sync, syncDebounced };
   })();
   const ToolbarFactory=(function(){
-    function createCommandButton(id, inst, ctx){
+    function createCommandButton(id, inst, ctx, refreshers){
       const meta=Commands[id]; if(!meta) return null;
+      if(meta.kind==="select"){
+        const control=WDom.select(meta.options||[]);
+        control.setAttribute("data-command", id);
+        control.setAttribute("aria-label", meta.ariaLabel || meta.label || id);
+        if(meta.title) control.title=meta.title;
+        const setValue=function(){
+          if(typeof meta.getValue==="function"){
+            const next=meta.getValue(inst, ctx);
+            if(next!=null){
+              control.value=String(next);
+              if(meta.stateKey && inst && inst.inlineState){ inst.inlineState[meta.stateKey]=next; }
+            }
+          } else if(meta.defaultValue!=null){
+            control.value=String(meta.defaultValue);
+          }
+        };
+        if(Array.isArray(refreshers)) refreshers.push(setValue);
+        control.onchange=function(e){
+          if(meta.run){ meta.run(inst, { event:e, ctx, value:e.target.value }); }
+          window.requestAnimationFrame(setValue);
+        };
+        if(typeof meta.decorate==="function") meta.decorate(control, inst);
+        setValue();
+        return control;
+      }
       const isToggle = meta.kind==="toggle";
       const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
       btn.setAttribute("data-command", id);
@@ -1549,6 +1695,7 @@
           btn.style.borderColor = active ? WCfg.UI.brand : "#c8c6c4";
         }
       };
+      if(typeof meta.decorate==="function") meta.decorate(btn, inst);
       return btn;
     }
     function build(container, config, inst, ctx){
@@ -1558,7 +1705,7 @@
       const bar=document.createElement("div"); applyStyles(bar, WCfg.Style.bar);
       const tabList=document.createElement("div"); applyStyles(tabList, WCfg.Style.tabList);
       const panelsWrap=document.createElement("div"); applyStyles(panelsWrap, WCfg.Style.tabPanels);
-      const tabButtons=[]; const tabPanels=[];
+      const tabButtons=[]; const tabPanels=[]; const refreshers=[];
       function setActive(index){
         if(index<0 || index>=tabButtons.length){ return; }
         for(let i=0;i<tabButtons.length;i++){
@@ -1615,7 +1762,7 @@
         panel.setAttribute("aria-hidden","true");
         const items=tab.items || [];
         for(let j=0;j<items.length;j++){
-          const cmdBtn=createCommandButton(items[j], inst, ctx);
+          const cmdBtn=createCommandButton(items[j], inst, ctx, refreshers);
           if(cmdBtn) panel.appendChild(cmdBtn);
         }
         tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
@@ -1656,6 +1803,39 @@
       bar.appendChild(tabList); bar.appendChild(panelsWrap);
       container.appendChild(bar);
       setActive(0);
+      if(refreshers.length){
+        const target=(ctx && ctx.area) ? ctx.area : inst.el;
+        const runRefreshers=function(){
+          if(!target || !document.contains(target)) return;
+          for(let k=0;k<refreshers.length;k++){
+            try{ refreshers[k](); }
+            catch(e){}
+          }
+        };
+        const onSelectionChange=function(){
+          const sel=window.getSelection ? window.getSelection() : null;
+          if(!sel || sel.rangeCount===0) return;
+          if(target && target.contains(sel.anchorNode)){ runRefreshers(); }
+        };
+        target.addEventListener("keyup", runRefreshers);
+        target.addEventListener("mouseup", runRefreshers);
+        target.addEventListener("input", runRefreshers);
+        document.addEventListener("selectionchange", onSelectionChange);
+        window.requestAnimationFrame(runRefreshers);
+        const cleanup=function(){
+          target.removeEventListener("keyup", runRefreshers);
+          target.removeEventListener("mouseup", runRefreshers);
+          target.removeEventListener("input", runRefreshers);
+          document.removeEventListener("selectionchange", onSelectionChange);
+        };
+        if(ctx){
+          const prev=ctx.__weditorToolbarCleanup;
+          ctx.__weditorToolbarCleanup=function(){
+            cleanup();
+            if(typeof prev==="function") prev();
+          };
+        }
+      }
       return bar;
     }
     return { build };
@@ -1758,6 +1938,7 @@
       function cleanup(){
         window.removeEventListener("resize", onR);
         A11y.unlockScroll();
+        if(ctx && typeof ctx.__weditorToolbarCleanup==="function"){ ctx.__weditorToolbarCleanup(); ctx.__weditorToolbarCleanup=null; }
         bg.style.pointerEvents="none";
         bg.style.opacity = "0";
         window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
@@ -1767,7 +1948,137 @@
     }
     return { open };
   })();
+  function normalizeFontValue(value){
+    if(!value) return "";
+    const trimmed=String(value).trim();
+    if(trimmed.toLowerCase()==="inherit") return "inherit";
+    return trimmed.replace(/"/g, "").replace(/\s*,\s*/g, ",").toLowerCase();
+  }
+  function buildFontOption(label, value){
+    return { label, value, normalized:normalizeFontValue(value) };
+  }
+  function matchFontOption(value, fallback){
+    const norm=normalizeFontValue(value);
+    if(!norm) return fallback;
+    for(let i=0;i<FONT_FAMILIES.length;i++){
+      const opt=FONT_FAMILIES[i];
+      if(opt.normalized===norm) return opt.value;
+      if(opt.normalized!=="inherit" && (norm.indexOf(opt.normalized)>=0 || opt.normalized.indexOf(norm)>=0)) return opt.value;
+      const optFirst=opt.normalized.split(",")[0];
+      const normFirst=norm.split(",")[0];
+      if(optFirst && normFirst && optFirst===normFirst) return opt.value;
+    }
+    return fallback;
+  }
+  function matchFontSize(value, fallback){
+    if(!value) return fallback;
+    const parsed=parseFloat(value);
+    if(!isFinite(parsed)) return fallback;
+    for(let i=0;i<FONT_SIZES.length;i++){
+      const opt=FONT_SIZES[i];
+      if(!opt || !opt.value || opt.value==="inherit") continue;
+      const optSize=parseFloat(opt.value);
+      if(isFinite(optSize) && Math.abs(parsed - optSize) < 0.6) return opt.value;
+    }
+    return fallback;
+  }
+  function detectUnderlineValue(computed, fallback){
+    if(!computed) return fallback;
+    const line=(computed.textDecorationLine||"").toLowerCase();
+    if(line.indexOf("underline")===-1){ return "none"; }
+    const style=(computed.textDecorationStyle||"").toLowerCase();
+    for(let i=0;i<UNDERLINE_STYLES.length;i++){
+      const opt=UNDERLINE_STYLES[i];
+      if(opt.value!=="none" && opt.value===style) return opt.value;
+    }
+    return "solid";
+  }
+  const FONT_FAMILIES=[
+    buildFontOption("Default (inherit)", "inherit"),
+    buildFontOption("Segoe UI", '"Segoe UI", system-ui, -apple-system, Arial, sans-serif'),
+    buildFontOption("Arial", "Arial, Helvetica, sans-serif"),
+    buildFontOption("Georgia", "Georgia, serif"),
+    buildFontOption("Times New Roman", '"Times New Roman", Times, serif'),
+    buildFontOption("Courier New", '"Courier New", Courier, monospace')
+  ];
+  const FONT_SIZES=[
+    { label:"Default (inherit)", value:"inherit" },
+    { label:"10", value:"10px" },
+    { label:"12", value:"12px" },
+    { label:"14", value:"14px" },
+    { label:"16", value:"16px" },
+    { label:"18", value:"18px" },
+    { label:"24", value:"24px" }
+  ];
+  const UNDERLINE_STYLES=[
+    { label:"Solid", value:"solid" },
+    { label:"Double", value:"double" },
+    { label:"Dotted", value:"dotted" },
+    { label:"Dashed", value:"dashed" },
+    { label:"Wavy", value:"wavy" },
+    { label:"None", value:"none" }
+  ];
   const Commands={
+    "format.fontFamily":{ label:"Font", kind:"select", ariaLabel:"Font family", options:FONT_FAMILIES, stateKey:"fontFamily",
+      getValue:function(inst){
+        const fallback=(inst && inst.inlineState && inst.inlineState.fontFamily) || "inherit";
+        const node=SelectionUtils.focusNode(inst);
+        if(!node) return fallback;
+        const computed=window.getComputedStyle ? window.getComputedStyle(node) : null;
+        return matchFontOption(computed && computed.fontFamily ? computed.fontFamily : fallback, fallback);
+      },
+      run:function(inst, arg){
+        const value=(arg && arg.value) ? arg.value : "inherit";
+        InlineStyler.apply(inst, { fontFamily:value || "inherit" });
+        if(inst && inst.inlineState) inst.inlineState.fontFamily=value;
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.fontSize":{ label:"Size", kind:"select", ariaLabel:"Font size", options:FONT_SIZES, stateKey:"fontSize",
+      getValue:function(inst){
+        const fallback=(inst && inst.inlineState && inst.inlineState.fontSize) || "inherit";
+        const node=SelectionUtils.focusNode(inst);
+        if(!node) return fallback;
+        const computed=window.getComputedStyle ? window.getComputedStyle(node) : null;
+        return matchFontSize(computed && computed.fontSize ? computed.fontSize : fallback, fallback);
+      },
+      run:function(inst, arg){
+        const value=(arg && arg.value) ? arg.value : "inherit";
+        InlineStyler.apply(inst, { fontSize:value || "inherit" });
+        if(inst && inst.inlineState) inst.inlineState.fontSize=value;
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.bold":{ label:"B", kind:"button", ariaLabel:"Bold", title:"Bold", run:function(inst){ if(InlineCommand.exec(inst, "bold")){ OutputBinding.syncDebounced(inst); } },
+      decorate:function(btn){ btn.style.fontWeight="700"; btn.style.fontSize="15px"; btn.style.minWidth="34px"; } },
+    "format.italic":{ label:"I", kind:"button", ariaLabel:"Italic", title:"Italic", run:function(inst){ if(InlineCommand.exec(inst, "italic")){ OutputBinding.syncDebounced(inst); } },
+      decorate:function(btn){ btn.style.fontStyle="italic"; btn.style.fontSize="15px"; btn.style.minWidth="34px"; } },
+    "format.underline":{ label:"U", kind:"button", ariaLabel:"Underline", title:"Underline", run:function(inst){ if(InlineCommand.exec(inst, "underline")){ OutputBinding.syncDebounced(inst); } },
+      decorate:function(btn){ btn.style.textDecoration="underline"; btn.style.textDecorationThickness="2px"; btn.style.fontSize="15px"; btn.style.minWidth="34px"; } },
+    "format.underlineStyle":{ label:"Style ▼", kind:"select", ariaLabel:"Underline style", options:UNDERLINE_STYLES, stateKey:"underlineStyle",
+      getValue:function(inst){
+        const fallback=(inst && inst.inlineState && inst.inlineState.underlineStyle) || "solid";
+        const node=SelectionUtils.focusNode(inst);
+        if(!node) return fallback;
+        const computed=window.getComputedStyle ? window.getComputedStyle(node) : null;
+        return detectUnderlineValue(computed, fallback);
+      },
+      run:function(inst, arg){
+        const value=(arg && arg.value) ? arg.value : "solid";
+        const style=value==="none" ? { textDecoration:"none" } : { textDecorationLine:"underline", textDecorationStyle:value, textDecorationColor:"inherit" };
+        InlineStyler.apply(inst, style);
+        if(inst && inst.inlineState) inst.inlineState.underlineStyle=value;
+        OutputBinding.syncDebounced(inst);
+      },
+      decorate:function(select){ select.style.minWidth="120px"; }
+    },
+    "format.strike":{ label:"ab", kind:"button", ariaLabel:"Strikethrough", title:"Strikethrough", run:function(inst){ if(InlineCommand.exec(inst, "strikeThrough")){ OutputBinding.syncDebounced(inst); } },
+      decorate:function(btn){ btn.style.textDecoration="line-through"; btn.style.textDecorationThickness="2px"; btn.style.fontSize="14px"; btn.style.minWidth="34px"; } },
+    "format.subscript":{ label:"x₂", kind:"button", ariaLabel:"Subscript", title:"Subscript", run:function(inst){ if(InlineCommand.exec(inst, "subscript")){ OutputBinding.syncDebounced(inst); } },
+      decorate:function(btn){ btn.style.fontSize="14px"; btn.style.minWidth="34px"; } },
+    "format.superscript":{ label:"x²", kind:"button", ariaLabel:"Superscript", title:"Superscript", run:function(inst){ if(InlineCommand.exec(inst, "superscript")){ OutputBinding.syncDebounced(inst); } },
+      decorate:function(btn){ btn.style.fontSize="14px"; btn.style.minWidth="34px"; }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
@@ -1788,6 +2099,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
+      { id:"text", label:"Text", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -1797,6 +2109,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
+      { id:"text", label:"Text", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -1816,6 +2129,7 @@
     this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
     this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
+    this.inlineState = { fontFamily:"inherit", fontSize:"inherit", underlineStyle:"solid" };
     this._mount();
     OutputBinding.syncDebounced(this);
   }
