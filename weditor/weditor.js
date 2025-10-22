@@ -1085,6 +1085,7 @@
       const panelsWrap=document.createElement("div"); applyStyles(panelsWrap, WCfg.Style.tabPanels);
       const tabButtons=[]; const tabPanels=[];
       function setActive(index){
+        if(index<0 || index>=tabButtons.length){ return; }
         for(let i=0;i<tabButtons.length;i++){
           const btn=tabButtons[i]; const panel=tabPanels[i];
           const isActive = (i===index);
@@ -1142,7 +1143,28 @@
           const cmdBtn=createCommandButton(items[j], inst, ctx);
           if(cmdBtn) panel.appendChild(cmdBtn);
         }
-        tabBtn.onclick=(function(idx){ return function(){ setActive(idx); }; })(i);
+        tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
+        tabBtn.onkeydown=(function(idx){
+          return function(e){
+            let targetIndex = null;
+            if(e.key === "ArrowRight" || e.key === "ArrowDown"){
+              targetIndex = (idx+1) % tabButtons.length;
+            } else if(e.key === "ArrowLeft" || e.key === "ArrowUp"){
+              targetIndex = (idx-1+tabButtons.length) % tabButtons.length;
+            } else if(e.key === "Home"){
+              targetIndex = 0;
+            } else if(e.key === "End"){
+              targetIndex = tabButtons.length-1;
+            } else if(e.key === "Enter" || e.key === " "){
+              targetIndex = idx;
+            }
+            if(targetIndex!==null){
+              e.preventDefault();
+              setActive(targetIndex);
+              tabButtons[targetIndex].focus();
+            }
+          };
+        })(i);
         tabButtons.push(tabBtn); tabPanels.push(panel);
         tabList.appendChild(tabBtn); panelsWrap.appendChild(panel);
       }
