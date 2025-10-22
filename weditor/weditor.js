@@ -29,7 +29,7 @@
       hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
       hfClose:{ border:"0", background:"transparent", color:UI.textDim, font:"20px/1 Segoe UI,system-ui", cursor:"pointer", padding:"4px", borderRadius:"6px" },
       hfBody:{ padding:"20px", display:"grid", gap:"18px", overflowY:"auto", flex:"1", minHeight:"0" },
-      hfSection:{ display:"flex", flexDirection:"column", gap:"10px", padding:"16px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#faf9f8" },
+      hfSection:{ display:"flex", flexDirection:"column", gap:"12px", padding:"18px", border:"1px solid "+UI.borderSubtle, borderRadius:"12px", background:"#faf9f8" },
       hfToggleRow:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfToggleLabel:{ font:"14px/1.4 Segoe UI,system-ui", color:UI.text, display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" },
       hfAlignRow:{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", padding:"4px 2px 0" },
@@ -41,6 +41,19 @@
       hfCanvasStage:{ position:"relative", width:"100%", display:"flex", justifyContent:"center" },
       hfCanvasPage:{ position:"relative", width:"100%", maxWidth:innerHFWidth+"px", background:"#fff", border:"1px dashed "+UI.borderSubtle, borderRadius:"10px", padding:"12px", boxSizing:"border-box", boxShadow:"inset 0 0 0 1px rgba(15,108,189,.08)" },
       hfHint:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      hfTokenChips:{ display:"flex", flexWrap:"wrap", gap:"8px" },
+      hfTokenChip:{ border:"1px solid "+UI.borderSubtle, background:"#fff", borderRadius:"999px", padding:"4px 10px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim, cursor:"pointer", transition:"all .18s ease" },
+      hfTemplateGrid:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:"10px", width:"100%" },
+      hfTemplateButton:{ border:"1px solid "+UI.borderSubtle, borderRadius:"10px", padding:"12px", background:"#fff", display:"flex", flexDirection:"column", alignItems:"flex-start", gap:"6px", cursor:"pointer", transition:"all .18s ease", textAlign:"left" },
+      hfTemplateTitle:{ font:"13px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      hfTemplateDesc:{ font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      hfPreview:{ border:"1px solid "+UI.borderSubtle, borderRadius:"12px", background:"#fff", padding:"12px", display:"flex", flexDirection:"column", gap:"10px" },
+      hfPreviewTitle:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.textDim, textTransform:"uppercase", letterSpacing:".08em" },
+      hfPreviewPage:{ position:"relative", width:"100%", maxWidth:"260px", aspectRatio:"210/297", border:"1px solid "+UI.borderSubtle, borderRadius:"12px", background:"#fff", margin:"0 auto", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"0 4px 12px rgba(0,0,0,.08)" },
+      hfPreviewHeader:{ padding:"12px", borderBottom:"1px solid "+UI.borderSubtle, font:"12px/1.5 Segoe UI,system-ui", color:UI.text },
+      hfPreviewBody:{ flex:"1", padding:"14px 18px", font:"11px/1.6 Segoe UI,system-ui", color:UI.textDim, background:"linear-gradient(180deg, rgba(50,49,48,0.08) 0px, transparent 40px)" },
+      hfPreviewFooter:{ padding:"10px 12px", borderTop:"1px solid "+UI.borderSubtle, font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      hfPreviewEmpty:{ font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, textAlign:"center", padding:"18px" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,Style };
@@ -746,10 +759,111 @@
     }
     let uid=0;
     const TOKEN_OPTIONS=[
-      { value:"{{date}}", label:"📅 Date 日期" },
-      { value:"{{page}}", label:"📄 Page Number 頁碼" },
-      { value:"{{total}}", label:"📘 Total Pages 總頁數" }
+      { value:"{{date}}", label:"📅 Date 日期", sample:"21 Mar 2024" },
+      { value:"{{page}}", label:"📄 Page Number 頁碼", sample:"2" },
+      { value:"{{total}}", label:"📘 Total Pages 總頁數", sample:"8" }
     ];
+    const PREVIEW_SAMPLE_MAP={
+      date:"21 Mar 2024",
+      page:"2",
+      total:"8"
+    };
+    const TEMPLATE_LIBRARY={
+      header:[
+        {
+          id:"letterhead",
+          label:"Letterhead 公司信頭",
+          description:"Logo + 地址 + 聯絡方式",
+          align:"left",
+          badge:"Business",
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'
+            +'<div style="display:flex;align-items:center;gap:12px;">'
+            +'<div style="width:40px;height:40px;border-radius:10px;background:#0f6cbd;color:#fff;font-weight:600;display:flex;align-items:center;justify-content:center;">LOGO</div>'
+            +'<div style="font-size:13px;line-height:1.4;">'
+            +'<div style="font-weight:600;">Contoso Ltd.</div>'
+            +'<div style="color:#605e5c;">123 Market Street, Singapore</div>'
+            +'</div>'
+            +'</div>'
+            +'<div style="text-align:right;font-size:12px;color:#605e5c;">'
+            +'<div>Tel: +65 6000 0000</div>'
+            +'<div>hello@contoso.com</div>'
+            +'</div>'
+            +'</div>'
+        },
+        {
+          id:"report",
+          label:"Company Report 報告抬頭",
+          description:"置中標題 + Confidential 註記",
+          align:"center",
+          badge:"Report",
+          html:'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;">'
+            +'<div style="font-weight:700;font-size:16px;">Quarterly Business Review</div>'
+            +'<div style="font-size:12px;color:#605e5c;">Confidential · Internal Use Only</div>'
+            +'<div style="font-size:12px;color:#605e5c;">{{date}}</div>'
+            +'</div>'
+        },
+        {
+          id:"analysis",
+          label:"Analysis 專案抬頭",
+          description:"左專案 · 右日期與版本",
+          align:"left",
+          badge:"Analytics",
+          html:'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;width:100%;">'
+            +'<div><div style="font-weight:600;">Project: Aurora Insights</div>'
+            +'<div style="font-size:12px;color:#605e5c;">Market Analysis Summary</div></div>'
+            +'<div style="text-align:right;font-size:12px;color:#605e5c;">'
+            +'<div>{{date}}</div>'
+            +'<div>Version 1.3</div>'
+            +'</div>'
+            +'</div>'
+        }
+      ],
+      footer:[
+        {
+          id:"invoice",
+          label:"Invoice / Quotation",
+          description:"左 Logo 名稱 · 右 日期 + 頁碼",
+          align:"left",
+          badge:"Finance",
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'
+            +'<div style="display:flex;align-items:center;gap:10px;">'
+            +'<div style="width:28px;height:28px;border-radius:8px;background:#0f6cbd;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center;">AC</div>'
+            +'<div style="font-weight:600;">Acme Trading Pte Ltd</div>'
+            +'</div>'
+            +'<div style="text-align:right;font-size:12px;color:#605e5c;">'
+            +'<div>Issued: {{date}}</div>'
+            +'<div>Page {{page}} of {{total}}</div>'
+            +'</div>'
+            +'</div>'
+        },
+        {
+          id:"confidential",
+          label:"Company Report Footer",
+          description:"居中 Confidential + 頁碼",
+          align:"center",
+          badge:"Report",
+          html:'<div style="display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;">'
+            +'<div style="font-weight:600;">Confidential · Internal Use Only</div>'
+            +'<div style="font-size:12px;color:#605e5c;">Page {{page}} of {{total}}</div>'
+            +'</div>'
+        },
+        {
+          id:"analysisFooter",
+          label:"Analysis 報告頁腳",
+          description:"左專案 · 右 版本 / 日期",
+          align:"left",
+          badge:"Analytics",
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'
+            +'<div><div style="font-weight:600;">Aurora Insights</div>'
+            +'<div style="font-size:12px;color:#605e5c;">Status Update</div></div>'
+            +'<div style="text-align:right;font-size:12px;color:#605e5c;">'
+            +'<div>Version 1.3</div>'
+            +'<div>Updated {{date}}</div>'
+            +'</div>'
+            +'</div>'
+        }
+      ]
+    };
     function section(kind, titleText, description, enabled, html, align){
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
       const toggleRow=document.createElement("div"); applyStyles(toggleRow, WCfg.Style.hfToggleRow); wrap.appendChild(toggleRow);
@@ -778,42 +892,38 @@
         }
       }
       enforceImageSizing(editor);
-      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); }, 0); });
-      editor.addEventListener("input", function(){ enforceImageSizing(editor); });
+      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); updatePreview(); }, 0); });
+      editor.addEventListener("input", function(){ enforceImageSizing(editor); updatePreview(); });
+      const tokenButtons=[];
       const tokenRow=document.createElement("div");
       tokenRow.style.display="flex";
-      tokenRow.style.alignItems="center";
-      tokenRow.style.gap="8px";
-      tokenRow.style.flexWrap="wrap";
-      const tokenLabel=document.createElement("span");
-      tokenLabel.textContent="🧩 Insert Token 插入變量";
+      tokenRow.style.flexDirection="column";
+      tokenRow.style.gap="6px";
+      const tokenLabel=document.createElement("div");
+      tokenLabel.textContent="🧩 Smart Tokens 智慧變量";
       tokenLabel.style.font="12px/1.4 Segoe UI,system-ui";
       tokenLabel.style.color=WCfg.UI.textDim;
       tokenRow.appendChild(tokenLabel);
-      const tokenSelect=document.createElement("select");
-      tokenSelect.setAttribute("aria-label","Insert token for "+titleText);
-      tokenSelect.style.padding="6px 10px";
-      tokenSelect.style.border="1px solid "+WCfg.UI.borderSubtle;
-      tokenSelect.style.borderRadius="6px";
-      tokenSelect.style.font="12px/1.4 Segoe UI,system-ui";
-      tokenSelect.style.background="#fff";
-      const placeholderOption=document.createElement("option");
-      placeholderOption.value="";
-      placeholderOption.textContent="Choose token 選擇";
-      tokenSelect.appendChild(placeholderOption);
+      const tokenChips=document.createElement("div");
+      applyStyles(tokenChips, WCfg.Style.hfTokenChips);
       for(let i=0;i<TOKEN_OPTIONS.length;i++){
-        const opt=document.createElement("option");
-        opt.value=TOKEN_OPTIONS[i].value;
-        opt.textContent=TOKEN_OPTIONS[i].label;
-        tokenSelect.appendChild(opt);
+        const opt=TOKEN_OPTIONS[i];
+        const chip=document.createElement("button");
+        chip.type="button";
+        applyStyles(chip, WCfg.Style.hfTokenChip);
+        chip.textContent=opt.label;
+        chip.setAttribute("data-token", opt.value);
+        chip.addEventListener("mouseenter", function(){ if(!chip.disabled) chip.style.background="#f3f2f1"; });
+        chip.addEventListener("mouseleave", function(){ chip.style.background="#fff"; });
+        chip.addEventListener("click", function(){
+          if(!toggle.checked) return;
+          insertSnippet(opt.value);
+          updatePreview();
+        });
+        tokenButtons.push(chip);
+        tokenChips.appendChild(chip);
       }
-      tokenSelect.addEventListener("change", function(){
-        if(!toggle.checked){ tokenSelect.value=""; return; }
-        const tokenValue=tokenSelect.value;
-        if(tokenValue){ insertSnippet(tokenValue); }
-        tokenSelect.value="";
-      });
-      tokenRow.appendChild(tokenSelect);
+      tokenRow.appendChild(tokenChips);
       wrap.appendChild(tokenRow);
       const alignRow=document.createElement("div"); applyStyles(alignRow, WCfg.Style.hfAlignRow);
       const alignLabel=document.createElement("span");
@@ -847,58 +957,56 @@
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
       const templateButtons=[];
-      if(kind==="footer"){
-        const templateBox=document.createElement("div");
-        templateBox.style.display="flex";
-        templateBox.style.flexDirection="column";
-        templateBox.style.gap="8px";
-        templateBox.style.background="#fff";
-        templateBox.style.border="1px solid "+WCfg.UI.borderSubtle;
-        templateBox.style.borderRadius="8px";
-        templateBox.style.padding="12px";
-        const templateTitle=document.createElement("div");
-        templateTitle.textContent="Footer layout 模板 Preview";
-        templateTitle.style.font="12px/1.4 Segoe UI,system-ui";
-        templateTitle.style.fontWeight="600";
-        templateTitle.style.color=WCfg.UI.text;
-        templateBox.appendChild(templateTitle);
-        const templateHint=document.createElement("div");
-        templateHint.textContent="點擊套用：左 Confidential · 中 {{date}} · 右 Page {{page}} of {{total}}";
-        templateHint.style.font="11px/1.4 Segoe UI,system-ui";
-        templateHint.style.color=WCfg.UI.textDim;
-        templateBox.appendChild(templateHint);
-        const templateOption=document.createElement("button");
-        templateOption.type="button";
-        templateOption.style.display="flex";
-        templateOption.style.alignItems="center";
-        templateOption.style.justifyContent="space-between";
-        templateOption.style.gap="12px";
-        templateOption.style.padding="10px 12px";
-        templateOption.style.border="1px solid "+WCfg.UI.borderSubtle;
-        templateOption.style.borderRadius="6px";
-        templateOption.style.background="#fafafa";
-        templateOption.style.font="12px/1.4 Segoe UI,system-ui";
-        templateOption.style.color=WCfg.UI.text;
-        templateOption.style.cursor="pointer";
-        templateOption.innerHTML='<span style="flex:1;text-align:left;">左 · Confidential</span><span style="flex:1;text-align:center;">中 · {{date}}</span><span style="flex:1;text-align:right;">右 · Page {{page}} of {{total}}</span>';
-        const templateHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;">'+
-          '<span style="text-align:left;">Confidential</span>'+
-          '<span style="text-align:center;">{{date}}</span>'+
-          '<span style="text-align:right;">Page {{page}} of {{total}}</span>'+
-        '</div>';
-        templateOption.addEventListener("click", function(){
-          if(!toggle.checked) return;
-          editor.innerHTML=Sanitizer.clean(templateHTML);
-          Normalizer.fixStructure(editor);
-          enforceImageSizing(editor);
-          setAlign("left");
-          WDom.placeCaretAtEnd(editor);
-        });
-        templateOption.addEventListener("mouseenter", function(){ templateOption.style.background="#f3f2f1"; });
-        templateOption.addEventListener("mouseleave", function(){ templateOption.style.background="#fafafa"; });
-        templateButtons.push(templateOption);
-        templateBox.appendChild(templateOption);
-        wrap.appendChild(templateBox);
+      const templateItems=(TEMPLATE_LIBRARY[kind]||[]).slice();
+      if(templateItems.length){
+        const templateWrap=document.createElement("div");
+        templateWrap.style.display="flex";
+        templateWrap.style.flexDirection="column";
+        templateWrap.style.gap="8px";
+        const templateLabel=document.createElement("div");
+        templateLabel.textContent="🎨 Quick Templates 快速套用";
+        templateLabel.style.font="12px/1.4 Segoe UI,system-ui";
+        templateLabel.style.color=WCfg.UI.textDim;
+        templateWrap.appendChild(templateLabel);
+        const templateGrid=document.createElement("div");
+        applyStyles(templateGrid, WCfg.Style.hfTemplateGrid);
+        for(let i=0;i<templateItems.length;i++){
+          const item=templateItems[i];
+          const btn=document.createElement("button");
+          btn.type="button";
+          applyStyles(btn, WCfg.Style.hfTemplateButton);
+          const name=document.createElement("div"); applyStyles(name, WCfg.Style.hfTemplateTitle); name.textContent=item.label;
+          const desc=document.createElement("div"); applyStyles(desc, WCfg.Style.hfTemplateDesc); desc.textContent=item.description;
+          const badge=document.createElement("span");
+          badge.textContent=item.badge||"";
+          badge.style.font="10px/1.4 Segoe UI,system-ui";
+          badge.style.textTransform="uppercase";
+          badge.style.letterSpacing=".08em";
+          badge.style.color=WCfg.UI.brand;
+          badge.style.background="rgba(15,108,189,0.08)";
+          badge.style.padding="2px 6px";
+          badge.style.borderRadius="999px";
+          badge.style.display=item.badge?"inline-block":"none";
+          btn.appendChild(name);
+          btn.appendChild(desc);
+          btn.appendChild(badge);
+          btn.addEventListener("mouseenter", function(){ if(!btn.disabled){ btn.style.borderColor=WCfg.UI.brand; btn.style.boxShadow="0 0 0 3px rgba(15,108,189,0.1)"; } });
+          btn.addEventListener("mouseleave", function(){ btn.style.borderColor=WCfg.UI.borderSubtle; btn.style.boxShadow="none"; });
+          btn.addEventListener("click", function(){
+            if(!toggle.checked){ toggle.checked=true; sync(); }
+            alignValue = HFAlign.normalize(item.align||alignValue);
+            editor.innerHTML=Sanitizer.clean(item.html||"");
+            Normalizer.fixStructure(editor);
+            enforceImageSizing(editor);
+            updateAlignUI();
+            updatePreview();
+            WDom.placeCaretAtEnd(editor);
+          });
+          templateButtons.push(btn);
+          templateGrid.appendChild(btn);
+        }
+        templateWrap.appendChild(templateGrid);
+        wrap.appendChild(templateWrap);
       }
       function updateAlignUI(){
         HFAlign.applyEditor(editor, alignValue);
@@ -915,11 +1023,12 @@
         const norm=HFAlign.normalize(next);
         alignValue=norm;
         updateAlignUI();
+        updatePreview();
       }
       updateAlignUI();
       const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.hfCanvas);
       const guide=document.createElement("div"); applyStyles(guide, WCfg.Style.hfCanvasGuide);
-      guide.textContent="PAGE WIDTH GUIDE · 可視寬度約 "+(WCfg.A4W-36)+"px";
+      guide.textContent="Editable Area 編輯區 · 寬度約 "+(WCfg.A4W-36)+"px";
       canvas.appendChild(guide);
       const stage=document.createElement("div"); applyStyles(stage, WCfg.Style.hfCanvasStage);
       const pageBox=document.createElement("div"); applyStyles(pageBox, WCfg.Style.hfCanvasPage);
@@ -927,6 +1036,63 @@
       stage.appendChild(pageBox);
       canvas.appendChild(stage);
       wrap.appendChild(canvas);
+
+      const previewBox=document.createElement("div"); applyStyles(previewBox, WCfg.Style.hfPreview);
+      const previewTitle=document.createElement("div"); applyStyles(previewTitle, WCfg.Style.hfPreviewTitle);
+      previewTitle.textContent="Live Preview 即時預覽";
+      previewBox.appendChild(previewTitle);
+      const previewPage=document.createElement("div"); applyStyles(previewPage, WCfg.Style.hfPreviewPage);
+      const previewHeader=document.createElement("div"); applyStyles(previewHeader, WCfg.Style.hfPreviewHeader);
+      const previewBody=document.createElement("div"); applyStyles(previewBody, WCfg.Style.hfPreviewBody);
+      previewBody.innerHTML="<p style=\"margin:0 0 6px;font-weight:600;\">Sample content</p><p style=\"margin:0;color:#8a8886;\">預覽頁面示意</p>";
+      const previewFooter=document.createElement("div"); applyStyles(previewFooter, WCfg.Style.hfPreviewFooter);
+      const previewEmpty=document.createElement("div"); applyStyles(previewEmpty, WCfg.Style.hfPreviewEmpty);
+      previewEmpty.textContent=titleText+" disabled · 預覽停用";
+      previewEmpty.style.display="none";
+      if(kind==="header"){
+        previewFooter.innerHTML="<span style=\"display:block;text-align:right;\">Page 2 of 8</span>";
+      } else {
+        previewHeader.innerHTML="<div style=\"font-weight:600;\">Business Report</div><div style=\"font-size:11px;color:#605e5c;\">2024 Strategy Update</div>";
+      }
+      previewPage.appendChild(previewHeader);
+      previewPage.appendChild(previewBody);
+      previewPage.appendChild(previewFooter);
+      previewBox.appendChild(previewPage);
+      previewBox.appendChild(previewEmpty);
+      wrap.appendChild(previewBox);
+      function readCleanHTML(){
+        Normalizer.fixStructure(editor);
+        const clone=editor.cloneNode(true);
+        const overlays=clone.querySelectorAll('[data-weditor-overlay]');
+        for(let i=0;i<overlays.length;i++){ const el=overlays[i]; if(el && el.parentNode) el.parentNode.removeChild(el); }
+        const actives=clone.querySelectorAll('.weditor-hf-img-active');
+        for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
+        return clone.innerHTML;
+      }
+      function substitutePreviewTokens(html){
+        if(!html) return "";
+        return String(html)
+          .replace(/{{\s*page\s*}}/gi, PREVIEW_SAMPLE_MAP.page)
+          .replace(/{{\s*total\s*}}/gi, PREVIEW_SAMPLE_MAP.total)
+          .replace(/{{\s*date\s*}}/gi, PREVIEW_SAMPLE_MAP.date);
+      }
+      function updatePreview(){
+        const enabled=!!toggle.checked;
+        previewEmpty.style.display=enabled?"none":"block";
+        previewPage.style.opacity=enabled?"1":"0.45";
+        previewPage.style.filter=enabled?"none":"grayscale(0.35)";
+        const html=substitutePreviewTokens(readCleanHTML());
+        if(kind==="header"){
+          previewHeader.innerHTML = html || '<div style="color:#8a8886;">Add your header · 新增頁首內容</div>';
+          HFAlign.applyHeader(previewHeader, alignValue);
+          enforceImageSizing(previewHeader);
+        } else {
+          previewFooter.innerHTML = html || '<div style="color:#8a8886;text-align:center;width:100%;">Add footer details · 新增頁尾資訊</div>';
+          HFAlign.applyFooter(previewFooter, alignValue);
+          enforceImageSizing(previewFooter);
+        }
+      }
+      updatePreview();
       const uploaderRow=document.createElement("div");
       uploaderRow.style.display="flex";
       uploaderRow.style.alignItems="center";
@@ -979,6 +1145,7 @@
           sel.removeAllRanges(); sel.addRange(range);
         }
         Normalizer.fixStructure(editor);
+        updatePreview();
       }
       function toAltText(name){
         if(!name) return "Uploaded image";
@@ -1017,9 +1184,12 @@
         uploadBtn.style.opacity=on?"1":"0.55";
         uploadBtn.style.cursor=on?"pointer":"not-allowed";
         fileInput.disabled=!on;
-        tokenSelect.disabled=!on;
-        tokenSelect.style.opacity=on?"1":"0.55";
-        tokenSelect.style.cursor=on?"pointer":"not-allowed";
+        for(let tb=0;tb<tokenButtons.length;tb++){
+          const chip=tokenButtons[tb];
+          chip.disabled=!on;
+          chip.style.opacity=on?"1":"0.55";
+          chip.style.cursor=on?"pointer":"not-allowed";
+        }
         for(let t=0;t<templateButtons.length;t++){
           const btn=templateButtons[t];
           btn.disabled=!on;
@@ -1034,6 +1204,7 @@
           btn.style.cursor=on?"pointer":"not-allowed";
         }
         updateAlignUI();
+        updatePreview();
       }
       toggle.addEventListener("change", sync);
       sync();
@@ -1042,15 +1213,7 @@
         toggle,
         editor,
         focus:function(){ if(toggle.checked){ WDom.placeCaretAtEnd(editor); } else { editor.blur(); } },
-        getHTML:function(){
-          Normalizer.fixStructure(editor);
-          const clone=editor.cloneNode(true);
-          const overlays=clone.querySelectorAll('[data-weditor-overlay]');
-          for(let i=0;i<overlays.length;i++){ const el=overlays[i]; if(el && el.parentNode) el.parentNode.removeChild(el); }
-          const actives=clone.querySelectorAll('.weditor-hf-img-active');
-          for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
-          return clone.innerHTML;
-        },
+        getHTML:function(){ return readCleanHTML(); },
         getAlign:function(){ return alignValue; }
       };
     }
