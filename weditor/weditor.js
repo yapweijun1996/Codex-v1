@@ -16,7 +16,7 @@
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"#fff", zIndex:"9999", display:"flex", flexDirection:"column", alignItems:"stretch", padding:"0", opacity:"0", transition:"opacity .2s ease" },
       modal:{ width:"100%", maxWidth:"none", height:"100%", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"0", boxShadow:"none", overflow:"hidden" },
       split:{ flex:"1", minHeight:"0", display:"flex", background:"#fff" },
-      left:{ flex:"1", minWidth:"0", overflow:"auto", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", background:"#fff" },
+      left:{ flex:"1", minWidth:"0", overflowY:"auto", overflowX:"hidden", padding:"20px", display:"flex", flexDirection:"column", alignItems:"center", gap:"24px", background:"#fff" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
@@ -1108,19 +1108,37 @@
       modal.appendChild(cmdBarWrap); modal.appendChild(split); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
       window.setTimeout(function(){ area.focus(); },0);
-      layout(); const onR=function(){ layout(); }; window.addEventListener("resize", onR);
+      layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); }, 0); });
       let t=null; area.addEventListener("input", function(){ if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
       render();
       function render(){
         left.innerHTML="";
         const out=Paginator.paginate(area.innerHTML, inst);
+        const baseWidth=WCfg.A4W;
+        const baseHeight=WCfg.A4H;
+        const paddingOffset=40;
+        const baseClient=left.clientWidth || 0;
+        const availableWidth=baseClient ? Math.max(0, baseClient - paddingOffset) : baseWidth;
+        let scale=availableWidth>0 ? Math.min(1, availableWidth / baseWidth) : (baseClient ? Math.min(1, baseClient / baseWidth) : 1);
+        if(!isFinite(scale) || scale<=0) scale=baseClient ? Math.min(1, Math.max(baseClient, 1) / baseWidth) : 1;
+        const scaledWidth=Math.round(baseWidth * scale);
+        const scaledHeight=Math.round(baseHeight * scale);
+        const dividerTop=Math.max(12, Math.round(24 * scale));
+        const dividerBottom=Math.max(8, Math.round(16 * scale));
         for(let i=0;i<out.pages.length;i++){
-          left.appendChild(out.pages[i]);
+          const page=out.pages[i];
+          const viewport=document.createElement("div");
+          viewport.style.cssText="position:relative;width:"+scaledWidth+"px;height:"+scaledHeight+"px;flex:0 0 auto;overflow:hidden;";
+          const scaler=document.createElement("div");
+          scaler.style.cssText="position:absolute;left:0;top:0;width:"+baseWidth+"px;height:"+baseHeight+"px;transform-origin:top left;transform:scale("+scale+");";
+          scaler.appendChild(page);
+          viewport.appendChild(scaler);
+          left.appendChild(viewport);
           if(i<out.pages.length-1){
             const br=document.createElement("div");
             br.textContent="Page Break";
-            br.style.cssText="width:"+WCfg.A4W+"px;text-align:center;color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;margin:6px 0 2px 0;border-top:1px dashed "+WCfg.UI.borderSubtle+";opacity:.7";
+            br.style.cssText="width:"+scaledWidth+"px;text-align:center;color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;margin:"+dividerTop+"px 0 "+dividerBottom+"px;border-top:1px dashed "+WCfg.UI.borderSubtle+";opacity:.7";
             left.appendChild(br);
           }
         }
