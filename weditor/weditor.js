@@ -306,6 +306,69 @@
     }
     return { apply };
   })();
+  const SmartImage=(function(){
+    const BANNER_RATIO=3;
+    const DEFAULT_BANNER_HEIGHT=220;
+    const DEFAULT_LOGO_MAX_HEIGHT=120;
+    const DEFAULT_LOGO_MAX_WIDTH=280;
+    function applyBannerStyles(img){
+      if(!img) return;
+      if(!img.style.width || img.style.width==="auto") img.style.width="100%";
+      img.style.maxWidth="100%";
+      if(!img.style.height || img.style.height==="auto") img.style.height=DEFAULT_BANNER_HEIGHT+"px";
+      if(img.style.height.indexOf("px")===-1) img.style.height=DEFAULT_BANNER_HEIGHT+"px";
+      img.style.objectFit="cover";
+      img.style.display="block";
+      if(!img.style.borderRadius) img.style.borderRadius="14px";
+      if(!img.style.margin) img.style.margin="0";
+    }
+    function applyLogoStyles(img){
+      if(!img) return;
+      img.style.height="auto";
+      img.style.objectFit="contain";
+      img.style.display="block";
+      if(!img.style.maxWidth || img.style.maxWidth==="100%") img.style.maxWidth=DEFAULT_LOGO_MAX_WIDTH+"px";
+      img.style.maxHeight=DEFAULT_LOGO_MAX_HEIGHT+"px";
+      if(!img.style.width || img.style.width==="100%") img.style.width="auto";
+      if(!img.style.borderRadius) img.style.borderRadius="12px";
+    }
+    function detectRole(img){
+      const declared=(img.getAttribute("data-weditor-image-role")||"").toLowerCase();
+      if(declared && declared!=="auto") return declared;
+      const naturalWidth=img.naturalWidth||0;
+      const naturalHeight=img.naturalHeight||0;
+      if(naturalWidth && naturalHeight){
+        const ratio=naturalWidth/naturalHeight;
+        if(ratio>=BANNER_RATIO) return "banner";
+        return "logo";
+      }
+      return declared||"logo";
+    }
+    function update(img){
+      if(!img || img.getAttribute("data-weditor-image-mode")==="custom") return;
+      let role=detectRole(img);
+      if(role!=="banner" && role!=="logo") role="logo";
+      img.setAttribute("data-weditor-image-role", role);
+      if(!img.getAttribute("data-weditor-image-mode")) img.setAttribute("data-weditor-image-mode","auto");
+      if(role==="banner") applyBannerStyles(img);
+      else applyLogoStyles(img);
+    }
+    function apply(img){
+      if(!img || img.getAttribute("data-weditor-image-mode")==="custom") return;
+      if(!img.__weditorSmartImage){
+        img.__weditorSmartImage=true;
+        const handler=function(){ update(img); };
+        img.addEventListener("load", handler);
+      }
+      update(img);
+    }
+    function applyAll(root){
+      if(!root || !root.querySelectorAll) return;
+      const imgs=root.querySelectorAll("img");
+      for(let i=0;i<imgs.length;i++){ apply(imgs[i]); }
+    }
+    return { apply, applyAll };
+  })();
   const Breaks=(function(){
     function insert(targetEl){
       function liftNodeToTarget(node){
@@ -386,6 +449,7 @@
         header.className="weditor_page-header";
         header.style.cssText="position:absolute;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+WCfg.HDR_H+"px;";
         header.innerHTML=headerHTML;
+        SmartImage.applyAll(header);
         HFAlign.applyHeader(header, headerAlign);
         page.appendChild(header);
       }
@@ -398,6 +462,7 @@
         footer.className="weditor_page-footer";
         footer.style.cssText="position:absolute;left:0;right:0;bottom:0;"+FOOTER_BASE_STYLE+"min-height:"+WCfg.FTR_H+"px;";
         const fl=document.createElement("div"); fl.className="weditor_page-footer-left"; fl.style.cssText="flex:1 1 auto;min-width:160px"; fl.innerHTML=footerHTML;
+        SmartImage.applyAll(fl);
         HFAlign.applyFooter(fl, footerAlign);
         footerRight=document.createElement("div"); footerRight.className="weditor_page-footer-right"; footerRight.style.cssText="color:"+UI.textDim+";font:12px Segoe UI,system-ui;flex:0 0 auto"; footerRight.textContent="Page "+pageNo;
         footer.appendChild(fl); footer.appendChild(footerRight);
@@ -412,15 +477,7 @@
         .replace(/{{\s*total\s*}}/gi, "888")
         .replace(/{{\s*date\s*}}/gi, "2025-12-31");
     }
-    function enforceHFImageSizing(root){
-      const imgs=root.querySelectorAll ? root.querySelectorAll("img") : [];
-      for(let i=0;i<imgs.length;i++){
-        const img=imgs[i];
-        if(!img.style.maxWidth) img.style.maxWidth="100%";
-        if(!img.style.height || img.style.height==="auto") img.style.height="auto";
-        if(!img.style.objectFit) img.style.objectFit="contain";
-      }
-    }
+    function enforceHFImageSizing(root){ SmartImage.applyAll(root); }
     function measureSection(kind, html, align){
       const host=document.createElement("div");
       host.style.cssText="position:absolute;left:-99999px;top:-99999px;width:"+WCfg.A4W+"px;visibility:hidden;pointer-events:none;opacity:0;";
@@ -830,60 +887,92 @@
     const TEMPLATE_LIBRARY={
       header:[
         {
-          id:"letterhead",
-          label:"🏢 Company Letterhead",
-          preview:'<strong>Acme Corp</strong><span>123 Market St · {{date}}</span>',
-          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'+
-            '<div style="display:flex;align-items:center;gap:12px;">'+
-              '<img src="https://picsum.photos/seed/weditor-letterhead/48/48" alt="Company logo" style="width:48px;height:48px;border-radius:8px;object-fit:cover;">'+
-              '<div>'+
-                '<div style="font-size:16px;font-weight:600;">Acme Corporation</div>'+
-                '<div style="font-size:12px;color:#666;">123 Market Street · San Francisco, CA</div>'+
+          id:"corporate-banner",
+          label:"🏢 Corporate Letterhead",
+          preview:'<strong>Acme Corporation</strong><span>{{date}} · Page {{page}}/{{total}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:12px;width:100%;">'+
+            '<div style="width:100%;height:220px;border-radius:14px;overflow:hidden;background:#d0e7ff;">'+
+              '<img src="https://picsum.photos/seed/weditor-letterhead/1600/360" alt="Company banner" data-weditor-image-role="banner" style="width:100%;height:100%;object-fit:cover;display:block;">'+
+            '</div>'+
+            '<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start;justify-content:space-between;width:100%;">'+
+              '<div style="flex:1;min-width:220px;font-size:13px;line-height:1.6;color:#323130;">'+
+                '<div style="font-size:20px;font-weight:600;color:#0f6cbd;">Acme Corporation</div>'+
+                '<div>123 Market Street<br>San Francisco, CA 94103</div>'+
+                '<div>hello@acme.com · +1 (555) 010-2000</div>'+
+              '</div>'+
+              '<div style="text-align:right;font-size:12px;line-height:1.6;color:#605e5c;min-width:160px;">'+
+                '<div>{{date}}</div>'+
+                '<div>Page {{page}} / {{total}}</div>'+
               '</div>'+
             '</div>'+
-            '<div style="text-align:right;font-size:12px;line-height:1.5;color:#666;">'+
-              '<div>{{date}}</div>'+
-              '<div>+1 (555) 010-2000</div>'+
-              '<div>hello@acme.com</div>'+
-            '</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;"></div>'+
           '</div>',
           align:"left"
         },
         {
-          id:"report",
-          label:"📊 Company Report",
-          preview:'<span>Q4 Business Review</span><span>Confidential · {{date}}</span>',
-          html:'<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;">'+
-            '<div style="font-size:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;">Q4 Business Review</div>'+
-            '<div style="font-size:12px;color:#666;">Confidential · {{date}}</div>'+
+          id:"business-report",
+          label:"📊 Business Report",
+          preview:'<span>Business Review</span><span>Confidential · {{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:10px;width:100%;text-align:center;">'+
+            '<div style="width:100%;height:200px;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f6cbd,#134675);color:#fff;">'+
+              '<div style="padding:12px 18px;font-size:20px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;">Q4 Business Review</div>'+
+            '</div>'+
+            '<div style="font-size:14px;font-weight:600;color:#323130;">Acme Analytics</div>'+
+            '<div style="font-size:12px;color:#605e5c;">Confidential · {{date}}</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;"></div>'+
           '</div>',
           align:"center"
         },
         {
-          id:"project",
-          label:"🗂️ Project Brief",
-          preview:'<span>Project Phoenix</span><span>Version {{page}} · {{date}}</span>',
-          html:'<div style="display:flex;flex-direction:column;gap:4px;width:100%;">'+
-            '<div style="font-size:15px;font-weight:600;">Project Phoenix</div>'+
-            '<div style="font-size:12px;color:#666;">Sprint Summary · Version {{page}} · {{date}}</div>'+
+          id:"invoice-quotation",
+          label:"🧾 Invoice / Quotation",
+          preview:'<span>Acme Finance</span><span>Date {{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:12px;width:100%;">'+
+            '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;">'+
+              '<div style="display:flex;align-items:center;gap:12px;min-width:240px;">'+
+                '<div style="width:140px;height:140px;border-radius:14px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#f3f2f1;">'+
+                  '<img src="https://picsum.photos/seed/weditor-invoice/400/400" alt="Company logo" data-weditor-image-role="logo" style="width:100%;height:100%;object-fit:contain;display:block;">'+
+                '</div>'+
+                '<div style="display:flex;flex-direction:column;gap:4px;">'+
+                  '<div style="font-size:18px;font-weight:600;">Acme Finance</div>'+
+                  '<div style="font-size:13px;color:#605e5c;">Invoice · Quotation</div>'+
+                '</div>'+
+              '</div>'+
+              '<div style="font-size:12px;line-height:1.6;color:#605e5c;text-align:right;min-width:160px;">'+
+                '<div>Date: {{date}}</div>'+
+                '<div>Page {{page}} of {{total}}</div>'+
+              '</div>'+
+            '</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;"></div>'+
           '</div>',
           align:"left"
         },
         {
-          id:"minutes",
-          label:"📝 Meeting Minutes",
-          preview:'<span>Weekly Sync</span><span>{{date}} · 10:00 AM</span>',
-          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'+
-            '<div>'+
-              '<div style="font-size:15px;font-weight:600;">Weekly Sync</div>'+
-              '<div style="font-size:12px;color:#666;">Prepared by Operations</div>'+
+          id:"formal-letter",
+          label:"🖋️ Formal Letter / Memo",
+          preview:'<span>Formal Letter</span><span>{{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:10px;width:100%;">'+
+            '<div style="width:100%;height:200px;border-radius:14px;overflow:hidden;background:#dde6f5;">'+
+              '<img src="https://picsum.photos/seed/weditor-letter/1600/360" alt="Letter banner" data-weditor-image-role="banner" style="width:100%;height:100%;object-fit:cover;display:block;">'+
             '</div>'+
-            '<div style="text-align:right;font-size:12px;color:#666;">'+
-              '<div>{{date}}</div>'+
-              '<div>10:00 AM · Zoom</div>'+
-            '</div>'+
+            '<div style="display:flex;justify-content:flex-end;font-size:12px;color:#605e5c;">{{date}}</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;"></div>'+
           '</div>',
           align:"left"
+        },
+        {
+          id:"certificate",
+          label:"🪪 Certificate / Award",
+          preview:'<span>Certificate of Excellence</span><span>{{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:10px;width:100%;text-align:center;">'+
+            '<div style="width:100%;height:180px;border-radius:20px;overflow:hidden;border:2px solid #d7d4f0;background:linear-gradient(135deg,#f8f6ff,#e6ecff);display:flex;align-items:center;justify-content:center;">'+
+              '<img src="https://picsum.photos/seed/weditor-award/1200/300" alt="Certificate ribbon" data-weditor-image-role="banner" style="width:100%;height:100%;object-fit:cover;display:block;">'+
+            '</div>'+
+            '<div style="font-size:18px;font-weight:600;color:#3b3a99;">Certificate of Excellence</div>'+
+            '<div style="font-size:12px;color:#605e5c;">Issued {{date}} · Page {{page}}/{{total}}</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;"></div>'+
+          '</div>',
+          align:"center"
         }
       ],
       footer:[
@@ -960,13 +1049,7 @@
       decorateTokens(editor);
       let alignValue=HFAlign.normalize(align);
       function enforceImageSizing(target){
-        const imgs=target.querySelectorAll ? target.querySelectorAll("img") : [];
-        for(let i=0;i<imgs.length;i++){
-          const img=imgs[i];
-          if(!img.style.maxWidth) img.style.maxWidth="100%";
-          if(!img.style.height || img.style.height==="auto") img.style.height="auto";
-          if(!img.style.objectFit) img.style.objectFit="contain";
-        }
+        SmartImage.applyAll(target);
       }
       enforceImageSizing(editor);
       editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); decorateTokens(editor); notifyChange(); }, 0); });
@@ -1108,7 +1191,7 @@
       fileInput.accept="image/png,image/jpeg";
       fileInput.style.display="none";
       const tip=document.createElement("div");
-      tip.textContent="Upload .png / .jpg 會自動插入 <img>，可直接在上方編輯區拖曳調整";
+      tip.innerHTML="拖曳或上傳 .png / .jpg，即時插入圖片。<strong>建議尺寸 2100×300px (7:1)</strong>，系統會自動判斷橫幅或 logo 模式。";
       tip.style.font="12px/1.4 Segoe UI,system-ui";
       tip.style.color=WCfg.UI.textDim;
       uploaderRow.appendChild(uploadBtn);
@@ -1152,6 +1235,7 @@
           sel.addRange(range);
         }
         Normalizer.fixStructure(editor);
+        SmartImage.applyAll(editor);
         decorateTokens(editor);
         notifyChange();
       }
@@ -1169,7 +1253,7 @@
           const dataUrl=reader.result;
           if(typeof dataUrl!=="string") return;
           const alt=toAltText(file.name||"");
-          const snippet='<img src="'+dataUrl+'" alt="'+alt+'" style="max-width:100%;height:auto;object-fit:contain;">';
+          const snippet='<img src="'+dataUrl+'" alt="'+alt+'" style="max-width:100%;height:auto;object-fit:contain;" data-weditor-image-role="auto" data-weditor-image-mode="auto">';
           insertContent(snippet);
         };
         reader.readAsDataURL(file);
@@ -1320,6 +1404,7 @@
           previewHeader.style.justifyContent="";
           previewHeader.style.textAlign="";
           previewHeader.innerHTML=Sanitizer.clean(replacePreviewTokens(headerHTML));
+          SmartImage.applyAll(previewHeader);
           HFAlign.applyHeader(previewHeader, headerSection.getAlign());
         } else if(headerEnabled){
           setPreviewMessage(previewHeader, "Header 無內容 · 請在左側編輯區輸入");
