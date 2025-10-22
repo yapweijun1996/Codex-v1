@@ -979,6 +979,7 @@
       panel.appendChild(footer);
       bg.appendChild(panel);
       document.body.appendChild(bg);
+      window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
       panel.focus();
       function cleanupEditors(){
         if(headerSection && headerSection.editor){
