@@ -979,7 +979,9 @@
       panel.appendChild(footer);
       bg.appendChild(panel);
       document.body.appendChild(bg);
+      window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
       panel.focus();
+      let closing=false;
       function cleanupEditors(){
         if(headerSection && headerSection.editor){
           if(headerSection.editor.__weditorHideOverlay) headerSection.editor.__weditorHideOverlay();
@@ -990,7 +992,15 @@
           if(footerSection.editor.__weditorCleanup){ footerSection.editor.__weditorCleanup(); footerSection.editor.__weditorCleanup=null; }
         }
       }
-      function close(){ cleanupEditors(); if(bg.parentNode) bg.parentNode.removeChild(bg); A11y.unlockScroll(); document.removeEventListener("keydown", onKey); }
+      function close(){
+        if(closing) return;
+        closing=true;
+        cleanupEditors();
+        bg.style.opacity = "0";
+        window.setTimeout(function(){ if(bg.parentNode) bg.parentNode.removeChild(bg); }, 200);
+        A11y.unlockScroll();
+        document.removeEventListener("keydown", onKey);
+      }
       function saveAndClose(){
         inst.headerEnabled = !!headerSection.toggle.checked;
         inst.footerEnabled = !!footerSection.toggle.checked;
