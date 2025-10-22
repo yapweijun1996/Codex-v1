@@ -13,11 +13,11 @@
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
-      modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.45)", zIndex:"9999", display:"flex", alignItems:"center", justifyContent:"center", padding:"0 2vw" },
-      modal:{ width:"100%", maxWidth:"1240px", height:"92vh", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"12px", overflow:"hidden" },
-      split:{ flex:"1", minHeight:"0", display:"flex", background:UI.canvas },
-      left:{ flex:"1", minWidth:"0", overflow:"auto", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", background:UI.canvas },
-      rightWrap:{ width:"46vw", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", borderLeft:"1px solid "+UI.border, background:"#fff" },
+      modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"#fff", zIndex:"9999", display:"flex", flexDirection:"column", alignItems:"stretch", padding:"0", opacity:"0", transition:"opacity .2s ease" },
+      modal:{ width:"100%", maxWidth:"none", height:"100%", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"0", boxShadow:"none", overflow:"hidden" },
+      split:{ flex:"1", minHeight:"0", display:"flex", background:"#fff" },
+      left:{ flex:"1", minWidth:"0", overflow:"auto", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", background:"#fff" },
+      rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
       hfModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
@@ -1100,8 +1100,13 @@
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
-      function layout(){ split.style.flexDirection = (window.innerWidth<WCfg.MOBILE_BP) ? "column" : "row"; }
+      function layout(){
+        const isColumn = window.innerWidth < WCfg.MOBILE_BP;
+        split.style.flexDirection = isColumn ? "column" : "row";
+        rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
+      }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
+      window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
       window.setTimeout(function(){ area.focus(); },0);
       layout(); const onR=function(){ layout(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); }, 0); });
@@ -1123,7 +1128,8 @@
       function cleanup(){
         window.removeEventListener("resize", onR);
         A11y.unlockScroll();
-        bg.parentNode.removeChild(bg);
+        bg.style.opacity = "0";
+        window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
       }
     }
     return { open };
