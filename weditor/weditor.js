@@ -380,7 +380,7 @@
         page.style.pageBreakBefore="always";
         page.style.breakBefore="page";
       }
-      let header=null, footer=null, footerRight=null;
+      let header=null, footer=null;
       if(headerEnabled){
         header=document.createElement("div");
         header.className="weditor_page-header";
@@ -397,13 +397,15 @@
         footer=document.createElement("div");
         footer.className="weditor_page-footer";
         footer.style.cssText="position:absolute;left:0;right:0;bottom:0;"+FOOTER_BASE_STYLE+"min-height:"+WCfg.FTR_H+"px;";
-        const fl=document.createElement("div"); fl.className="weditor_page-footer-left"; fl.style.cssText="flex:1 1 auto;min-width:160px"; fl.innerHTML=footerHTML;
+        const fl=document.createElement("div");
+        fl.className="weditor_page-footer-left";
+        fl.style.cssText="flex:1 1 auto;min-width:160px";
+        fl.innerHTML=footerHTML;
         HFAlign.applyFooter(fl, footerAlign);
-        footerRight=document.createElement("div"); footerRight.className="weditor_page-footer-right"; footerRight.style.cssText="color:"+UI.textDim+";font:12px Segoe UI,system-ui;flex:0 0 auto"; footerRight.textContent="Page "+pageNo;
-        footer.appendChild(fl); footer.appendChild(footerRight);
+        footer.appendChild(fl);
         page.appendChild(footer);
       }
-      return { page, content, headerNode:header, footerNode:footer, footerRight, explicit:false, headerHeight, footerHeight };
+      return { page, content, headerNode:header, footerNode:footer, explicit:false, headerHeight, footerHeight };
     }
     function substituteTokensForMeasure(html){
       if(!html) return "";
@@ -428,12 +430,12 @@
       box.style.cssText=(kind==="header"?HEADER_BASE_STYLE:FOOTER_BASE_STYLE)+"min-height:"+(kind==="header"?WCfg.HDR_H:WCfg.FTR_H)+"px;width:"+WCfg.A4W+"px;";
       if(kind==="footer"){
         box.style.display="flex";
-        const left=document.createElement("div"); left.style.cssText="flex:1 1 auto;min-width:160px"; left.innerHTML=html;
+        const left=document.createElement("div");
+        left.style.cssText="flex:1 1 auto;min-width:160px";
+        left.innerHTML=html;
         enforceHFImageSizing(left);
         HFAlign.applyFooter(left, align);
-        const right=document.createElement("div"); right.style.cssText="color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;flex:0 0 auto"; right.textContent="Page 888 of 888";
         box.appendChild(left);
-        box.appendChild(right);
       }else{
         box.innerHTML=html;
         enforceHFImageSizing(box);
@@ -528,7 +530,6 @@
       const total=pages.length, dateStr=(new Date()).toISOString().slice(0,10);
       for(let i=0;i<pages.length;i++){
         const pg=pages[i];
-        if(footerEnabled && pg.footerRight) pg.footerRight.textContent="Page "+(i+1)+" of "+total;
         if(headerEnabled && pg.headerNode) Tokens.apply(pg.headerNode, {page:i+1,total,date:dateStr});
         if(footerEnabled && pg.footerNode) Tokens.apply(pg.footerNode, {page:i+1,total,date:dateStr});
         let topOffset=headerHeight;
@@ -1266,7 +1267,7 @@
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
       const tokenHint="Smart tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
       const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
-      const footerSection=section("footer","Footer", tokenHint+" · Right slot auto shows page counter", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
+      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
