@@ -28,6 +28,9 @@
       hfSection:{ display:"flex", flexDirection:"column", gap:"10px", padding:"16px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#faf9f8" },
       hfToggleRow:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfToggleLabel:{ font:"14px/1.4 Segoe UI,system-ui", color:UI.text, display:"flex", alignItems:"center", gap:"8px", cursor:"pointer" },
+      hfAlignRow:{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", padding:"4px 2px 0" },
+      hfAlignGroup:{ display:"inline-flex", border:"1px solid "+UI.borderSubtle, borderRadius:"999px", overflow:"hidden", background:"#fff" },
+      hfAlignBtn:{ border:"0", background:"transparent", padding:"6px 12px", font:"12px/1.2 Segoe UI,system-ui", color:UI.textDim, cursor:"pointer", transition:"all .2s ease", minWidth:"48px" },
       hfEditable:{ width:"100%", minHeight:"96px", border:"1px solid "+UI.borderSubtle, borderRadius:"8px", padding:"10px 12px", font:"14px/1.5 Segoe UI,system-ui", color:UI.text, background:"#fff", boxSizing:"border-box", outline:"none", overflowY:"auto", whiteSpace:"pre-wrap", wordBreak:"break-word", position:"relative" },
       hfCanvas:{ display:"flex", flexDirection:"column", gap:"8px", alignItems:"stretch" },
       hfCanvasGuide:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, textTransform:"uppercase", letterSpacing:".08em" },
@@ -246,6 +249,33 @@
     }
     return { fixStructure };
   })();
+  const HFAlign=(function(){
+    const allowed={ left:"left", center:"center", right:"right" };
+    function normalize(value){
+      const key=(value==null?"":String(value)).toLowerCase();
+      return allowed[key] || "left";
+    }
+    function flexJustify(norm){
+      if(norm==="center") return "center";
+      if(norm==="right") return "flex-end";
+      return "flex-start";
+    }
+    function applyHeader(node, align){
+      if(!node || !node.style) return;
+      const norm=normalize(align);
+      node.style.justifyContent=flexJustify(norm);
+      node.style.textAlign=norm;
+    }
+    function applyEditor(node, align){
+      if(!node || !node.style) return;
+      node.style.textAlign=normalize(align);
+    }
+    function applyFooter(node, align){
+      if(!node || !node.style) return;
+      node.style.textAlign=normalize(align);
+    }
+    return { normalize, applyHeader, applyEditor, applyFooter };
+  })();
   const Tokens=(function(){
     function apply(root, ctx){
       function repl(s){ return s.replace(/\{\{page\}\}/g, String(ctx.page)).replace(/\{\{total\}\}/g, String(ctx.total)).replace(/\{\{date\}\}/g, ctx.date); }
@@ -313,6 +343,8 @@
     const FOOTER_BASE_STYLE="padding:10px 18px;border-top:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
     function makePage(pageNo, opts){
       const headerEnabled=opts.headerEnabled, footerEnabled=opts.footerEnabled, headerHTML=opts.headerHTML, footerHTML=opts.footerHTML;
+      const headerAlign=HFAlign.normalize(opts.headerAlign);
+      const footerAlign=HFAlign.normalize(opts.footerAlign);
       const headerHeight=opts.headerHeight!=null ? opts.headerHeight : (headerEnabled?WCfg.HDR_H:0);
       const footerHeight=opts.footerHeight!=null ? opts.footerHeight : (footerEnabled?WCfg.FTR_H:0);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
@@ -325,6 +357,7 @@
         header.className="weditor_page-header";
         header.style.cssText="position:absolute;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+WCfg.HDR_H+"px;";
         header.innerHTML=headerHTML;
+        HFAlign.applyHeader(header, headerAlign);
         page.appendChild(header);
       }
       const content=document.createElement("div");
@@ -336,6 +369,7 @@
         footer.className="weditor_page-footer";
         footer.style.cssText="position:absolute;left:0;right:0;bottom:0;"+FOOTER_BASE_STYLE+"min-height:"+WCfg.FTR_H+"px;";
         const fl=document.createElement("div"); fl.className="weditor_page-footer-left"; fl.style.cssText="flex:1 1 auto;min-width:160px"; fl.innerHTML=footerHTML;
+        HFAlign.applyFooter(fl, footerAlign);
         footerRight=document.createElement("div"); footerRight.className="weditor_page-footer-right"; footerRight.style.cssText="color:"+UI.textDim+";font:12px Segoe UI,system-ui;flex:0 0 auto"; footerRight.textContent="Page "+pageNo;
         footer.appendChild(fl); footer.appendChild(footerRight);
         page.appendChild(footer);
@@ -358,7 +392,7 @@
         if(!img.style.objectFit) img.style.objectFit="contain";
       }
     }
-    function measureSection(kind, html){
+    function measureSection(kind, html, align){
       const host=document.createElement("div");
       host.style.cssText="position:absolute;left:-99999px;top:-99999px;width:"+WCfg.A4W+"px;visibility:hidden;pointer-events:none;opacity:0;";
       const box=document.createElement("div");
@@ -367,12 +401,14 @@
         box.style.display="flex";
         const left=document.createElement("div"); left.style.cssText="flex:1 1 auto;min-width:160px"; left.innerHTML=html;
         enforceHFImageSizing(left);
+        HFAlign.applyFooter(left, align);
         const right=document.createElement("div"); right.style.cssText="color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;flex:0 0 auto"; right.textContent="Page 888 of 888";
         box.appendChild(left);
         box.appendChild(right);
       }else{
         box.innerHTML=html;
         enforceHFImageSizing(box);
+        HFAlign.applyHeader(box, align);
       }
       host.appendChild(box);
       document.body.appendChild(host);
@@ -383,15 +419,17 @@
       document.body.removeChild(host);
       return Math.max(min, height);
     }
-    function measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML){
-      const headerHeight = headerEnabled ? measureSection("header", substituteTokensForMeasure(headerHTML||"")) : 0;
-      const footerHeight = footerEnabled ? measureSection("footer", substituteTokensForMeasure(footerHTML||"")) : 0;
+    function measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign){
+      const headerHeight = headerEnabled ? measureSection("header", substituteTokensForMeasure(headerHTML||""), headerAlign) : 0;
+      const footerHeight = footerEnabled ? measureSection("footer", substituteTokensForMeasure(footerHTML||""), footerAlign) : 0;
       return { headerHeight, footerHeight };
     }
     function paginate(rawHTML, state){
       const {headerEnabled, footerEnabled, headerHTML, footerHTML}=state;
+      const headerAlign=HFAlign.normalize(state.headerAlign);
+      const footerAlign=HFAlign.normalize(state.footerAlign);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
-      const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML);
+      const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign);
       const headerHeight=layout.headerHeight;
       const footerHeight=layout.footerHeight;
       const AVAIL=Math.max(64, A4H - headerHeight - footerHeight - 2*PAD);
@@ -419,12 +457,12 @@
       const CONTENT_WIDTH=A4W - 2*PAD;
       const measWrap=document.createElement("div"); measWrap.style.cssText="position:absolute;left:-99999px;top:-99999px;visibility:hidden;width:"+A4W+"px";
       document.body.appendChild(measWrap);
-      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight});
+      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign});
       const measContent=measPage.content; measWrap.appendChild(measPage.page);
-      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight}); let used=0;
+      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign}); let used=0;
       function hasContent(pg){ return pg && pg.content && pg.content.childNodes && pg.content.childNodes.length>0; }
       function push(force){ if(force || hasContent(cur) || cur.explicit){ pages.push(cur); } }
-      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight}); cur.explicit=!!force; used=0; }
+      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign}); cur.explicit=!!force; used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
         for(let k=0;k<imgs.length;k++){
@@ -695,7 +733,7 @@
       editor.__weditorCleanup=function(){ if(raf) cancelAnimationFrame(raf); window.removeEventListener("resize", scheduleOverlay); observer.disconnect(); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
     }
     let uid=0;
-    function section(kind, titleText, description, enabled, html){
+    function section(kind, titleText, description, enabled, html, align){
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
       const toggleRow=document.createElement("div"); applyStyles(toggleRow, WCfg.Style.hfToggleRow); wrap.appendChild(toggleRow);
       const toggleId="weditor-hf-"+kind+"-"+(++uid);
@@ -712,6 +750,7 @@
       editor.contentEditable="true";
       editor.tabIndex=0;
       editor.innerHTML = Sanitizer.clean(html || "");
+      let alignValue=HFAlign.normalize(align);
       function enforceImageSizing(target){
         const imgs=target.querySelectorAll ? target.querySelectorAll("img") : [];
         for(let i=0;i<imgs.length;i++){
@@ -724,6 +763,54 @@
       enforceImageSizing(editor);
       editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); }, 0); });
       editor.addEventListener("input", function(){ enforceImageSizing(editor); });
+      const alignRow=document.createElement("div"); applyStyles(alignRow, WCfg.Style.hfAlignRow);
+      const alignLabel=document.createElement("span");
+      alignLabel.textContent="Align 對齊";
+      alignLabel.style.font="12px/1.4 Segoe UI,system-ui";
+      alignLabel.style.color=WCfg.UI.textDim;
+      const alignGroup=document.createElement("div"); applyStyles(alignGroup, WCfg.Style.hfAlignGroup);
+      alignGroup.setAttribute("role","group");
+      alignGroup.setAttribute("aria-label", titleText+" alignment controls");
+      const alignButtons=[];
+      const alignOptions=[
+        { value:"left", label:"Left", title:"Align left / 靠左" },
+        { value:"center", label:"Center", title:"Align center / 置中" },
+        { value:"right", label:"Right", title:"Align right / 靠右" }
+      ];
+      for(let i=0;i<alignOptions.length;i++){
+        const opt=alignOptions[i];
+        const btn=document.createElement("button");
+        btn.type="button";
+        applyStyles(btn, WCfg.Style.hfAlignBtn);
+        btn.textContent=opt.label;
+        btn.title=opt.title;
+        btn.setAttribute("data-align", opt.value);
+        btn.setAttribute("aria-pressed","false");
+        if(i<alignOptions.length-1) btn.style.borderRight="1px solid "+WCfg.UI.borderSubtle;
+        btn.addEventListener("click", function(){ if(!toggle.checked) return; setAlign(opt.value); });
+        alignGroup.appendChild(btn);
+        alignButtons.push({ value:opt.value, button:btn });
+      }
+      alignRow.appendChild(alignLabel);
+      alignRow.appendChild(alignGroup);
+      wrap.appendChild(alignRow);
+      function updateAlignUI(){
+        HFAlign.applyEditor(editor, alignValue);
+        for(let i=0;i<alignButtons.length;i++){
+          const item=alignButtons[i];
+          const active=item.value===alignValue;
+          item.button.setAttribute("aria-pressed", active?"true":"false");
+          item.button.style.background=active?"#e6f2fb":"#fff";
+          item.button.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
+          item.button.style.fontWeight=active?"600":"400";
+        }
+      }
+      function setAlign(next){
+        const norm=HFAlign.normalize(next);
+        alignValue=norm;
+        updateAlignUI();
+      }
+      updateAlignUI();
       const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.hfCanvas);
       const guide=document.createElement("div"); applyStyles(guide, WCfg.Style.hfCanvasGuide);
       guide.textContent="PAGE WIDTH GUIDE · 可視寬度約 "+(WCfg.A4W-36)+"px";
@@ -825,6 +912,13 @@
         uploadBtn.style.cursor=on?"pointer":"not-allowed";
         fileInput.disabled=!on;
         status.textContent = on?"Enabled":"Disabled";
+        for(let i=0;i<alignButtons.length;i++){
+          const btn=alignButtons[i].button;
+          btn.disabled=!on;
+          btn.style.opacity=on?"1":"0.55";
+          btn.style.cursor=on?"pointer":"not-allowed";
+        }
+        updateAlignUI();
       }
       toggle.addEventListener("change", sync);
       sync();
@@ -841,7 +935,8 @@
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
           return clone.innerHTML;
-        }
+        },
+        getAlign:function(){ return alignValue; }
       };
     }
     function open(inst, ctx){
@@ -859,8 +954,8 @@
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
       const tokenHint="Tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
-      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML);
-      const footerSection=section("footer","Footer", tokenHint+" · Right slot auto shows page counter", inst.footerEnabled, inst.footerHTML);
+      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
+      const footerSection=section("footer","Footer", tokenHint+" · Right slot auto shows page counter", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       panel.appendChild(body);
@@ -889,6 +984,8 @@
         inst.footerEnabled = !!footerSection.toggle.checked;
         inst.headerHTML = Sanitizer.clean(headerSection.getHTML());
         inst.footerHTML = Sanitizer.clean(footerSection.getHTML());
+        inst.headerAlign = headerSection.getAlign();
+        inst.footerAlign = footerSection.getAlign();
         if(ctx && ctx.refreshPreview) ctx.refreshPreview();
         OutputBinding.syncDebounced(inst);
         close();
@@ -1047,6 +1144,8 @@
     this.el = editorEl;
     this.headerHTML = "Demo Header — {{date}} · Page {{page}} / {{total}}";
     this.footerHTML = "Confidential · {{date}}";
+    this.headerAlign = HFAlign.normalize(editorEl.getAttribute("data-header-align"));
+    this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
     this.headerEnabled = !editorEl.classList.contains("weditor--no-header");
     this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
     this.outputEl = OutputBinding.resolve(editorEl);
