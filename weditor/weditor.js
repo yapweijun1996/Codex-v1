@@ -41,6 +41,24 @@
       hfCanvasStage:{ position:"relative", width:"100%", display:"flex", justifyContent:"center" },
       hfCanvasPage:{ position:"relative", width:"100%", maxWidth:innerHFWidth+"px", background:"#fff", border:"1px dashed "+UI.borderSubtle, borderRadius:"10px", padding:"12px", boxSizing:"border-box", boxShadow:"inset 0 0 0 1px rgba(15,108,189,.08)" },
       hfHint:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      hfTokenRow:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      hfTokenLabel:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      hfTokenChip:{ borderRadius:"999px", border:"1px solid "+UI.borderSubtle, padding:"4px 10px", background:"#fff", color:UI.text, font:"12px/1.3 Segoe UI,system-ui", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"6px", transition:"all .18s ease" },
+      hfTemplateSection:{ display:"flex", flexDirection:"column", gap:"10px", background:"#fff", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", padding:"12px" },
+      hfTemplateHeader:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      hfTemplateHint:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      hfTemplateGrid:{ display:"grid", gap:"8px", gridTemplateColumns:"repeat(auto-fill, minmax(180px, 1fr))" },
+      hfTemplateCard:{ borderRadius:"8px", border:"1px solid "+UI.borderSubtle, background:"#fafafa", padding:"10px 12px", display:"flex", flexDirection:"column", gap:"6px", textAlign:"left", cursor:"pointer", transition:"all .18s ease" },
+      hfTemplateCardTitle:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      hfTemplateCardPreview:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, display:"flex", flexDirection:"column", gap:"2px" },
+      hfPreviewSection:{ display:"flex", flexDirection:"column", gap:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"12px", padding:"16px", background:"#fff" },
+      hfPreviewTitle:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      hfPreviewHint:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      hfPreviewCanvas:{ position:"relative", width:"100%", display:"flex", justifyContent:"center" },
+      hfPreviewPage:{ width:"min(320px, 100%)", borderRadius:"12px", border:"1px solid "+UI.borderSubtle, background:"#fff", boxShadow:"0 8px 20px rgba(0,0,0,.08)", padding:"18px 18px 14px", boxSizing:"border-box", display:"flex", flexDirection:"column", gap:"16px" },
+      hfPreviewHeader:{ minHeight:"54px", display:"flex", alignItems:"center", justifyContent:"flex-start", gap:"12px", padding:"4px", borderBottom:"1px dashed "+UI.borderSubtle },
+      hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"6px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      hfPreviewFooter:{ minHeight:"46px", display:"flex", alignItems:"center", justifyContent:"flex-start", gap:"12px", padding:"4px", borderTop:"1px dashed "+UI.borderSubtle },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,Style };
@@ -746,11 +764,183 @@
     }
     let uid=0;
     const TOKEN_OPTIONS=[
-      { value:"{{date}}", label:"📅 Date 日期" },
-      { value:"{{page}}", label:"📄 Page Number 頁碼" },
-      { value:"{{total}}", label:"📘 Total Pages 總頁數" }
+      { value:"{{date}}", label:"{{date}}" },
+      { value:"{{page}}", label:"{{page}}" },
+      { value:"{{total}}", label:"{{total}}" }
     ];
+    const TOKEN_LOOKUP=TOKEN_OPTIONS.reduce(function(acc,opt){ acc[opt.value]=opt; return acc; },{});
+    function escapeRegExp(str){ return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+    const TOKEN_REGEX=new RegExp("("+TOKEN_OPTIONS.map(function(opt){ return escapeRegExp(opt.value); }).join("|")+")","g");
+    function createTokenChip(value){
+      const meta=TOKEN_LOOKUP[value]||{ label:value };
+      const chip=document.createElement("span");
+      chip.setAttribute("data-weditor-token", value);
+      chip.setAttribute("contenteditable","false");
+      chip.textContent=meta.label;
+      chip.style.display="inline-flex";
+      chip.style.alignItems="center";
+      chip.style.justifyContent="center";
+      chip.style.padding="2px 8px";
+      chip.style.margin="0 2px";
+      chip.style.borderRadius="999px";
+      chip.style.border="1px solid "+WCfg.UI.borderSubtle;
+      chip.style.background="#e6f2fb";
+      chip.style.color=WCfg.UI.brand;
+      chip.style.font="12px/1.2 Segoe UI,system-ui";
+      chip.style.whiteSpace="nowrap";
+      return chip;
+    }
+    function decorateTokens(root){
+      if(!root) return;
+      const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+      const targets=[]; let node;
+      while((node=walker.nextNode())){
+        if(!node.nodeValue) continue;
+        const parent=node.parentNode;
+        if(parent && parent.nodeType===1 && parent.hasAttribute && parent.hasAttribute("data-weditor-token")) continue;
+        if(parent && parent.closest && parent.closest('[data-weditor-token]')) continue;
+        if(node.nodeValue.indexOf('{{')===-1) continue;
+        targets.push(node);
+      }
+      for(let i=0;i<targets.length;i++){
+        const textNode=targets[i];
+        const original=textNode.nodeValue||"";
+        const parts=original.split(TOKEN_REGEX);
+        if(parts.length<=1) continue;
+        const frag=document.createDocumentFragment();
+        for(let j=0;j<parts.length;j++){
+          const part=parts[j];
+          if(!part) continue;
+          if(Object.prototype.hasOwnProperty.call(TOKEN_LOOKUP, part)) frag.appendChild(createTokenChip(part));
+          else frag.appendChild(document.createTextNode(part));
+        }
+        if(textNode.parentNode) textNode.parentNode.replaceChild(frag, textNode);
+      }
+    }
+    function unwrapTokenChips(root){
+      if(!root || !root.querySelectorAll) return;
+      const chips=root.querySelectorAll('[data-weditor-token]');
+      for(let i=0;i<chips.length;i++){
+        const chip=chips[i];
+        const token=chip.getAttribute("data-weditor-token") || chip.textContent || "";
+        const text=document.createTextNode(token);
+        chip.parentNode.replaceChild(text, chip);
+      }
+    }
+    const TEMPLATE_LIBRARY={
+      header:[
+        {
+          id:"letterhead",
+          label:"🏢 Company Letterhead",
+          preview:'<strong>Acme Corp</strong><span>123 Market St · {{date}}</span>',
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'+
+            '<div style="display:flex;align-items:center;gap:12px;">'+
+              '<img src="https://picsum.photos/seed/weditor-letterhead/48/48" alt="Company logo" style="width:48px;height:48px;border-radius:8px;object-fit:cover;">'+
+              '<div>'+
+                '<div style="font-size:16px;font-weight:600;">Acme Corporation</div>'+
+                '<div style="font-size:12px;color:#666;">123 Market Street · San Francisco, CA</div>'+
+              '</div>'+
+            '</div>'+
+            '<div style="text-align:right;font-size:12px;line-height:1.5;color:#666;">'+
+              '<div>{{date}}</div>'+
+              '<div>+1 (555) 010-2000</div>'+
+              '<div>hello@acme.com</div>'+
+            '</div>'+
+          '</div>',
+          align:"left"
+        },
+        {
+          id:"report",
+          label:"📊 Company Report",
+          preview:'<span>Q4 Business Review</span><span>Confidential · {{date}}</span>',
+          html:'<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;">'+
+            '<div style="font-size:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;">Q4 Business Review</div>'+
+            '<div style="font-size:12px;color:#666;">Confidential · {{date}}</div>'+
+          '</div>',
+          align:"center"
+        },
+        {
+          id:"project",
+          label:"🗂️ Project Brief",
+          preview:'<span>Project Phoenix</span><span>Version {{page}} · {{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:4px;width:100%;">'+
+            '<div style="font-size:15px;font-weight:600;">Project Phoenix</div>'+
+            '<div style="font-size:12px;color:#666;">Sprint Summary · Version {{page}} · {{date}}</div>'+
+          '</div>',
+          align:"left"
+        },
+        {
+          id:"minutes",
+          label:"📝 Meeting Minutes",
+          preview:'<span>Weekly Sync</span><span>{{date}} · 10:00 AM</span>',
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'+
+            '<div>'+
+              '<div style="font-size:15px;font-weight:600;">Weekly Sync</div>'+
+              '<div style="font-size:12px;color:#666;">Prepared by Operations</div>'+
+            '</div>'+
+            '<div style="text-align:right;font-size:12px;color:#666;">'+
+              '<div>{{date}}</div>'+
+              '<div>10:00 AM · Zoom</div>'+
+            '</div>'+
+          '</div>',
+          align:"left"
+        }
+      ],
+      footer:[
+        {
+          id:"invoice",
+          label:"🧾 Invoice / Quotation",
+          preview:'<span>Acme Finance</span><span>Page {{page}} of {{total}}</span>',
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
+            '<div>Acme Finance · Accounts Payable</div>'+
+            '<div style="text-align:right;">Page {{page}} of {{total}}</div>'+
+          '</div>',
+          align:"left"
+        },
+        {
+          id:"confidential",
+          label:"🔒 Confidential Notice",
+          preview:'<span>Confidential · Internal Use Only</span>',
+          html:'<div style="width:100%;text-align:center;font-size:12px;">Confidential · Internal Use Only · {{date}}</div>',
+          align:"center"
+        },
+        {
+          id:"delivery",
+          label:"🚚 Delivery Order",
+          preview:'<span>Logistics Hotline</span><span>{{page}}/{{total}}</span>',
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
+            '<div>Logistics Hotline · +65 6100 1234</div>'+
+            '<div style="text-align:center;">Page {{page}} / {{total}}</div>'+
+            '<div style="text-align:right;">www.acme-shipping.com</div>'+
+          '</div>',
+          align:"left"
+        },
+        {
+          id:"contract",
+          label:"📄 Contract Footer",
+          preview:'<span>Prepared for Client</span><span>{{date}}</span>',
+          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
+            '<div>Prepared by Legal Team</div>'+
+            '<div style="text-align:right;">Version {{page}} · {{date}}</div>'+
+          '</div>',
+          align:"left"
+        }
+      ]
+    };
+    const PREVIEW_TOKEN_VALUES={ "{{date}}":"Aug 18, 2024", "{{page}}":"3", "{{total}}":"12" };
+    function replacePreviewTokens(html){
+      let out=html||"";
+      for(const key in PREVIEW_TOKEN_VALUES){
+        if(Object.prototype.hasOwnProperty.call(PREVIEW_TOKEN_VALUES, key)){
+      const pattern=new RegExp(escapeRegExp(key),"g");
+          out=out.replace(pattern, PREVIEW_TOKEN_VALUES[key]);
+        }
+      }
+      return out;
+    }
     function section(kind, titleText, description, enabled, html, align){
+      const changeHandlers=[];
+      function notifyChange(){ for(let i=0;i<changeHandlers.length;i++){ changeHandlers[i](); } }
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
       const toggleRow=document.createElement("div"); applyStyles(toggleRow, WCfg.Style.hfToggleRow); wrap.appendChild(toggleRow);
       const toggleId="weditor-hf-"+kind+"-"+(++uid);
@@ -767,6 +957,7 @@
       editor.contentEditable="true";
       editor.tabIndex=0;
       editor.innerHTML = Sanitizer.clean(html || "");
+      decorateTokens(editor);
       let alignValue=HFAlign.normalize(align);
       function enforceImageSizing(target){
         const imgs=target.querySelectorAll ? target.querySelectorAll("img") : [];
@@ -778,42 +969,32 @@
         }
       }
       enforceImageSizing(editor);
-      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); }, 0); });
-      editor.addEventListener("input", function(){ enforceImageSizing(editor); });
-      const tokenRow=document.createElement("div");
-      tokenRow.style.display="flex";
-      tokenRow.style.alignItems="center";
-      tokenRow.style.gap="8px";
-      tokenRow.style.flexWrap="wrap";
-      const tokenLabel=document.createElement("span");
-      tokenLabel.textContent="🧩 Insert Token 插入變量";
-      tokenLabel.style.font="12px/1.4 Segoe UI,system-ui";
-      tokenLabel.style.color=WCfg.UI.textDim;
-      tokenRow.appendChild(tokenLabel);
-      const tokenSelect=document.createElement("select");
-      tokenSelect.setAttribute("aria-label","Insert token for "+titleText);
-      tokenSelect.style.padding="6px 10px";
-      tokenSelect.style.border="1px solid "+WCfg.UI.borderSubtle;
-      tokenSelect.style.borderRadius="6px";
-      tokenSelect.style.font="12px/1.4 Segoe UI,system-ui";
-      tokenSelect.style.background="#fff";
-      const placeholderOption=document.createElement("option");
-      placeholderOption.value="";
-      placeholderOption.textContent="Choose token 選擇";
-      tokenSelect.appendChild(placeholderOption);
-      for(let i=0;i<TOKEN_OPTIONS.length;i++){
-        const opt=document.createElement("option");
-        opt.value=TOKEN_OPTIONS[i].value;
-        opt.textContent=TOKEN_OPTIONS[i].label;
-        tokenSelect.appendChild(opt);
-      }
-      tokenSelect.addEventListener("change", function(){
-        if(!toggle.checked){ tokenSelect.value=""; return; }
-        const tokenValue=tokenSelect.value;
-        if(tokenValue){ insertSnippet(tokenValue); }
-        tokenSelect.value="";
+      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); decorateTokens(editor); notifyChange(); }, 0); });
+      let decorateTimer=null;
+      editor.addEventListener("input", function(){
+        enforceImageSizing(editor);
+        if(decorateTimer){ window.clearTimeout(decorateTimer); }
+        decorateTimer=window.setTimeout(function(){ decorateTokens(editor); notifyChange(); }, 120);
       });
-      tokenRow.appendChild(tokenSelect);
+      const tokenRow=document.createElement("div"); applyStyles(tokenRow, WCfg.Style.hfTokenRow);
+      const tokenLabel=document.createElement("span"); applyStyles(tokenLabel, WCfg.Style.hfTokenLabel); tokenLabel.textContent="🧩 Smart Tokens 智慧變量";
+      tokenRow.appendChild(tokenLabel);
+      const tokenButtons=[];
+      for(let i=0;i<TOKEN_OPTIONS.length;i++){
+        const opt=TOKEN_OPTIONS[i];
+        const chip=document.createElement("button");
+        chip.type="button";
+        applyStyles(chip, WCfg.Style.hfTokenChip);
+        chip.textContent=opt.label;
+        chip.setAttribute("data-token", opt.value);
+        chip.addEventListener("mouseenter", function(){ if(!chip.disabled) chip.style.background="#f3f2f1"; });
+        chip.addEventListener("mouseleave", function(){ chip.style.background="#fff"; });
+        chip.addEventListener("click", function(){ if(chip.disabled) return; if(!toggle.checked){ toggle.checked=true; sync(); }
+          insertContent(createTokenChip(opt.value));
+        });
+        tokenButtons.push(chip);
+        tokenRow.appendChild(chip);
+      }
       wrap.appendChild(tokenRow);
       const alignRow=document.createElement("div"); applyStyles(alignRow, WCfg.Style.hfAlignRow);
       const alignLabel=document.createElement("span");
@@ -847,57 +1028,40 @@
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
       const templateButtons=[];
-      if(kind==="footer"){
-        const templateBox=document.createElement("div");
-        templateBox.style.display="flex";
-        templateBox.style.flexDirection="column";
-        templateBox.style.gap="8px";
-        templateBox.style.background="#fff";
-        templateBox.style.border="1px solid "+WCfg.UI.borderSubtle;
-        templateBox.style.borderRadius="8px";
-        templateBox.style.padding="12px";
-        const templateTitle=document.createElement("div");
-        templateTitle.textContent="Footer layout 模板 Preview";
-        templateTitle.style.font="12px/1.4 Segoe UI,system-ui";
-        templateTitle.style.fontWeight="600";
-        templateTitle.style.color=WCfg.UI.text;
+      const templates=TEMPLATE_LIBRARY[kind]||[];
+      if(templates.length){
+        const templateBox=document.createElement("div"); applyStyles(templateBox, WCfg.Style.hfTemplateSection);
+        const templateTitle=document.createElement("div"); applyStyles(templateTitle, WCfg.Style.hfTemplateHeader); templateTitle.textContent="Template Library 模板庫";
+        const templateHint=document.createElement("div"); applyStyles(templateHint, WCfg.Style.hfTemplateHint); templateHint.textContent="點擊直接套用常見商務樣式";
+        const templateGrid=document.createElement("div"); applyStyles(templateGrid, WCfg.Style.hfTemplateGrid);
+        for(let i=0;i<templates.length;i++){
+          const tpl=templates[i];
+          const card=document.createElement("button"); card.type="button"; applyStyles(card, WCfg.Style.hfTemplateCard);
+          const cardTitle=document.createElement("div"); applyStyles(cardTitle, WCfg.Style.hfTemplateCardTitle); cardTitle.textContent=tpl.label;
+          const cardPreview=document.createElement("div"); applyStyles(cardPreview, WCfg.Style.hfTemplateCardPreview);
+          cardPreview.innerHTML=Sanitizer.clean(tpl.preview||tpl.html||"");
+          decorateTokens(cardPreview);
+          card.appendChild(cardTitle);
+          card.appendChild(cardPreview);
+          card.addEventListener("mouseenter", function(){ if(!card.disabled) card.style.background="#f3f2f1"; });
+          card.addEventListener("mouseleave", function(){ card.style.background="#fafafa"; });
+          card.addEventListener("click", function(){
+            if(card.disabled) return;
+            if(!toggle.checked){ toggle.checked=true; sync(); }
+            editor.innerHTML=Sanitizer.clean(tpl.html||"");
+            decorateTokens(editor);
+            Normalizer.fixStructure(editor);
+            enforceImageSizing(editor);
+            setAlign(tpl.align || "left");
+            WDom.placeCaretAtEnd(editor);
+            notifyChange();
+          });
+          templateButtons.push(card);
+          templateGrid.appendChild(card);
+        }
         templateBox.appendChild(templateTitle);
-        const templateHint=document.createElement("div");
-        templateHint.textContent="點擊套用：左 Confidential · 中 {{date}} · 右 Page {{page}} of {{total}}";
-        templateHint.style.font="11px/1.4 Segoe UI,system-ui";
-        templateHint.style.color=WCfg.UI.textDim;
         templateBox.appendChild(templateHint);
-        const templateOption=document.createElement("button");
-        templateOption.type="button";
-        templateOption.style.display="flex";
-        templateOption.style.alignItems="center";
-        templateOption.style.justifyContent="space-between";
-        templateOption.style.gap="12px";
-        templateOption.style.padding="10px 12px";
-        templateOption.style.border="1px solid "+WCfg.UI.borderSubtle;
-        templateOption.style.borderRadius="6px";
-        templateOption.style.background="#fafafa";
-        templateOption.style.font="12px/1.4 Segoe UI,system-ui";
-        templateOption.style.color=WCfg.UI.text;
-        templateOption.style.cursor="pointer";
-        templateOption.innerHTML='<span style="flex:1;text-align:left;">左 · Confidential</span><span style="flex:1;text-align:center;">中 · {{date}}</span><span style="flex:1;text-align:right;">右 · Page {{page}} of {{total}}</span>';
-        const templateHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;">'+
-          '<span style="text-align:left;">Confidential</span>'+
-          '<span style="text-align:center;">{{date}}</span>'+
-          '<span style="text-align:right;">Page {{page}} of {{total}}</span>'+
-        '</div>';
-        templateOption.addEventListener("click", function(){
-          if(!toggle.checked) return;
-          editor.innerHTML=Sanitizer.clean(templateHTML);
-          Normalizer.fixStructure(editor);
-          enforceImageSizing(editor);
-          setAlign("left");
-          WDom.placeCaretAtEnd(editor);
-        });
-        templateOption.addEventListener("mouseenter", function(){ templateOption.style.background="#f3f2f1"; });
-        templateOption.addEventListener("mouseleave", function(){ templateOption.style.background="#fafafa"; });
-        templateButtons.push(templateOption);
-        templateBox.appendChild(templateOption);
+        templateBox.appendChild(templateGrid);
         wrap.appendChild(templateBox);
       }
       function updateAlignUI(){
@@ -910,6 +1074,7 @@
           item.button.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
           item.button.style.fontWeight=active?"600":"400";
         }
+        notifyChange();
       }
       function setAlign(next){
         const norm=HFAlign.normalize(next);
@@ -919,7 +1084,7 @@
       updateAlignUI();
       const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.hfCanvas);
       const guide=document.createElement("div"); applyStyles(guide, WCfg.Style.hfCanvasGuide);
-      guide.textContent="PAGE WIDTH GUIDE · 可視寬度約 "+(WCfg.A4W-36)+"px";
+      guide.textContent="EDITABLE AREA · 寬度約 "+(WCfg.A4W-36)+"px";
       canvas.appendChild(guide);
       const stage=document.createElement("div"); applyStyles(stage, WCfg.Style.hfCanvasStage);
       const pageBox=document.createElement("div"); applyStyles(pageBox, WCfg.Style.hfCanvasPage);
@@ -951,7 +1116,7 @@
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
       enableImageResizer(editor);
-      function insertSnippet(snippet){
+      function insertContent(content){
         editor.focus();
         const sel=window.getSelection();
         if(!sel) return;
@@ -969,16 +1134,26 @@
           range.collapse(false);
         }
         if(!range){ return; }
-        const temp=document.createElement("div"); temp.innerHTML=snippet;
-        const frag=document.createDocumentFragment(); let last=null; let node;
-        while((node=temp.firstChild)){ last=node; frag.appendChild(node); }
+        const frag=document.createDocumentFragment();
+        let lastInserted=null;
+        if(typeof content==="string"){
+          const temp=document.createElement("div"); temp.innerHTML=content;
+          let node;
+          while((node=temp.firstChild)){ lastInserted=node; frag.appendChild(node); }
+        } else if(content){
+          lastInserted=content;
+          frag.appendChild(content);
+        }
         range.deleteContents(); range.insertNode(frag);
-        if(last){
-          range.setStartAfter(last);
-          range.setEndAfter(last);
-          sel.removeAllRanges(); sel.addRange(range);
+        if(lastInserted){
+          range.setStartAfter(lastInserted);
+          range.setEndAfter(lastInserted);
+          sel.removeAllRanges();
+          sel.addRange(range);
         }
         Normalizer.fixStructure(editor);
+        decorateTokens(editor);
+        notifyChange();
       }
       function toAltText(name){
         if(!name) return "Uploaded image";
@@ -995,7 +1170,7 @@
           if(typeof dataUrl!=="string") return;
           const alt=toAltText(file.name||"");
           const snippet='<img src="'+dataUrl+'" alt="'+alt+'" style="max-width:100%;height:auto;object-fit:contain;">';
-          insertSnippet(snippet);
+          insertContent(snippet);
         };
         reader.readAsDataURL(file);
       });
@@ -1017,9 +1192,12 @@
         uploadBtn.style.opacity=on?"1":"0.55";
         uploadBtn.style.cursor=on?"pointer":"not-allowed";
         fileInput.disabled=!on;
-        tokenSelect.disabled=!on;
-        tokenSelect.style.opacity=on?"1":"0.55";
-        tokenSelect.style.cursor=on?"pointer":"not-allowed";
+        for(let k=0;k<tokenButtons.length;k++){
+          const chip=tokenButtons[k];
+          chip.disabled=!on;
+          chip.style.opacity=on?"1":"0.55";
+          chip.style.cursor=on?"pointer":"not-allowed";
+        }
         for(let t=0;t<templateButtons.length;t++){
           const btn=templateButtons[t];
           btn.disabled=!on;
@@ -1049,9 +1227,20 @@
           for(let i=0;i<overlays.length;i++){ const el=overlays[i]; if(el && el.parentNode) el.parentNode.removeChild(el); }
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
+          unwrapTokenChips(clone);
           return clone.innerHTML;
         },
-        getAlign:function(){ return alignValue; }
+        getPreviewHTML:function(){
+          const clone=editor.cloneNode(true);
+          const overlays=clone.querySelectorAll('[data-weditor-overlay]');
+          for(let i=0;i<overlays.length;i++){ const el=overlays[i]; if(el && el.parentNode) el.parentNode.removeChild(el); }
+          const actives=clone.querySelectorAll('.weditor-hf-img-active');
+          for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
+          unwrapTokenChips(clone);
+          return Sanitizer.clean(clone.innerHTML);
+        },
+        getAlign:function(){ return alignValue; },
+        onChange:function(cb){ if(typeof cb==="function") changeHandlers.push(cb); }
       };
     }
     function open(inst, ctx){
@@ -1075,12 +1264,84 @@
       panel.appendChild(head);
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
-      const tokenHint="Tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
+      const tokenHint="Smart tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
       const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
       const footerSection=section("footer","Footer", tokenHint+" · Right slot auto shows page counter", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
+      const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
+      const previewTitle=document.createElement("div"); applyStyles(previewTitle, WCfg.Style.hfPreviewTitle); previewTitle.textContent="Live Preview 即時預覽";
+      const previewHint=document.createElement("div"); applyStyles(previewHint, WCfg.Style.hfPreviewHint); previewHint.textContent="依照目前模板與 token 值即時呈現";
+      const previewCanvas=document.createElement("div"); applyStyles(previewCanvas, WCfg.Style.hfPreviewCanvas);
+      const previewPage=document.createElement("div"); applyStyles(previewPage, WCfg.Style.hfPreviewPage);
+      const previewHeader=document.createElement("div"); applyStyles(previewHeader, WCfg.Style.hfPreviewHeader);
+      const previewBody=document.createElement("div"); applyStyles(previewBody, WCfg.Style.hfPreviewBody);
+      for(let i=0;i<4;i++){
+        const line=document.createElement("div");
+        line.style.height="6px";
+        line.style.borderRadius="999px";
+        line.style.background="#e1dfdd";
+        line.style.opacity=String(0.85 - i*0.15);
+        previewBody.appendChild(line);
+      }
+      const previewFooter=document.createElement("div"); applyStyles(previewFooter, WCfg.Style.hfPreviewFooter);
+      previewPage.appendChild(previewHeader);
+      previewPage.appendChild(previewBody);
+      previewPage.appendChild(previewFooter);
+      previewCanvas.appendChild(previewPage);
+      previewSection.appendChild(previewTitle);
+      previewSection.appendChild(previewHint);
+      previewSection.appendChild(previewCanvas);
+      function setPreviewMessage(target, message){
+        target.innerHTML="";
+        target.style.justifyContent="center";
+        target.style.textAlign="center";
+        const msg=document.createElement("div");
+        msg.textContent=message;
+        msg.style.font="11px/1.4 Segoe UI,system-ui";
+        msg.style.color=WCfg.UI.textDim;
+        msg.style.width="100%";
+        target.appendChild(msg);
+      }
+      function applyFooterAlign(node, align){
+        const norm=HFAlign.normalize(align);
+        if(!node || !node.style) return;
+        if(norm==="center"){ node.style.justifyContent="center"; }
+        else if(norm==="right"){ node.style.justifyContent="flex-end"; }
+        else { node.style.justifyContent="flex-start"; }
+        node.style.textAlign=norm;
+      }
+      function renderPreview(){
+        const headerEnabled=!!headerSection.toggle.checked;
+        const footerEnabled=!!footerSection.toggle.checked;
+        const headerHTML=(headerSection.getPreviewHTML()||"").trim();
+        const footerHTML=(footerSection.getPreviewHTML()||"").trim();
+        if(headerEnabled && headerHTML){
+          previewHeader.style.justifyContent="";
+          previewHeader.style.textAlign="";
+          previewHeader.innerHTML=Sanitizer.clean(replacePreviewTokens(headerHTML));
+          HFAlign.applyHeader(previewHeader, headerSection.getAlign());
+        } else if(headerEnabled){
+          setPreviewMessage(previewHeader, "Header 無內容 · 請在左側編輯區輸入");
+        } else {
+          setPreviewMessage(previewHeader, "Header disabled · 尚未啟用");
+        }
+        if(footerEnabled && footerHTML){
+          previewFooter.style.justifyContent="";
+          previewFooter.style.textAlign="";
+          previewFooter.innerHTML=Sanitizer.clean(replacePreviewTokens(footerHTML));
+          applyFooterAlign(previewFooter, footerSection.getAlign());
+        } else if(footerEnabled){
+          setPreviewMessage(previewFooter, "Footer 無內容 · 請在左側編輯區輸入");
+        } else {
+          setPreviewMessage(previewFooter, "Footer disabled · 尚未啟用");
+        }
+      }
+      headerSection.onChange(renderPreview);
+      footerSection.onChange(renderPreview);
+      body.appendChild(previewSection);
       panel.appendChild(body);
+      renderPreview();
       const footer=document.createElement("div"); applyStyles(footer, WCfg.Style.hfFooter);
       const cancel=WDom.btn("Cancel", false, "Dismiss without saving");
       const save=WDom.btn("Save changes", true, "Apply header and footer");
