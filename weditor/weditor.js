@@ -745,6 +745,11 @@
       editor.__weditorCleanup=function(){ if(raf) cancelAnimationFrame(raf); window.removeEventListener("resize", scheduleOverlay); observer.disconnect(); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
     }
     let uid=0;
+    const TOKEN_OPTIONS=[
+      { value:"{{date}}", label:"📅 Date 日期" },
+      { value:"{{page}}", label:"📄 Page Number 頁碼" },
+      { value:"{{total}}", label:"📘 Total Pages 總頁數" }
+    ];
     function section(kind, titleText, description, enabled, html, align){
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
       const toggleRow=document.createElement("div"); applyStyles(toggleRow, WCfg.Style.hfToggleRow); wrap.appendChild(toggleRow);
@@ -775,6 +780,41 @@
       enforceImageSizing(editor);
       editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); }, 0); });
       editor.addEventListener("input", function(){ enforceImageSizing(editor); });
+      const tokenRow=document.createElement("div");
+      tokenRow.style.display="flex";
+      tokenRow.style.alignItems="center";
+      tokenRow.style.gap="8px";
+      tokenRow.style.flexWrap="wrap";
+      const tokenLabel=document.createElement("span");
+      tokenLabel.textContent="🧩 Insert Token 插入變量";
+      tokenLabel.style.font="12px/1.4 Segoe UI,system-ui";
+      tokenLabel.style.color=WCfg.UI.textDim;
+      tokenRow.appendChild(tokenLabel);
+      const tokenSelect=document.createElement("select");
+      tokenSelect.setAttribute("aria-label","Insert token for "+titleText);
+      tokenSelect.style.padding="6px 10px";
+      tokenSelect.style.border="1px solid "+WCfg.UI.borderSubtle;
+      tokenSelect.style.borderRadius="6px";
+      tokenSelect.style.font="12px/1.4 Segoe UI,system-ui";
+      tokenSelect.style.background="#fff";
+      const placeholderOption=document.createElement("option");
+      placeholderOption.value="";
+      placeholderOption.textContent="Choose token 選擇";
+      tokenSelect.appendChild(placeholderOption);
+      for(let i=0;i<TOKEN_OPTIONS.length;i++){
+        const opt=document.createElement("option");
+        opt.value=TOKEN_OPTIONS[i].value;
+        opt.textContent=TOKEN_OPTIONS[i].label;
+        tokenSelect.appendChild(opt);
+      }
+      tokenSelect.addEventListener("change", function(){
+        if(!toggle.checked){ tokenSelect.value=""; return; }
+        const tokenValue=tokenSelect.value;
+        if(tokenValue){ insertSnippet(tokenValue); }
+        tokenSelect.value="";
+      });
+      tokenRow.appendChild(tokenSelect);
+      wrap.appendChild(tokenRow);
       const alignRow=document.createElement("div"); applyStyles(alignRow, WCfg.Style.hfAlignRow);
       const alignLabel=document.createElement("span");
       alignLabel.textContent="Align 對齊";
@@ -806,8 +846,77 @@
       alignRow.appendChild(alignLabel);
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
-      function updateAlignUI(){
-        HFAlign.applyEditor(editor, alignValue);
+      const templateButtons=[];
+      if(kind==="footer"){
+        const templateBox=document.createElement("div");
+        templateBox.style.display="flex";
+        templateBox.style.flexDirection="column";
+        templateBox.style.gap="8px";
+        templateBox.style.background="#fff";
+        templateBox.style.border="1px solid "+WCfg.UI.borderSubtle;
+        templateBox.style.borderRadius="8px";
+        templateBox.style.padding="12px";
+        const templateTitle=document.createElement("div");
+        templateTitle.textContent="Footer layout 模板 Preview";
+        templateTitle.style.font="12px/1.4 Segoe UI,system-ui";
+        templateTitle.style.fontWeight="600";
+        templateTitle.style.color=WCfg.UI.text;
+        templateBox.appendChild(templateTitle);
+        const templateHint=document.createElement("div");
+        templateHint.textContent="點擊套用：左 Confidential · 中 {{date}} · 右 Page {{page}} of {{total}}";
+        templateHint.style.font="11px/1.4 Segoe UI,system-ui";
+        templateHint.style.color=WCfg.UI.textDim;
+        templateBox.appendChild(templateHint);
+        const templateOption=document.createElement("button");
+        templateOption.type="button";
+        templateOption.style.display="flex";
+        templateOption.style.alignItems="center";
+        templateOption.style.justifyContent="space-between";
+        templateOption.style.gap="12px";
+        templateOption.style.padding="10px 12px";
+        templateOption.style.border="1px solid "+WCfg.UI.borderSubtle;
+        templateOption.style.borderRadius="6px";
+        templateOption.style.background="#fafafa";
+        templateOption.style.font="12px/1.4 Segoe UI,system-ui";
+        templateOption.style.color=WCfg.UI.text;
+        templateOption.style.cursor="pointer";
+        templateOption.innerHTML='<span style="flex:1;text-align:left;">左 · Confidential</span><span style="flex:1;text-align:center;">中 · {{date}}</span><span style="flex:1;text-align:right;">右 · Page {{page}} of {{total}}</span>';
+        const templateHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;">'+
+          '<span style="text-align:left;">Confidential</span>'+
+          '<span style="text-align:center;">{{date}}</span>'+
+          '<span style="text-align:right;">Page {{page}} of {{total}}</span>'+
+        '</div>';
+        templateOption.addEventListener("click", function(){
+          if(!toggle.checked) return;
+          editor.innerHTML=Sanitizer.clean(templateHTML);
+          Normalizer.fixStructure(editor);
+          enforceImageSizing(editor);
+          setAlign("left");
+          WDom.placeCaretAtEnd(editor);
+        });
+        templateOption.addEventListener("mouseenter", function(){ templateOption.style.background="#f3f2f1"; });
+        templateOption.addEventListener("mouseleave", function(){ templateOption.style.background="#fafafa"; });
+        templateButtons.push(templateOption);
+        templateBox.appendChild(templateOption);
+        wrap.appendChild(templateBox);
+      }
+      function alignSelection(norm){
+        const cmd = norm==="center" ? "justifyCenter" : norm==="right" ? "justifyRight" : "justifyLeft";
+        const sel = window.getSelection ? window.getSelection() : null;
+        if(!sel || sel.rangeCount===0) return false;
+        const range = sel.getRangeAt(0);
+        if(!editor.contains(range.commonAncestorContainer)) return false;
+        editor.focus();
+        try{
+          return document.execCommand(cmd, false, null);
+        }catch(err){
+          return false;
+        }
+      }
+      function updateAlignUI(skipEditorApply){
+        if(!skipEditorApply){
+          HFAlign.applyEditor(editor, alignValue);
+        }
         for(let i=0;i<alignButtons.length;i++){
           const item=alignButtons[i];
           const active=item.value===alignValue;
@@ -820,9 +929,10 @@
       function setAlign(next){
         const norm=HFAlign.normalize(next);
         alignValue=norm;
-        updateAlignUI();
+        const appliedToSelection = alignSelection(norm);
+        updateAlignUI(appliedToSelection);
       }
-      updateAlignUI();
+      updateAlignUI(false);
       const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.hfCanvas);
       const guide=document.createElement("div"); applyStyles(guide, WCfg.Style.hfCanvasGuide);
       guide.textContent="PAGE WIDTH GUIDE · 可視寬度約 "+(WCfg.A4W-36)+"px";
@@ -923,6 +1033,15 @@
         uploadBtn.style.opacity=on?"1":"0.55";
         uploadBtn.style.cursor=on?"pointer":"not-allowed";
         fileInput.disabled=!on;
+        tokenSelect.disabled=!on;
+        tokenSelect.style.opacity=on?"1":"0.55";
+        tokenSelect.style.cursor=on?"pointer":"not-allowed";
+        for(let t=0;t<templateButtons.length;t++){
+          const btn=templateButtons[t];
+          btn.disabled=!on;
+          btn.style.opacity=on?"1":"0.55";
+          btn.style.cursor=on?"pointer":"not-allowed";
+        }
         status.textContent = on?"Enabled":"Disabled";
         for(let i=0;i<alignButtons.length;i++){
           const btn=alignButtons[i].button;
@@ -930,7 +1049,7 @@
           btn.style.opacity=on?"1":"0.55";
           btn.style.cursor=on?"pointer":"not-allowed";
         }
-        updateAlignUI();
+        updateAlignUI(false);
       }
       toggle.addEventListener("change", sync);
       sync();
