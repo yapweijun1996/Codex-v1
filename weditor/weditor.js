@@ -1876,7 +1876,6 @@
         sel.addRange(newRange);
         return;
       } catch(err){}
-      try{ execCommand(target, "underline", null, true); } catch(err){}
       const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
         acceptNode:function(node){ return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
       });
