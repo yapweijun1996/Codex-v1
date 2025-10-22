@@ -351,6 +351,13 @@
       const page=document.createElement("div");
       page.setAttribute("data-page", String(pageNo));
       page.style.cssText="width:"+A4W+"px;height:"+A4H+"px;"+Style.pageFrame+";";
+      if(pageNo===1){
+        page.style.pageBreakBefore="auto";
+        page.style.breakBefore="auto";
+      } else {
+        page.style.pageBreakBefore="always";
+        page.style.breakBefore="page";
+      }
       let header=null, footer=null, footerRight=null;
       if(headerEnabled){
         header=document.createElement("div");
@@ -556,10 +563,11 @@
   const PrintUI=(function(){
     function open(pagedHTML){
       const w=WDom.openBlank(); if(!w) return;
-      const html="<!DOCTYPE html><meta charset='utf-8'>"+
-               "<body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial' onload='window.print();window.onafterprint=function(){window.close();}'>"+
+      const html="<!DOCTYPE html><html><head><meta charset='utf-8'>"+
+               "<style>div[data-page]{border-radius:0!important;box-shadow:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}</style>"+
+               "</head><body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial' onload='window.print();window.onafterprint=function(){window.close();}'>"+
                pagedHTML+
-               "</body>";
+               "</body></html>";
       w.document.open(); w.document.write(html); w.document.close();
     }
     return { open };
