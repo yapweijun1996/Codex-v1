@@ -55,10 +55,10 @@
       hfPreviewTitle:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
       hfPreviewHint:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim },
       hfPreviewCanvas:{ position:"relative", width:"100%", display:"flex", justifyContent:"center" },
-      hfPreviewPage:{ width:"min(320px, 100%)", borderRadius:"12px", border:"1px solid "+UI.borderSubtle, background:"#fff", boxShadow:"0 8px 20px rgba(0,0,0,.08)", padding:"18px 18px 14px", boxSizing:"border-box", display:"flex", flexDirection:"column", gap:"16px" },
-      hfPreviewHeader:{ minHeight:"54px", display:"flex", alignItems:"center", justifyContent:"flex-start", gap:"12px", padding:"4px", borderBottom:"1px dashed "+UI.borderSubtle },
-      hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"6px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim },
-      hfPreviewFooter:{ minHeight:"46px", display:"flex", alignItems:"center", justifyContent:"flex-start", gap:"12px", padding:"4px", borderTop:"1px dashed "+UI.borderSubtle },
+      hfPreviewPage:{ width:"min(560px, 100%)", maxWidth:innerHFWidth+"px", borderRadius:"12px", border:"1px solid "+UI.borderSubtle, background:"#fff", boxShadow:"0 8px 20px rgba(0,0,0,.08)", padding:"22px 24px 18px", boxSizing:"border-box", display:"flex", flexDirection:"column", gap:"20px" },
+      hfPreviewHeader:{ minHeight:"58px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderBottom:"1px dashed "+UI.borderSubtle, width:"100%" },
+      hfPreviewFooter:{ minHeight:"52px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderTop:"1px dashed "+UI.borderSubtle, width:"100%" },
+      hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,Style };
