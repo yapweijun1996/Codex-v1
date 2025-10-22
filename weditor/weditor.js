@@ -8,7 +8,9 @@
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
       bar:{ position:"sticky", top:"0", zIndex:"2", display:"flex", flexDirection:"column", gap:"10px", alignItems:"stretch", justifyContent:"flex-start", padding:"12px 16px 14px", background:"#fff", borderBottom:"1px solid "+UI.border },
+      tabHeader:{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:"8px", width:"100%" },
       tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center" },
+      quickActions:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center", marginLeft:"auto" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
       tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
@@ -1589,11 +1591,18 @@
     function build(container, config, inst, ctx){
       if(Array.isArray(config)){ config={ tabs:[{ id:"actions", label:"Actions", items:config }] }; }
       const tabs=(config && config.tabs) ? config.tabs.slice() : [];
+      const quickActions=(config && Array.isArray(config.quickActions)) ? config.quickActions.slice() : [];
       if(!tabs.length){ return null; }
       const bar=document.createElement("div"); applyStyles(bar, WCfg.Style.bar);
+      const tabHeader=document.createElement("div"); applyStyles(tabHeader, WCfg.Style.tabHeader);
       const tabList=document.createElement("div"); applyStyles(tabList, WCfg.Style.tabList);
       const panelsWrap=document.createElement("div"); applyStyles(panelsWrap, WCfg.Style.tabPanels);
       const tabButtons=[]; const tabPanels=[];
+      tabHeader.appendChild(tabList);
+      let quickWrap=null;
+      if(quickActions.length){
+        quickWrap=document.createElement("div"); applyStyles(quickWrap, WCfg.Style.quickActions);
+      }
       function setActive(index){
         if(index<0 || index>=tabButtons.length){ return; }
         for(let i=0;i<tabButtons.length;i++){
@@ -1688,7 +1697,14 @@
         panel.id = tabId+"-panel";
         panel.setAttribute("aria-labelledby", btn.id);
       }
-      bar.appendChild(tabList); bar.appendChild(panelsWrap);
+      if(quickWrap){
+        for(let i=0;i<quickActions.length;i++){
+          const quickBtn=createCommandButton(quickActions[i], inst, ctx);
+          if(quickBtn){ quickWrap.appendChild(quickBtn); }
+        }
+        if(quickWrap.childElementCount>0){ tabHeader.appendChild(quickWrap); }
+      }
+      bar.appendChild(tabHeader); bar.appendChild(panelsWrap);
       container.appendChild(bar);
       setActive(0);
       return bar;
@@ -2023,12 +2039,12 @@
   };
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
+    quickActions:["fullscreen.open"],
     tabs:[
       { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] },
-      { id:"view", label:"View", items:["fullscreen.open"] }
+      { id:"output", label:"Output", items:["print","export"] }
     ]
   };
   const TOOLBAR_FS={
