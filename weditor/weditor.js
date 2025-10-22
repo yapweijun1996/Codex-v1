@@ -8,12 +8,16 @@
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
       bar:{ position:"sticky", top:"0", zIndex:"2", display:"flex", flexDirection:"column", gap:"10px", alignItems:"stretch", justifyContent:"flex-start", padding:"12px 16px 14px", background:"#fff", borderBottom:"1px solid "+UI.border },
-      tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center" },
+      tabHeader:{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:"10px" },
+      tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center", flex:"1 1 auto" },
+      tabQuickActions:{ display:"flex", gap:"8px", marginLeft:"auto", alignItems:"center" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
       tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
+      fsTopActionWrap:{ position:"fixed", top:"18px", right:"18px", zIndex:"2147483001", display:"flex", alignItems:"center", justifyContent:"flex-end" },
+      fsTopActionBtn:{ boxShadow:"0 8px 24px rgba(0,0,0,.14)", borderRadius:"999px", padding:"10px 18px" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
       controlWrap:{ display:"inline-flex", alignItems:"center", gap:"6px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
@@ -1592,8 +1596,12 @@
       if(!tabs.length){ return null; }
       const bar=document.createElement("div"); applyStyles(bar, WCfg.Style.bar);
       const tabList=document.createElement("div"); applyStyles(tabList, WCfg.Style.tabList);
+      const headerRow=document.createElement("div"); applyStyles(headerRow, WCfg.Style.tabHeader);
+      headerRow.appendChild(tabList);
       const panelsWrap=document.createElement("div"); applyStyles(panelsWrap, WCfg.Style.tabPanels);
       const tabButtons=[]; const tabPanels=[];
+      const quickActionIds = Array.isArray(config && config.quickActions) ? config.quickActions.slice() : [];
+      let quickWrap=null;
       function setActive(index){
         if(index<0 || index>=tabButtons.length){ return; }
         for(let i=0;i<tabButtons.length;i++){
@@ -1688,7 +1696,20 @@
         panel.id = tabId+"-panel";
         panel.setAttribute("aria-labelledby", btn.id);
       }
-      bar.appendChild(tabList); bar.appendChild(panelsWrap);
+      if(quickActionIds.length){
+        for(let i=0;i<quickActionIds.length;i++){
+          const cmdId=quickActionIds[i];
+          const quickBtn=createCommandButton(cmdId, inst, ctx);
+          if(quickBtn){
+            if(!quickWrap){ quickWrap=document.createElement("div"); applyStyles(quickWrap, WCfg.Style.tabQuickActions); }
+            quickWrap.appendChild(quickBtn);
+          }
+        }
+      }
+      if(quickWrap && quickWrap.childNodes.length){
+        headerRow.appendChild(quickWrap);
+      }
+      bar.appendChild(headerRow); bar.appendChild(panelsWrap);
       container.appendChild(bar);
       setActive(0);
       return bar;
@@ -1719,6 +1740,12 @@
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
+      const topActionWrap=document.createElement("div"); applyStyles(topActionWrap, WCfg.Style.fsTopActionWrap);
+      const topSaveClose=WDom.btn("Save & Close", true, "Save changes and close");
+      applyStyles(topSaveClose, WCfg.Style.fsTopActionBtn);
+      topSaveClose.onclick=function(e){ e.preventDefault(); ctx.saveClose(); };
+      topActionWrap.appendChild(topSaveClose);
+      bg.appendChild(topActionWrap);
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
       function layout(){
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
@@ -1797,6 +1824,7 @@
         bg.style.opacity = "0";
         window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
         bg.removeAttribute("data-weditor-modal");
+        if(topActionWrap.parentNode){ topActionWrap.parentNode.removeChild(topActionWrap); }
       }
       bg.__weditorClose = cleanup;
     }
@@ -2027,9 +2055,9 @@
       { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] },
-      { id:"view", label:"View", items:["fullscreen.open"] }
-    ]
+      { id:"output", label:"Output", items:["print","export"] }
+    ],
+    quickActions:["fullscreen.open"]
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
