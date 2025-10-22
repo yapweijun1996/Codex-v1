@@ -12,6 +12,9 @@
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
       tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      controlLabel:{ font:"10px/1.2 Segoe UI,system-ui", color:UI.textDim, letterSpacing:".08em", textTransform:"uppercase" },
+      controlSelect:{ padding:"6px 28px 6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", background:"#fff", color:UI.text, font:"13px/1.2 Segoe UI,system-ui", cursor:"pointer" },
+      iconBtn:{ padding:"6px 10px", minWidth:"36px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", background:"#fff", color:UI.text, font:"600 14px/1.2 Segoe UI,system-ui", cursor:"pointer" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
@@ -1532,13 +1535,193 @@
     }
     return { resolve, sync, syncDebounced };
   })();
+  const FONT_FAMILY_OPTIONS=[
+    { label:"Default", value:"" },
+    { label:"Segoe UI", value:'"Segoe UI", system-ui, -apple-system, Arial, sans-serif' },
+    { label:"Arial", value:'Arial, "Helvetica Neue", Helvetica, sans-serif' },
+    { label:"Georgia", value:'Georgia, "Times New Roman", serif' },
+    { label:"Times New Roman", value:'"Times New Roman", Times, serif' },
+    { label:"Courier New", value:'"Courier New", Courier, monospace' },
+    { label:"Trebuchet MS", value:'"Trebuchet MS", "Segoe UI", sans-serif' }
+  ];
+  const FONT_SIZE_OPTIONS=[
+    { label:"Default (15)", value:"15" },
+    { label:"10", value:"10" },
+    { label:"12", value:"12" },
+    { label:"14", value:"14" },
+    { label:"16", value:"16" },
+    { label:"18", value:"18" },
+    { label:"24", value:"24" }
+  ];
+  const UNDERLINE_STYLE_OPTIONS=[
+    { label:"Solid", value:"solid" },
+    { label:"Double", value:"double" },
+    { label:"Dotted", value:"dotted" },
+    { label:"Dashed", value:"dashed" },
+    { label:"Wavy", value:"wavy" }
+  ];
+  const Formatting=(function(){
+    const defaults=StyleMirror.defaults();
+    const defaultFont=defaults.fontFamily;
+    const defaultFontSize=parseInt((defaults.fontSize||"15").replace(/[^0-9]/g,""),10)||15;
+    const SIZE_TO_INDEX={ "10":1, "12":2, "14":3, "15":4, "16":5, "18":6, "24":7 };
+    const INDEX_TO_SIZE={ 1:"10px", 2:"12px", 3:"14px", 4:defaultFontSize+"px", 5:"16px", 6:"18px", 7:"24px" };
+    function resolveTarget(inst, ctx){
+      if(ctx && ctx.area && ctx.area.isContentEditable){ return ctx.area; }
+      return inst ? inst.el : null;
+    }
+    function ensureSelection(target){
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel) return null;
+      if(sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+        const range=document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      return sel;
+    }
+    function safeExec(command, value){
+      try { document.execCommand(command, false, value); } catch(e){}
+    }
+    function dispatchInput(target){
+      let evt;
+      try { evt=new Event("input", { bubbles:true }); }
+      catch(e){ evt=document.createEvent("Event"); evt.initEvent("input", true, false); }
+      target.dispatchEvent(evt);
+    }
+    function exec(inst, ctx, fn){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return;
+      if(typeof target.focus==="function"){ try { target.focus({ preventScroll:true }); } catch(e){ target.focus(); } }
+      const sel=ensureSelection(target);
+      if(!sel || sel.rangeCount===0) return;
+      fn(target, sel);
+      Normalizer.fixStructure(target);
+      dispatchInput(target);
+      if(ctx && ctx.area && ctx.area===target){
+        if(ctx.refreshPreview) ctx.refreshPreview();
+      } else {
+        OutputBinding.syncDebounced(inst);
+      }
+    }
+    function normalizeFontFaces(root){
+      const list=root.querySelectorAll("font[face]");
+      for(let i=0;i<list.length;i++){
+        const node=list[i];
+        const face=node.getAttribute("face")||defaultFont;
+        const span=document.createElement("span");
+        span.style.fontFamily=face;
+        while(node.firstChild){ span.appendChild(node.firstChild); }
+        node.parentNode.replaceChild(span, node);
+      }
+    }
+    function normalizeFontSizes(root){
+      const list=root.querySelectorAll("font[size]");
+      for(let i=0;i<list.length;i++){
+        const node=list[i];
+        const size=node.getAttribute("size")||"4";
+        const px=INDEX_TO_SIZE[size] || INDEX_TO_SIZE[4];
+        const span=document.createElement("span");
+        span.style.fontSize=px;
+        while(node.firstChild){ span.appendChild(node.firstChild); }
+        node.parentNode.replaceChild(span, node);
+      }
+    }
+    function applyDecoration(node, boundary, style){
+      let current=node;
+      while(current && current.nodeType!==1){ current=current.parentNode; }
+      while(current && current!==boundary && !current.style){ current=current.parentNode; }
+      if(current && current!==boundary){
+        current.style.textDecorationLine="underline";
+        current.style.textDecorationStyle=style;
+      }
+    }
+    function fontFamily(inst, ctx, value){
+      exec(inst, ctx, function(target){
+        const next=value && value.trim() ? value : defaultFont;
+        safeExec("styleWithCSS", true);
+        safeExec("fontName", next);
+        safeExec("styleWithCSS", false);
+        normalizeFontFaces(target);
+      });
+    }
+    function fontSize(inst, ctx, value){
+      exec(inst, ctx, function(target){
+        const key=SIZE_TO_INDEX[value] || SIZE_TO_INDEX[String(defaultFontSize)] || 4;
+        safeExec("styleWithCSS", true);
+        safeExec("fontSize", String(key));
+        safeExec("styleWithCSS", false);
+        normalizeFontSizes(target);
+      });
+    }
+    function bold(inst, ctx){ exec(inst, ctx, function(){ safeExec("bold", null); }); }
+    function italic(inst, ctx){ exec(inst, ctx, function(){ safeExec("italic", null); }); }
+    function underline(inst, ctx){ exec(inst, ctx, function(){ safeExec("underline", null); }); }
+    function strike(inst, ctx){ exec(inst, ctx, function(){ safeExec("strikeThrough", null); }); }
+    function subscript(inst, ctx){ exec(inst, ctx, function(){ safeExec("subscript", null); }); }
+    function superscript(inst, ctx){ exec(inst, ctx, function(){ safeExec("superscript", null); }); }
+    function underlineStyle(inst, ctx, style){
+      exec(inst, ctx, function(target, sel){
+        safeExec("underline", null);
+        applyDecoration(sel.anchorNode, target, style);
+        applyDecoration(sel.focusNode, target, style);
+      });
+    }
+    return { fontFamily, fontSize, bold, italic, underline, strike, subscript, superscript, underlineStyle };
+  })();
   const ToolbarFactory=(function(){
-    function createCommandButton(id, inst, ctx){
+    function applyIconStyle(btn, meta){
+      applyStyles(btn, WCfg.Style.iconBtn);
+      if(meta && meta.style){
+        for(const key in meta.style){ btn.style[key]=meta.style[key]; }
+      }
+    }
+    function createSelect(meta, id, inst, ctx){
+      const wrap=document.createElement("label");
+      wrap.style.display="flex";
+      wrap.style.flexDirection="column";
+      wrap.style.gap="4px";
+      wrap.style.minWidth="120px";
+      wrap.style.alignItems="stretch";
+      const lab=document.createElement("span");
+      applyStyles(lab, WCfg.Style.controlLabel);
+      lab.textContent = meta.shortLabel || meta.label || "Select";
+      const select=document.createElement("select");
+      applyStyles(select, WCfg.Style.controlSelect);
+      select.setAttribute("data-command", id);
+      select.setAttribute("aria-label", meta.ariaLabel || meta.label || "Select");
+      const opts=meta.options || [];
+      for(let i=0;i<opts.length;i++){
+        const option=document.createElement("option");
+        option.value = opts[i].value;
+        option.textContent = opts[i].label;
+        select.appendChild(option);
+      }
+      const initial = meta.getValue ? meta.getValue(inst, ctx) : (meta.defaultValue!=null ? meta.defaultValue : (opts[0] ? opts[0].value : ""));
+      if(initial!=null){ select.value = initial; }
+      select.onchange=function(e){
+        const value=e.target.value;
+        if(typeof meta.onChange === "function"){ meta.onChange(inst, { event:e, ctx, value }, value); }
+        else if(typeof meta.run === "function"){ meta.run(inst, { event:e, ctx, value }, value); }
+      };
+      wrap.appendChild(lab);
+      wrap.appendChild(select);
+      return wrap;
+    }
+    function createCommandControl(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
+      if(typeof meta.render === "function"){ return meta.render(inst, ctx); }
+      if(meta.kind==="select"){ return createSelect(meta, id, inst, ctx); }
       const isToggle = meta.kind==="toggle";
       const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
       btn.setAttribute("data-command", id);
       btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
+      if(meta.variant === "icon"){ applyIconStyle(btn, meta); }
+      if(meta.style && meta.variant !== "icon"){
+        for(const key in meta.style){ btn.style[key]=meta.style[key]; }
+      }
       btn.onclick = function(e){
         meta.run(inst, { event:e, ctx });
         if(isToggle){
@@ -1615,7 +1798,7 @@
         panel.setAttribute("aria-hidden","true");
         const items=tab.items || [];
         for(let j=0;j<items.length;j++){
-          const cmdBtn=createCommandButton(items[j], inst, ctx);
+          const cmdBtn=createCommandControl(items[j], inst, ctx);
           if(cmdBtn) panel.appendChild(cmdBtn);
         }
         tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
@@ -1768,6 +1951,85 @@
     return { open };
   })();
   const Commands={
+    "format.fontFamily":{ label:"Font Family", kind:"select", options:FONT_FAMILY_OPTIONS, defaultValue:FONT_FAMILY_OPTIONS[0].value,
+      ariaLabel:"Font family（字体）", run:function(inst, arg, value){ Formatting.fontFamily(inst, arg && arg.ctx, value); } },
+    "format.fontSize":{ label:"Font Size", kind:"select", options:FONT_SIZE_OPTIONS, defaultValue:"15",
+      ariaLabel:"Font size（字号）", run:function(inst, arg, value){ Formatting.fontSize(inst, arg && arg.ctx, value); } },
+    "format.bold":{ label:"B", kind:"button", variant:"icon", ariaLabel:"Bold（加粗）", style:{ fontWeight:"700" },
+      run:function(inst, arg){ Formatting.bold(inst, arg && arg.ctx); } },
+    "format.italic":{ label:"I", kind:"button", variant:"icon", ariaLabel:"Italic（斜体）", style:{ fontStyle:"italic" },
+      run:function(inst, arg){ Formatting.italic(inst, arg && arg.ctx); } },
+    "format.underline":{ label:"U", kind:"button", variant:"icon", ariaLabel:"Underline（下划线）", style:{ textDecoration:"underline" },
+      run:function(inst, arg){ Formatting.underline(inst, arg && arg.ctx); } },
+    "format.underlineStyle":{ kind:"custom",
+      render:function(inst, ctx){
+        const wrap=document.createElement("div");
+        wrap.style.position="relative";
+        wrap.style.display="inline-flex";
+        wrap.style.alignItems="stretch";
+        const btn=WDom.btn("▼", false, "Underline style");
+        applyStyles(btn, WCfg.Style.iconBtn);
+        btn.style.fontWeight="500";
+        btn.style.minWidth="auto";
+        btn.style.padding="6px 8px";
+        btn.setAttribute("aria-haspopup","menu");
+        btn.setAttribute("aria-expanded","false");
+        const menu=document.createElement("div");
+        menu.style.position="absolute";
+        menu.style.top="calc(100% + 4px)";
+        menu.style.left="0";
+        menu.style.minWidth="140px";
+        menu.style.display="none";
+        menu.style.flexDirection="column";
+        menu.style.background="#fff";
+        menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+        menu.style.borderRadius="6px";
+        menu.style.boxShadow="0 10px 24px rgba(0,0,0,.16)";
+        menu.style.zIndex="4";
+        let closeHandler=null;
+        function closeMenu(){
+          menu.style.display="none";
+          btn.setAttribute("aria-expanded","false");
+          if(closeHandler){ document.removeEventListener("mousedown", closeHandler); closeHandler=null; }
+        }
+        function openMenu(){
+          menu.style.display="flex";
+          btn.setAttribute("aria-expanded","true");
+          closeHandler=function(ev){ if(!wrap.contains(ev.target)){ closeMenu(); } };
+          document.addEventListener("mousedown", closeHandler);
+        }
+        btn.onclick=function(e){ e.preventDefault(); e.stopPropagation(); if(menu.style.display==="flex"){ closeMenu(); } else { openMenu(); } };
+        for(let i=0;i<UNDERLINE_STYLE_OPTIONS.length;i++){
+          const opt=UNDERLINE_STYLE_OPTIONS[i];
+          const optBtn=document.createElement("button");
+          optBtn.type="button";
+          optBtn.textContent=opt.label;
+          optBtn.style.padding="8px 12px";
+          optBtn.style.font="13px/1.3 Segoe UI,system-ui";
+          optBtn.style.color=WCfg.UI.text;
+          optBtn.style.background="transparent";
+          optBtn.style.border="0";
+          optBtn.style.textAlign="left";
+          optBtn.style.cursor="pointer";
+          optBtn.onmouseenter=function(){ optBtn.style.background="#f3f2f1"; };
+          optBtn.onmouseleave=function(){ optBtn.style.background="transparent"; };
+          optBtn.onclick=function(e){
+            e.preventDefault();
+            closeMenu();
+            Formatting.underlineStyle(inst, ctx, opt.value);
+          };
+          menu.appendChild(optBtn);
+        }
+        wrap.appendChild(btn);
+        wrap.appendChild(menu);
+        return wrap;
+      } },
+    "format.strike":{ label:"ab", kind:"button", variant:"icon", ariaLabel:"Strikethrough（删除线）", style:{ textDecoration:"line-through" },
+      run:function(inst, arg){ Formatting.strike(inst, arg && arg.ctx); } },
+    "format.subscript":{ label:"x₂", kind:"button", variant:"icon", ariaLabel:"Subscript（下标）",
+      style:{ fontSize:"13px" }, run:function(inst, arg){ Formatting.subscript(inst, arg && arg.ctx); } },
+    "format.superscript":{ label:"x²", kind:"button", variant:"icon", ariaLabel:"Superscript（上标）",
+      style:{ fontSize:"13px" }, run:function(inst, arg){ Formatting.superscript(inst, arg && arg.ctx); } },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
@@ -1788,6 +2050,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -1797,6 +2060,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
