@@ -755,6 +755,13 @@
       const labelSpan=document.createElement("span"); labelSpan.textContent=titleText; labelWrap.appendChild(labelSpan);
       toggleRow.appendChild(labelWrap);
       const status=document.createElement("span"); status.style.cssText="font:12px/1.4 Segoe UI,system-ui;color:"+WCfg.UI.textDim+";text-transform:uppercase;letter-spacing:.04em"; toggleRow.appendChild(status);
+      const tokenBar=document.createElement("div");
+      tokenBar.style.display="flex";
+      tokenBar.style.alignItems="center";
+      tokenBar.style.flexWrap="wrap";
+      tokenBar.style.gap="8px";
+      tokenBar.style.margin="4px 0 0";
+      tokenBar.style.position="relative";
       const editor=document.createElement("div"); applyStyles(editor, WCfg.Style.hfEditable);
       editor.setAttribute("role","textbox");
       editor.setAttribute("aria-label", titleText+" content");
@@ -775,6 +782,80 @@
       enforceImageSizing(editor);
       editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); }, 0); });
       editor.addEventListener("input", function(){ enforceImageSizing(editor); });
+      const tokenButton=WDom.btn("🧩 Insert Token", false, "Insert a dynamic token");
+      tokenButton.style.padding="6px 12px";
+      tokenButton.style.fontSize="12px";
+      tokenButton.style.lineHeight="1.2";
+      tokenButton.style.display="inline-flex";
+      tokenButton.style.alignItems="center";
+      tokenButton.style.gap="6px";
+      tokenButton.style.position="relative";
+      tokenButton.style.whiteSpace="nowrap";
+      const caret=document.createElement("span"); caret.textContent="▾"; caret.style.fontSize="10px"; caret.style.opacity="0.7"; tokenButton.appendChild(caret);
+      const tokenMenu=document.createElement("div");
+      tokenMenu.style.position="absolute";
+      tokenMenu.style.top="calc(100% + 4px)";
+      tokenMenu.style.left="0";
+      tokenMenu.style.minWidth="160px";
+      tokenMenu.style.background="#fff";
+      tokenMenu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      tokenMenu.style.borderRadius="6px";
+      tokenMenu.style.boxShadow="0 8px 18px rgba(0,0,0,.12)";
+      tokenMenu.style.padding="6px";
+      tokenMenu.style.display="none";
+      tokenMenu.style.flexDirection="column";
+      tokenMenu.style.gap="4px";
+      tokenMenu.setAttribute("role","menu");
+      const tokens=[
+        { label:"📅 Date", value:"{{date}}", title:"Insert current date token" },
+        { label:"📄 Page Number", value:"{{page}}", title:"Insert page number token" },
+        { label:"📘 Total Pages", value:"{{total}}", title:"Insert total page count token" }
+      ];
+      function insertToken(token){
+        if(!toggle.checked) return;
+        insertSnippet(token);
+        closeTokenMenu();
+      }
+      for(let i=0;i<tokens.length;i++){
+        const opt=tokens[i];
+        const btn=document.createElement("button");
+        btn.type="button";
+        btn.textContent=opt.label;
+        btn.title=opt.title;
+        btn.style.display="block";
+        btn.style.width="100%";
+        btn.style.textAlign="left";
+        btn.style.font="12px/1.4 Segoe UI,system-ui";
+        btn.style.color=WCfg.UI.text;
+        btn.style.background="transparent";
+        btn.style.border="0";
+        btn.style.padding="6px 8px";
+        btn.style.borderRadius="4px";
+        btn.style.cursor="pointer";
+        btn.onmouseenter=function(){ btn.style.background="#f3f2f1"; };
+        btn.onmouseleave=function(){ btn.style.background="transparent"; };
+        btn.addEventListener("click", function(ev){ ev.preventDefault(); insertToken(opt.value); });
+        tokenMenu.appendChild(btn);
+      }
+      function closeTokenMenu(){ tokenMenu.style.display="none"; tokenButton.setAttribute("aria-expanded","false"); }
+      function toggleTokenMenu(){
+        if(!toggle.checked) return;
+        const open=tokenMenu.style.display==="flex" || tokenMenu.style.display==="block";
+        if(open){ closeTokenMenu(); }
+        else {
+          tokenMenu.style.display="flex";
+          tokenButton.setAttribute("aria-expanded","true");
+        }
+      }
+      tokenButton.setAttribute("aria-haspopup","menu");
+      tokenButton.setAttribute("aria-expanded","false");
+      tokenButton.addEventListener("click", function(ev){ ev.preventDefault(); ev.stopPropagation(); toggleTokenMenu(); });
+      tokenBar.appendChild(tokenButton);
+      tokenButton.appendChild(tokenMenu);
+      let tokenDocListener=null;
+      tokenDocListener=function(ev){ if(!tokenBar.contains(ev.target)){ closeTokenMenu(); } };
+      document.addEventListener("mousedown", tokenDocListener);
+      wrap.appendChild(tokenBar);
       const alignRow=document.createElement("div"); applyStyles(alignRow, WCfg.Style.hfAlignRow);
       const alignLabel=document.createElement("span");
       alignLabel.textContent="Align 對齊";
@@ -805,6 +886,51 @@
       }
       alignRow.appendChild(alignLabel);
       alignRow.appendChild(alignGroup);
+      let templatePreview=null;
+      if(kind==="footer"){
+        const templateWrap=document.createElement("div");
+        templateWrap.style.display="flex";
+        templateWrap.style.flexDirection="column";
+        templateWrap.style.gap="6px";
+        templateWrap.style.margin="4px 0 0";
+        const templateLabel=document.createElement("div");
+        templateLabel.textContent="範例 Footer Preview";
+        templateLabel.style.font="11px/1.4 Segoe UI,system-ui";
+        templateLabel.style.color=WCfg.UI.textDim;
+        templatePreview=document.createElement("div");
+        templatePreview.style.display="flex";
+        templatePreview.style.alignItems="center";
+        templatePreview.style.justifyContent="space-between";
+        templatePreview.style.gap="12px";
+        templatePreview.style.padding="10px 12px";
+        templatePreview.style.border="1px solid "+WCfg.UI.borderSubtle;
+        templatePreview.style.borderRadius="8px";
+        templatePreview.style.background="#fff";
+        templatePreview.style.cursor="pointer";
+        templatePreview.style.font="12px/1.4 Segoe UI,system-ui";
+        templatePreview.setAttribute("role","button");
+        templatePreview.setAttribute("tabindex","0");
+        templatePreview.setAttribute("aria-label","Apply footer layout template");
+        const leftSample=document.createElement("span"); leftSample.textContent="[左] Confidential";
+        const centerSample=document.createElement("span"); centerSample.textContent="[中] {{date}}";
+        const rightSample=document.createElement("span"); rightSample.textContent="[右] Page {{page}} of {{total}}";
+        templatePreview.appendChild(leftSample);
+        templatePreview.appendChild(centerSample);
+        templatePreview.appendChild(rightSample);
+        const templateHTML='<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;"><div style="text-align:left;">Confidential</div><div style="text-align:center;">{{date}}</div><div style="text-align:right;">Page {{page}} of {{total}}</div></div>';
+        function applyTemplate(){
+          if(!toggle.checked) return;
+          editor.innerHTML = Sanitizer.clean(templateHTML);
+          Normalizer.fixStructure(editor);
+          enforceImageSizing(editor);
+          HFAlign.applyEditor(editor, alignValue);
+        }
+        templatePreview.addEventListener("click", function(ev){ ev.preventDefault(); applyTemplate(); });
+        templatePreview.addEventListener("keydown", function(ev){ if(ev.key==="Enter"||ev.key===" "){ ev.preventDefault(); applyTemplate(); } });
+        templateWrap.appendChild(templateLabel);
+        templateWrap.appendChild(templatePreview);
+        wrap.appendChild(templateWrap);
+      }
       wrap.appendChild(alignRow);
       function updateAlignUI(){
         HFAlign.applyEditor(editor, alignValue);
@@ -922,6 +1048,10 @@
         uploadBtn.disabled=!on;
         uploadBtn.style.opacity=on?"1":"0.55";
         uploadBtn.style.cursor=on?"pointer":"not-allowed";
+        tokenButton.disabled=!on;
+        tokenButton.style.opacity=on?"1":"0.55";
+        tokenButton.style.cursor=on?"pointer":"not-allowed";
+        if(!on) closeTokenMenu();
         fileInput.disabled=!on;
         status.textContent = on?"Enabled":"Disabled";
         for(let i=0;i<alignButtons.length;i++){
@@ -930,10 +1060,21 @@
           btn.style.opacity=on?"1":"0.55";
           btn.style.cursor=on?"pointer":"not-allowed";
         }
+        if(templatePreview){
+          templatePreview.style.opacity=on?"1":"0.55";
+          templatePreview.style.cursor=on?"pointer":"not-allowed";
+          templatePreview.style.pointerEvents=on?"auto":"none";
+          templatePreview.setAttribute("aria-disabled", on?"false":"true");
+        }
         updateAlignUI();
       }
       toggle.addEventListener("change", sync);
       sync();
+      const prevCleanup=editor.__weditorCleanup;
+      editor.__weditorCleanup=function(){
+        if(prevCleanup) prevCleanup();
+        document.removeEventListener("mousedown", tokenDocListener);
+      };
       return {
         el:wrap,
         toggle,
