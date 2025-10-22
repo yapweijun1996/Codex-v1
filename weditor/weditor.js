@@ -14,6 +14,7 @@
       tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
+      select:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"13px/1.2 Segoe UI,system-ui", minWidth:"110px" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
@@ -129,10 +130,102 @@
       b.style.background = active?"#e6f2fb":"#fff"; b.style.borderColor = active?WCfg.UI.brand:"#c8c6c4";
       return b;
     }
+    function select(options, placeholder){
+      const sel=document.createElement("select"); applyStyles(sel, WCfg.Style.select);
+      if(placeholder){
+        const opt=document.createElement("option");
+        opt.value="";
+        opt.textContent=placeholder;
+        sel.appendChild(opt);
+      }
+      for(let i=0;i<(options||[]).length;i++){
+        const item=options[i];
+        const opt=document.createElement("option");
+        opt.value=item && item.value!=null ? String(item.value) : "";
+        opt.textContent=item && item.label!=null ? String(item.label) : opt.value;
+        sel.appendChild(opt);
+      }
+      return sel;
+    }
     function title(text){ const d=document.createElement("div"); d.textContent=text; applyStyles(d, WCfg.Style.title); return d; }
     function placeCaretAtEnd(el){ el.focus(); const r=document.createRange(); r.selectNodeContents(el); r.collapse(false); const s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }
     function openBlank(){ const w=window.open("","_blank"); if(!w) alert("Please allow popups."); return w; }
-    return { btn,toggle,title,placeCaretAtEnd,openBlank };
+    return { btn,toggle,select,title,placeCaretAtEnd,openBlank };
+  })();
+  const SelectionMemory=(function(){
+    const saved=new WeakMap();
+    const bound=new WeakSet();
+    function contains(root, node){
+      while(node){ if(node===root) return true; node=node.parentNode; }
+      return false;
+    }
+    function save(editable){
+      if(!editable) return;
+      const sel=window.getSelection();
+      if(!sel || sel.rangeCount===0) return;
+      const range=sel.getRangeAt(0);
+      if(!contains(editable, range.startContainer) || !contains(editable, range.endContainer)) return;
+      saved.set(editable, range.cloneRange());
+    }
+    function restore(editable){
+      if(!editable) return;
+      const range=saved.get(editable);
+      if(range){
+        const sel=window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    }
+    function bind(editable){
+      if(!editable || bound.has(editable)) return;
+      const handler=function(){ save(editable); };
+      editable.addEventListener("keyup", handler);
+      editable.addEventListener("mouseup", handler);
+      editable.addEventListener("touchend", handler);
+      editable.addEventListener("input", handler);
+      editable.addEventListener("blur", handler);
+      bound.add(editable);
+    }
+    return { bind, save, restore };
+  })();
+  const SelectionStyler=(function(){
+    function contains(root, node){
+      while(node){ if(node===root) return true; node=node.parentNode; }
+      return false;
+    }
+    function ensureSelection(editable){
+      if(!editable) return null;
+      const sel=window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(!contains(editable, range.startContainer) || !contains(editable, range.endContainer)) return null;
+      return { sel, range };
+    }
+    function wrap(editable, styleMap){
+      const data=ensureSelection(editable);
+      if(!data) return false;
+      const { sel, range }=data;
+      if(range.collapsed) return false;
+      const wrapper=document.createElement("span");
+      for(const key in styleMap){
+        if(styleMap[key]!=null){ wrapper.style[key]=styleMap[key]; }
+      }
+      const frag=range.extractContents();
+      wrapper.appendChild(frag);
+      range.insertNode(wrapper);
+      const newRange=document.createRange();
+      newRange.selectNodeContents(wrapper);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      return true;
+    }
+    function exec(editable, command, value){
+      const data=ensureSelection(editable);
+      if(!data) return false;
+      try{ document.execCommand("styleWithCSS", false, true); }catch(err){}
+      return document.execCommand(command, false, value==null?null:value);
+    }
+    return { wrap, exec, ensureSelection };
   })();
   const A11y=(function(){
     let locks=0, prev="";
@@ -1532,9 +1625,45 @@
     }
     return { resolve, sync, syncDebounced };
   })();
+  function getEditable(inst, ctx){
+    if(ctx && ctx.area) return ctx.area;
+    return inst ? inst.el : null;
+  }
+  function focusEditable(inst, ctx){
+    const editable=getEditable(inst, ctx);
+    if(!editable) return null;
+    if(editable.focus){
+      try{ editable.focus({ preventScroll:true }); }catch(err){ editable.focus(); }
+    }
+    SelectionMemory.restore(editable);
+    return editable;
+  }
   const ToolbarFactory=(function(){
     function createCommandButton(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
+      if(meta.kind==="select"){
+        const select=WDom.select(meta.options||[], meta.placeholder||meta.label||"");
+        select.setAttribute("data-command", id);
+        select.setAttribute("aria-label", meta.ariaLabel || meta.label || "Select option");
+        if(meta.title){ select.title=meta.title; }
+        const editable=getEditable(inst, ctx);
+        select.addEventListener("focus", function(){ SelectionMemory.save(editable); });
+        select.addEventListener("mousedown", function(){ SelectionMemory.save(editable); });
+        if(meta.getValue){
+          const current=meta.getValue(inst);
+          if(current!=null){
+            select.value=String(current);
+          }
+        }
+        select.onchange=function(e){
+          meta.run(inst, { event:e, ctx, value:select.value });
+          if(meta.resetAfter){
+            select.value="";
+            if(select.options.length){ select.selectedIndex=0; }
+          }
+        };
+        return select;
+      }
       const isToggle = meta.kind==="toggle";
       const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
       btn.setAttribute("data-command", id);
@@ -1676,7 +1805,7 @@
       const left=document.createElement("div"); applyStyles(left, WCfg.Style.left);
       const rightWrap=document.createElement("div"); applyStyles(rightWrap, WCfg.Style.rightWrap);
       rightWrap.appendChild(WDom.title("Editor"));
-      const area=document.createElement("div"); area.contentEditable="true"; applyStyles(area, WCfg.Style.area); area.innerHTML=inst.el.innerHTML; rightWrap.appendChild(area);
+      const area=document.createElement("div"); area.contentEditable="true"; applyStyles(area, WCfg.Style.area); area.innerHTML=inst.el.innerHTML; rightWrap.appendChild(area); SelectionMemory.bind(area);
       const ctx={
         area,
         refreshPreview:render,
@@ -1768,6 +1897,164 @@
     return { open };
   })();
   const Commands={
+    "font.family":{
+      label:"Font",
+      kind:"select",
+      ariaLabel:"Select font family",
+      placeholder:"Font",
+      title:"Font family",
+      options:[
+        { label:"Default", value:"default" },
+        { label:"Arial", value:"'Arial', sans-serif" },
+        { label:"Georgia", value:"Georgia, serif" },
+        { label:"Times New Roman", value:"'Times New Roman', serif" },
+        { label:"Courier New", value:"'Courier New', monospace" },
+        { label:"Verdana", value:"Verdana, sans-serif" }
+      ],
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        const value=(arg && arg.value)!=null ? arg.value : (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value || value==="") return;
+        const defaults=StyleMirror.defaults();
+        const applied=value==="default" ? defaults.fontFamily : value;
+        if(!SelectionStyler.wrap(editable, { fontFamily:applied })) return;
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "font.size":{
+      label:"Size",
+      kind:"select",
+      ariaLabel:"Select font size",
+      placeholder:"Size",
+      title:"Font size",
+      options:[
+        { label:"Default", value:"default" },
+        { label:"10", value:"10px" },
+        { label:"12", value:"12px" },
+        { label:"14", value:"14px" },
+        { label:"16", value:"16px" },
+        { label:"18", value:"18px" },
+        { label:"24", value:"24px" }
+      ],
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        const value=(arg && arg.value)!=null ? arg.value : (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value || value==="") return;
+        const defaults=StyleMirror.defaults();
+        const applied=value==="default" ? defaults.fontSize : value;
+        if(!SelectionStyler.wrap(editable, { fontSize:applied })) return;
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "text.bold":{
+      label:"B",
+      kind:"button",
+      ariaLabel:"Bold",
+      title:"Bold",
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        SelectionStyler.exec(editable, "bold");
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "text.italic":{
+      label:"I",
+      kind:"button",
+      ariaLabel:"Italic",
+      title:"Italic",
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        SelectionStyler.exec(editable, "italic");
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "text.underline":{
+      label:"U",
+      kind:"button",
+      ariaLabel:"Underline",
+      title:"Underline",
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        SelectionStyler.exec(editable, "underline");
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "text.underlineStyle":{
+      label:"\u25BC",
+      kind:"select",
+      ariaLabel:"Underline style",
+      placeholder:"Underline",
+      title:"Underline style",
+      options:[
+        { label:"Solid", value:"solid" },
+        { label:"Dotted", value:"dotted" },
+        { label:"Dashed", value:"dashed" },
+        { label:"Double", value:"double" },
+        { label:"Wavy", value:"wavy" }
+      ],
+      resetAfter:true,
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        const value=(arg && arg.value)!=null ? arg.value : (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value || value==="") return;
+        const applied={ textDecorationLine:"underline", textDecorationStyle:value };
+        if(!SelectionStyler.wrap(editable, applied)){
+          SelectionStyler.exec(editable, "underline");
+        }
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "text.strike":{
+      label:"ab",
+      kind:"button",
+      ariaLabel:"Strikethrough",
+      title:"Strikethrough",
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        SelectionStyler.exec(editable, "strikeThrough");
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "text.subscript":{
+      label:"x₂",
+      kind:"button",
+      ariaLabel:"Subscript",
+      title:"Subscript",
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        SelectionStyler.exec(editable, "subscript");
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "text.superscript":{
+      label:"x²",
+      kind:"button",
+      ariaLabel:"Superscript",
+      title:"Superscript",
+      run:function(inst, arg){
+        const editable=focusEditable(inst, arg && arg.ctx);
+        if(!editable) return;
+        SelectionStyler.exec(editable, "superscript");
+        SelectionMemory.save(editable);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
@@ -1788,7 +2075,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
+      { id:"editing", label:"Editing", items:["font.family","font.size","text.bold","text.italic","text.underline","text.underlineStyle","text.strike","text.subscript","text.superscript","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
       { id:"view", label:"View", items:["fullscreen.open"] }
@@ -1797,7 +2084,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
+      { id:"editing", label:"Editing", items:["font.family","font.size","text.bold","text.italic","text.underline","text.underlineStyle","text.strike","text.subscript","text.superscript","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
@@ -1825,6 +2112,7 @@
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
+    SelectionMemory.bind(this.el);
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
