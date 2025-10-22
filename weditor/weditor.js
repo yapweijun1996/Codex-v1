@@ -467,7 +467,7 @@
         footer.appendChild(fl);
         page.appendChild(footer);
       }
-      return { page, content, headerNode:header, footerNode:footer, explicit:false, headerHeight, footerHeight };
+      return { page, content, headerNode:header, footerNode:footer, headerHeight, footerHeight };
     }
     function substituteTokensForMeasure(html){
       if(!html) return "";
@@ -555,8 +555,8 @@
       const measContent=measPage.content; measWrap.appendChild(measPage.page);
       const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); let used=0;
       function hasContent(pg){ return pg && pg.content && pg.content.childNodes && pg.content.childNodes.length>0; }
-      function push(force){ if(force || hasContent(cur) || cur.explicit){ pages.push(cur); } }
-      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); cur.explicit=!!force; used=0; }
+      function push(force){ if(force || hasContent(cur)){ pages.push(cur); } }
+      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
         for(let k=0;k<imgs.length;k++){
