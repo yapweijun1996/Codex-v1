@@ -1112,7 +1112,8 @@
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); }, 0); });
       let t=null; area.addEventListener("input", function(){ if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
       render();
-      function render(){
+      function render(attempt){
+        attempt = attempt || 0;
         const out=Paginator.paginate(area.innerHTML, inst);
         const computed=window.getComputedStyle(left);
         const paddingLeft=parseFloat(computed.paddingLeft||"0")||0;
@@ -1147,6 +1148,13 @@
         }
         left.innerHTML="";
         left.appendChild(frag);
+        if(attempt>=2){ return; }
+        window.requestAnimationFrame(function(){
+          const adjustedAvailable=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
+          if(Math.abs(adjustedAvailable - available)>0.5){
+            render(attempt+1);
+          }
+        });
       }
       function cleanup(){
         window.removeEventListener("resize", onR);
