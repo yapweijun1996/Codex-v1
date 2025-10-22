@@ -8,6 +8,10 @@
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
       bar:{ position:"sticky", top:"0", zIndex:"2", display:"flex", gap:"8px", alignItems:"center", justifyContent:"flex-start", padding:"8px 12px", background:"#fff", borderBottom:"1px solid "+UI.border },
+      tabFrame:{ position:"sticky", top:"0", zIndex:"3", display:"flex", flexDirection:"column", background:"#fff", borderBottom:"1px solid "+UI.border },
+      tabNav:{ display:"flex", gap:"8px", alignItems:"center", padding:"8px 12px 0", background:"#fff", flexWrap:"wrap" },
+      tabBtn:{ padding:"6px 12px", border:"1px solid transparent", background:"transparent", color:UI.textDim, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui", transition:"all .2s ease" },
+      tabPanel:{ padding:"4px 12px 12px", background:"#fff" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
@@ -1054,30 +1058,109 @@
     return { resolve, sync, syncDebounced };
   })();
   const ToolbarFactory=(function(){
-    function build(container, items, inst, ctx){
+    function createButton(id, inst, ctx){
+      const meta=Commands[id]; if(!meta) return null;
+      const isToggle = meta.kind==="toggle";
+      const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
+      btn.setAttribute("data-command", id);
+      btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
+      btn.onclick = function(e){
+        meta.run(inst, { event:e, ctx });
+        if(isToggle){
+          const active = !!meta.getActive(inst);
+          btn.setAttribute("data-active", active?"1":"0");
+          btn.textContent = meta.label + (active?": On":": Off");
+          btn.style.background = active ? "#e6f2fb" : "#fff";
+          btn.style.borderColor = active ? WCfg.UI.brand : "#c8c6c4";
+        }
+      };
+      return btn;
+    }
+    function createBar(items, inst, ctx, allowSticky){
       const bar=document.createElement("div"); applyStyles(bar, WCfg.Style.bar);
-      for(let i=0;i<items.length;i++){
-        const id=items[i]; const meta=Commands[id]; if(!meta) continue;
-        const isToggle = meta.kind==="toggle";
-        const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
-        btn.setAttribute("data-command", id);
-        btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
-        btn.onclick = (function(meta, btn){
-          return function(e){
-            meta.run(inst, { event:e, ctx });
-            if(isToggle){
-              const active = !!meta.getActive(inst);
-              btn.setAttribute("data-active", active?"1":"0");
-              btn.textContent = meta.label + (active?": On":": Off");
-              btn.style.background = active ? "#e6f2fb" : "#fff";
-              btn.style.borderColor = active ? WCfg.UI.brand : "#c8c6c4";
-            }
-          };
-        })(meta, btn);
-        bar.appendChild(btn);
+      if(!allowSticky){
+        bar.style.position="relative";
+        bar.style.top="";
+        bar.style.zIndex="";
       }
-      container.appendChild(bar);
+      for(let i=0;i<items.length;i++){
+        const btn=createButton(items[i], inst, ctx);
+        if(btn) bar.appendChild(btn);
+      }
       return bar;
+    }
+    function build(container, items, inst, ctx){
+      if(!items || !items.length) return null;
+      const isFlat = typeof items[0] === "string";
+      if(isFlat){
+        const bar=createBar(items, inst, ctx, true);
+        container.appendChild(bar);
+        return bar;
+      }
+      const tabs=items;
+      const frame=document.createElement("div"); applyStyles(frame, WCfg.Style.tabFrame);
+      const nav=document.createElement("div"); applyStyles(nav, WCfg.Style.tabNav);
+      const panel=document.createElement("div"); applyStyles(panel, WCfg.Style.tabPanel);
+      const panelId="weditor-toolbar-panel-"+Math.random().toString(36).slice(2);
+      panel.id=panelId;
+      nav.setAttribute("role","tablist");
+      frame.appendChild(nav); frame.appendChild(panel);
+      container.appendChild(frame);
+      const navButtons=[];
+      let activeTab=null;
+      function setActive(tab, opts){
+        if(!tab) return;
+        activeTab=tab;
+        let labelledBy="";
+        for(let i=0;i<navButtons.length;i++){
+          const entry=navButtons[i];
+          const isActive = entry.tab===tab;
+          entry.btn.setAttribute("data-active", isActive?"1":"0");
+          entry.btn.setAttribute("aria-selected", isActive?"true":"false");
+          entry.btn.tabIndex = isActive ? 0 : -1;
+          entry.btn.style.background = isActive ? "#e6f2fb" : "transparent";
+          entry.btn.style.borderColor = isActive ? WCfg.UI.brand : "transparent";
+          entry.btn.style.color = isActive ? WCfg.UI.brand : WCfg.UI.textDim;
+          if(isActive){
+            labelledBy = entry.btn.id || "";
+            if(opts && opts.focus){ entry.btn.focus(); }
+          }
+        }
+        panel.innerHTML="";
+        if(labelledBy){ panel.setAttribute("aria-labelledby", labelledBy); }
+        else { panel.removeAttribute("aria-labelledby"); }
+        const bar=createBar(tab.items||[], inst, ctx, false);
+        panel.appendChild(bar);
+      }
+      for(let i=0;i<tabs.length;i++){
+        const tab=tabs[i];
+        const btn=document.createElement("button");
+        applyStyles(btn, WCfg.Style.tabBtn);
+        btn.type="button";
+        const label=tab.label || tab.id || ("Tab "+(i+1));
+        btn.textContent=label;
+        btn.setAttribute("role","tab");
+        btn.setAttribute("aria-controls", panelId);
+        const tabId=tab.id || ("tab-"+i);
+        btn.id=panelId+"-"+tabId+"-button";
+        if(tab.title) btn.title=tab.title;
+        btn.onclick=function(){ setActive(tab, { focus:true }); };
+        btn.addEventListener("keydown", function(ev){
+          if(ev.key==="ArrowRight"||ev.key==="ArrowLeft"){ ev.preventDefault();
+            const delta = ev.key==="ArrowRight" ? 1 : -1;
+            let nextIndex = (i + delta + tabs.length) % tabs.length;
+            setActive(tabs[nextIndex], { focus:true });
+          }
+        });
+        nav.appendChild(btn);
+        navButtons.push({ btn, tab });
+        if(tab.defaultActive) activeTab=tab;
+      }
+      panel.setAttribute("role","tabpanel");
+      panel.setAttribute("tabindex","0");
+      if(!activeTab) activeTab=tabs[0];
+      setActive(activeTab);
+      return frame;
     }
     return { build };
   })();
@@ -1197,8 +1280,16 @@
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Save & Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
-  const TOOLBAR_PAGE=["fullscreen.open","break.insert","break.remove","hf.edit","print","export","toggle.header","toggle.footer"];
-  const TOOLBAR_FS=["hf.edit","break.insert","break.remove","reflow","print","export","toggle.header","toggle.footer","fullscreen.close","fullscreen.saveClose"];
+  const TOOLBAR_PAGE=[
+    { id:"compose", label:"Compose", items:["fullscreen.open","break.insert","break.remove"] },
+    { id:"layout", label:"Layout", items:["hf.edit","toggle.header","toggle.footer"] },
+    { id:"output", label:"Output", items:["print","export"] }
+  ];
+  const TOOLBAR_FS=[
+    { id:"compose", label:"Compose", items:["hf.edit","break.insert","break.remove","reflow","fullscreen.saveClose","fullscreen.close"] },
+    { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+    { id:"output", label:"Output", items:["print","export"] }
+  ];
   function WEditorInstance(editorEl){
     this.el = editorEl;
     this.headerHTML = "Demo Header — {{date}} · Page {{page}} / {{total}}";
