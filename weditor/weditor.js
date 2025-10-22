@@ -15,6 +15,9 @@
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
+      controlWrap:{ display:"inline-flex", alignItems:"center", gap:"6px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
+      controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
+      controlLabel:{ font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
@@ -1535,6 +1538,31 @@
   const ToolbarFactory=(function(){
     function createCommandButton(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
+      if(meta.kind==="select"){
+        const wrap=document.createElement("label"); applyStyles(wrap, WCfg.Style.controlWrap);
+        if(meta.label){
+          const lbl=document.createElement("span"); lbl.textContent=meta.label; applyStyles(lbl, WCfg.Style.controlLabel); wrap.appendChild(lbl);
+        }
+        const select=document.createElement("select"); applyStyles(select, WCfg.Style.controlSelect);
+        select.setAttribute("data-command", id);
+        select.setAttribute("aria-label", meta.ariaLabel || meta.label || "Select");
+        if(meta.placeholder){
+          const placeholder=document.createElement("option"); placeholder.value=""; placeholder.textContent=meta.placeholder; placeholder.disabled=true; placeholder.selected=true; select.appendChild(placeholder);
+        }
+        const opts=meta.options || [];
+        for(let i=0;i<opts.length;i++){
+          const opt=document.createElement("option"); opt.value=opts[i].value; opt.textContent=opts[i].label; select.appendChild(opt);
+        }
+        if(meta.getValue){
+          const current=meta.getValue(inst, ctx);
+          if(current){ select.value=current; }
+        }
+        select.onchange=function(e){
+          if(meta.run) meta.run(inst, { event:e, ctx, value:select.value });
+        };
+        wrap.appendChild(select);
+        return wrap;
+      }
       const isToggle = meta.kind==="toggle";
       const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
       btn.setAttribute("data-command", id);
@@ -1549,6 +1577,7 @@
           btn.style.borderColor = active ? WCfg.UI.brand : "#c8c6c4";
         }
       };
+      if(typeof meta.decorate==="function"){ meta.decorate(btn); }
       return btn;
     }
     function build(container, config, inst, ctx){
@@ -1767,7 +1796,209 @@
     }
     return { open };
   })();
+  const Formatting=(function(){
+    const FONT_FAMILIES=[
+      { label:"Arial", value:"Arial, Helvetica, sans-serif" },
+      { label:"Calibri", value:"Calibri, 'Segoe UI', sans-serif" },
+      { label:"Cambria", value:"Cambria, 'Times New Roman', serif" },
+      { label:"Courier New", value:"'Courier New', Courier, monospace" },
+      { label:"Georgia", value:"Georgia, 'Times New Roman', serif" },
+      { label:"Segoe UI", value:"'Segoe UI', system-ui, -apple-system, sans-serif" },
+      { label:"Times New Roman", value:"'Times New Roman', Times, serif" }
+    ];
+    const FONT_SIZES=[
+      { label:"10", px:"10px", exec:"2" },
+      { label:"12", px:"12px", exec:"3" },
+      { label:"14", px:"14px", exec:"4" },
+      { label:"16", px:"16px", exec:"5" },
+      { label:"18", px:"18px", exec:"6" },
+      { label:"24", px:"24px", exec:"7" }
+    ];
+    function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function focusTarget(target){ if(target && typeof target.focus==="function"){ try{ target.focus({ preventScroll:true }); } catch(e){ target.focus(); } } }
+    function execCommand(target, command, value, useCss){
+      if(!target){ return false; }
+      focusTarget(target);
+      if(useCss){ try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      }
+      let result=false;
+      try{ result=document.execCommand(command, false, value); } catch(e){ result=false; }
+      if(useCss){ try{ document.execCommand("styleWithCSS", false, false); } catch(e){} }
+      return result;
+    }
+    function applyFontFamily(inst, ctx, family){
+      if(!family){ return; }
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      execCommand(target, "fontName", family, true);
+    }
+    function convertFontTags(target, execValue, px){
+      if(!target){ return; }
+      const selector="font[size=\""+execValue+"\"]";
+      const fonts=target.querySelectorAll(selector);
+      for(let i=0;i<fonts.length;i++){
+        const fontEl=fonts[i];
+        const span=target.ownerDocument.createElement("span");
+        span.style.fontSize = px;
+        while(fontEl.firstChild){ span.appendChild(fontEl.firstChild); }
+        fontEl.parentNode.replaceChild(span, fontEl);
+      }
+    }
+    function applyFontSize(inst, ctx, sizeLabel){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      const meta=FONT_SIZES.find(function(item){ return item.label===sizeLabel; }); if(!meta) return;
+      execCommand(target, "fontSize", meta.exec, true);
+      convertFontTags(target, meta.exec, meta.px);
+    }
+    function applyUnderline(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      execCommand(target, "underline", null, true);
+      const style = inst && inst.underlineStyle ? inst.underlineStyle : null;
+      if(style){ applyDecorationStyle(inst, ctx, style); }
+    }
+    function applyDecorationStyle(inst, ctx, style){
+      if(!style){ return; }
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      const sel=window.getSelection();
+      if(!sel || sel.rangeCount===0){ return; }
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.commonAncestorContainer)){ return; }
+      if(range.collapsed){ return; }
+      const doc=target.ownerDocument || document;
+      try{
+        const span=doc.createElement("span");
+        span.style.textDecorationLine="underline";
+        span.style.textDecorationStyle=style;
+        range.surroundContents(span);
+        sel.removeAllRanges();
+        const newRange=doc.createRange();
+        newRange.selectNodeContents(span);
+        sel.addRange(newRange);
+        return;
+      } catch(err){}
+      try{ execCommand(target, "underline", null, true); } catch(err){}
+      const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+        acceptNode:function(node){ return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
+      });
+      const updates=[]; let node;
+      while((node=walker.nextNode())){ updates.push(node); }
+      for(let i=0;i<updates.length;i++){
+        const el=updates[i];
+        const computed=window.getComputedStyle(el);
+        const hasUnderline=(computed && computed.textDecorationLine && computed.textDecorationLine.indexOf("underline")>-1);
+        if(hasUnderline){
+          el.style.textDecorationLine="underline";
+          el.style.textDecorationStyle=style;
+        }
+      }
+    }
+    function applySimple(inst, ctx, command){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      execCommand(target, command, null, true);
+    }
+    return {
+      FONT_FAMILIES,
+      FONT_SIZES,
+      applyFontFamily,
+      applyFontSize,
+      applyUnderline,
+      applyDecorationStyle,
+      applySimple
+    };
+  })();
   const Commands={
+    "format.fontFamily":{
+      label:"Font",
+      kind:"select",
+      ariaLabel:"Select font family",
+      placeholder:"Font",
+      options:Formatting.FONT_FAMILIES.map(function(item){ return { label:item.label, value:item.value }; }),
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        Formatting.applyFontFamily(inst, arg && arg.ctx, value);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.fontSize":{
+      label:"Size",
+      kind:"select",
+      ariaLabel:"Select font size",
+      placeholder:"Size",
+      options:Formatting.FONT_SIZES.map(function(item){ return { label:item.label, value:item.label }; }),
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        Formatting.applyFontSize(inst, arg && arg.ctx, value);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.bold":{
+      label:"B",
+      kind:"button",
+      ariaLabel:"Bold",
+      title:"Bold (Ctrl+B)",
+      decorate:function(btn){ btn.style.fontWeight="700"; },
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "bold"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.italic":{
+      label:"I",
+      kind:"button",
+      ariaLabel:"Italic",
+      title:"Italic (Ctrl+I)",
+      decorate:function(btn){ btn.style.fontStyle="italic"; },
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "italic"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.underline":{
+      label:"U",
+      kind:"button",
+      ariaLabel:"Underline",
+      title:"Underline (Ctrl+U)",
+      decorate:function(btn){ btn.style.textDecoration="underline"; },
+      run:function(inst, arg){ Formatting.applyUnderline(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
+    },
+    "format.underlineStyle":{
+      label:"Style",
+      kind:"select",
+      ariaLabel:"Underline style",
+      options:[
+        { label:"Solid", value:"solid" },
+        { label:"Double", value:"double" },
+        { label:"Dotted", value:"dotted" },
+        { label:"Dashed", value:"dashed" },
+        { label:"Wavy", value:"wavy" }
+      ],
+      getValue:function(inst){ return inst && inst.underlineStyle ? inst.underlineStyle : "solid"; },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        inst.underlineStyle = value;
+        Formatting.applyDecorationStyle(inst, arg && arg.ctx, value);
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.strike":{
+      label:"ab",
+      kind:"button",
+      ariaLabel:"Strikethrough",
+      title:"Strikethrough",
+      decorate:function(btn){ btn.style.textDecoration="line-through"; btn.style.textDecorationThickness="2px"; },
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "strikeThrough"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.subscript":{
+      label:"x₂",
+      kind:"button",
+      ariaLabel:"Subscript",
+      title:"Subscript",
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "subscript"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.superscript":{
+      label:"x²",
+      kind:"button",
+      ariaLabel:"Superscript",
+      title:"Superscript",
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
@@ -1788,6 +2019,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -1797,6 +2029,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -1816,6 +2049,7 @@
     this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
     this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
+    this.underlineStyle = "solid";
     this._mount();
     OutputBinding.syncDebounced(this);
   }
