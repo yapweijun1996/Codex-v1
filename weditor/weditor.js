@@ -7,7 +7,12 @@
     const innerHFWidth = A4W - 36;
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
-      bar:{ position:"sticky", top:"0", zIndex:"2", display:"flex", gap:"8px", alignItems:"center", justifyContent:"flex-start", padding:"8px 12px", background:"#fff", borderBottom:"1px solid "+UI.border },
+      bar:{ position:"sticky", top:"0", zIndex:"2", display:"flex", flexDirection:"column", gap:"10px", alignItems:"stretch", justifyContent:"flex-start", padding:"12px", background:"#fff", borderBottom:"1px solid "+UI.border },
+      tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center" },
+      tabButton:{ border:"1px solid transparent", background:"transparent", color:UI.textDim, borderRadius:"6px", padding:"6px 12px", font:"13px/1.2 Segoe UI,system-ui", cursor:"pointer", transition:"all .2s ease" },
+      tabButtonActive:{ background:"#e6f2fb", color:UI.text, borderColor:UI.brand },
+      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      pinnedRow:{ display:"flex", flexWrap:"wrap", gap:"8px", justifyContent:"flex-end", alignItems:"center" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
@@ -1054,30 +1059,111 @@
     return { resolve, sync, syncDebounced };
   })();
   const ToolbarFactory=(function(){
-    function build(container, items, inst, ctx){
-      const bar=document.createElement("div"); applyStyles(bar, WCfg.Style.bar);
-      for(let i=0;i<items.length;i++){
-        const id=items[i]; const meta=Commands[id]; if(!meta) continue;
-        const isToggle = meta.kind==="toggle";
-        const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
-        btn.setAttribute("data-command", id);
-        btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
-        btn.onclick = (function(meta, btn){
-          return function(e){
-            meta.run(inst, { event:e, ctx });
-            if(isToggle){
-              const active = !!meta.getActive(inst);
-              btn.setAttribute("data-active", active?"1":"0");
-              btn.textContent = meta.label + (active?": On":": Off");
-              btn.style.background = active ? "#e6f2fb" : "#fff";
-              btn.style.borderColor = active ? WCfg.UI.brand : "#c8c6c4";
-            }
-          };
-        })(meta, btn);
-        bar.appendChild(btn);
+    function createCommandButton(id, inst, ctx){
+      const meta=Commands[id]; if(!meta) return null;
+      const isToggle = meta.kind==="toggle";
+      const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
+      btn.setAttribute("data-command", id);
+      btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
+      btn.onclick = function(e){
+        meta.run(inst, { event:e, ctx });
+        if(isToggle){
+          const active = !!meta.getActive(inst);
+          btn.setAttribute("data-active", active?"1":"0");
+          btn.textContent = meta.label + (active?": On":": Off");
+          btn.style.background = active ? "#e6f2fb" : "#fff";
+          btn.style.borderColor = active ? WCfg.UI.brand : "#c8c6c4";
+        }
+      };
+      return btn;
+    }
+    function applyTabState(btn, active){
+      applyStyles(btn, WCfg.Style.tabButton);
+      if(active){ applyStyles(btn, WCfg.Style.tabButtonActive); }
+      btn.setAttribute("aria-selected", active?"true":"false");
+      btn.setAttribute("data-active", active?"1":"0");
+    }
+    function normalize(items){
+      if(Array.isArray(items)){
+        return { tabs:[{ id:"default", label:"Actions", items:items.slice() }], pinned:[] };
       }
+      const cfg = items ? {
+        tabs:Array.isArray(items.tabs) ? items.tabs.slice() : [],
+        pinned:Array.isArray(items.pinned) ? items.pinned.slice() : []
+      } : { tabs:[], pinned:[] };
+      return cfg;
+    }
+    function build(container, schema, inst, ctx){
+      const config = normalize(schema);
+      if(!config.tabs || !config.tabs.length){ return null; }
+      const bar=document.createElement("div"); applyStyles(bar, WCfg.Style.bar);
+      const tabList=document.createElement("div"); applyStyles(tabList, WCfg.Style.tabList);
+      tabList.setAttribute("role", "tablist");
+      tabList.setAttribute("aria-label", "Toolbar Tabs");
+      const tabPanel=document.createElement("div"); applyStyles(tabPanel, WCfg.Style.tabPanel);
+      tabPanel.setAttribute("role", "tabpanel");
+      const tabButtons=[]; const tabMap={};
+      for(let i=0;i<config.tabs.length;i++){
+        const tab=config.tabs[i]; if(!tab || !Array.isArray(tab.items) || !tab.items.length) continue;
+        const tabBtn=document.createElement("button"); tabBtn.type="button"; tabBtn.textContent=tab.label || "Tab";
+        tabBtn.setAttribute("role","tab");
+        const tabId = tab.id || ("tab-"+i);
+        tabBtn.setAttribute("id", "weditor-tab-"+tabId);
+        tabBtn.setAttribute("data-tab", tabId);
+        applyTabState(tabBtn, false);
+        tabBtn.onclick=function(){ setActiveTab(tabBtn.getAttribute("data-tab")); };
+        tabList.appendChild(tabBtn);
+        tabButtons.push(tabBtn);
+        tabMap[tabBtn.getAttribute("data-tab")]={ id:tabBtn.getAttribute("data-tab"), label:tab.label, items:tab.items.slice() };
+        tabBtn.addEventListener("keydown", function(ev){
+          const key=ev.key;
+          const idx=tabButtons.indexOf(tabBtn);
+          if(idx<0) return;
+          if(key==="ArrowRight"||key==="ArrowDown"){ ev.preventDefault(); focusByOffset(idx, 1); }
+          else if(key==="ArrowLeft"||key==="ArrowUp"){ ev.preventDefault(); focusByOffset(idx, -1); }
+          else if(key==="Home"){ ev.preventDefault(); focusByIndex(0); }
+          else if(key==="End"){ ev.preventDefault(); focusByIndex(tabButtons.length-1); }
+        });
+      }
+      if(!tabButtons.length){ return null; }
+      if(tabButtons.length===1){ tabList.style.display="none"; }
+      function setActiveTab(id){
+        if(!tabMap[id]) return;
+        for(let i=0;i<tabButtons.length;i++){
+          const btn=tabButtons[i];
+          const active = btn.getAttribute("data-tab")===id;
+          applyTabState(btn, active);
+          btn.setAttribute("tabindex", active?"0":"-1");
+        }
+        tabPanel.innerHTML="";
+        const tab=tabMap[id];
+        tabPanel.setAttribute("aria-labelledby", "weditor-tab-"+id);
+        for(let j=0;j<tab.items.length;j++){
+          const cmdBtn=createCommandButton(tab.items[j], inst, ctx);
+          if(cmdBtn) tabPanel.appendChild(cmdBtn);
+        }
+      }
+      const pinnedRow = config.pinned && config.pinned.length ? document.createElement("div") : null;
+      if(pinnedRow){
+        applyStyles(pinnedRow, WCfg.Style.pinnedRow);
+        for(let i=0;i<config.pinned.length;i++){
+          const pinBtn=createCommandButton(config.pinned[i], inst, ctx);
+          if(pinBtn) pinnedRow.appendChild(pinBtn);
+        }
+      }
+      bar.appendChild(tabList);
+      bar.appendChild(tabPanel);
+      if(pinnedRow && pinnedRow.childElementCount) bar.appendChild(pinnedRow);
       container.appendChild(bar);
+      setActiveTab(tabButtons[0].getAttribute("data-tab"));
       return bar;
+      function focusByOffset(idx, delta){ focusByIndex((idx + delta + tabButtons.length) % tabButtons.length); }
+      function focusByIndex(idx){
+        const target=tabButtons[idx];
+        if(!target) return;
+        setActiveTab(target.getAttribute("data-tab"));
+        target.focus();
+      }
     }
     return { build };
   })();
@@ -1197,8 +1283,22 @@
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Save & Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
-  const TOOLBAR_PAGE=["fullscreen.open","break.insert","break.remove","hf.edit","print","export","toggle.header","toggle.footer"];
-  const TOOLBAR_FS=["hf.edit","break.insert","break.remove","reflow","print","export","toggle.header","toggle.footer","fullscreen.close","fullscreen.saveClose"];
+  const TOOLBAR_PAGE={
+    tabs:[
+      { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"output", label:"Output", items:["print","export"] }
+    ],
+    pinned:["fullscreen.open"]
+  };
+  const TOOLBAR_FS={
+    tabs:[
+      { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit","reflow"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"output", label:"Output", items:["print","export"] }
+    ],
+    pinned:["fullscreen.close","fullscreen.saveClose"]
+  };
   function WEditorInstance(editorEl){
     this.el = editorEl;
     this.headerHTML = "Demo Header — {{date}} · Page {{page}} / {{total}}";
