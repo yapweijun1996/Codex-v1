@@ -9,6 +9,7 @@
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
       bar:{ position:"sticky", top:"0", zIndex:"2", display:"flex", flexDirection:"column", gap:"10px", alignItems:"stretch", justifyContent:"flex-start", padding:"12px 16px 14px", background:"#fff", borderBottom:"1px solid "+UI.border },
       tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center" },
+      tabListActions:{ display:"inline-flex", gap:"6px", flexWrap:"wrap", alignItems:"center", marginLeft:"auto" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
       tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
@@ -1594,6 +1595,7 @@
       const tabList=document.createElement("div"); applyStyles(tabList, WCfg.Style.tabList);
       const panelsWrap=document.createElement("div"); applyStyles(panelsWrap, WCfg.Style.tabPanels);
       const tabButtons=[]; const tabPanels=[];
+      const quickActions = (config && Array.isArray(config.quickActions)) ? config.quickActions.slice() : [];
       function setActive(index){
         if(index<0 || index>=tabButtons.length){ return; }
         for(let i=0;i<tabButtons.length;i++){
@@ -1687,6 +1689,14 @@
         btn.setAttribute("aria-controls", tabId+"-panel");
         panel.id = tabId+"-panel";
         panel.setAttribute("aria-labelledby", btn.id);
+      }
+      if(quickActions.length){
+        const quickWrap=document.createElement("div"); applyStyles(quickWrap, WCfg.Style.tabListActions);
+        for(let i=0;i<quickActions.length;i++){
+          const quickBtn=createCommandButton(quickActions[i], inst, ctx);
+          if(quickBtn){ quickWrap.appendChild(quickBtn); }
+        }
+        tabList.appendChild(quickWrap);
       }
       bar.appendChild(tabList); bar.appendChild(panelsWrap);
       container.appendChild(bar);
@@ -2027,9 +2037,9 @@
       { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] },
-      { id:"view", label:"View", items:["fullscreen.open"] }
-    ]
+      { id:"output", label:"Output", items:["print","export"] }
+    ],
+    quickActions:["fullscreen.open"]
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
