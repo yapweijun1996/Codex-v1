@@ -2287,6 +2287,18 @@
       if(success && inst){ inst.fontColor=null; }
       return success;
     }
+    function applyAlignment(inst, ctx, align){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      const command=(function(){
+        switch((align||"").toLowerCase()){
+          case "center": return "justifyCenter";
+          case "right": return "justifyRight";
+          case "justify": return "justifyFull";
+          default: return "justifyLeft";
+        }
+      })();
+      execCommand(target, command, null, true);
+    }
     function applyUnderline(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, "underline", null, true);
@@ -2346,6 +2358,7 @@
       clearHighlight,
       applyFontColor,
       clearFontColor,
+      applyAlignment,
       applyUnderline,
       applyDecorationStyle,
       applySimple
@@ -2797,6 +2810,35 @@
     }
     return { create };
   })();
+  function decorateAlignmentButton(btn, align){
+    if(!btn) return;
+    btn.innerHTML="";
+    btn.style.display="inline-flex";
+    btn.style.flexDirection="column";
+    btn.style.justifyContent="center";
+    btn.style.gap="4px";
+    btn.style.paddingTop="6px";
+    btn.style.paddingBottom="6px";
+    const alignMap={
+      left:{ alignItems:"flex-start", widths:[100, 78, 88] },
+      center:{ alignItems:"center", widths:[68, 100, 68] },
+      right:{ alignItems:"flex-end", widths:[88, 78, 100] },
+      justify:{ alignItems:"stretch", widths:[100, 100, 100] }
+    };
+    const meta=alignMap[align] || alignMap.left;
+    btn.style.alignItems=meta.alignItems;
+    for(let i=0;i<meta.widths.length;i++){
+      const line=document.createElement("span");
+      line.style.display="block";
+      line.style.height="2px";
+      line.style.borderRadius="2px";
+      line.style.backgroundColor=WCfg.UI.text;
+      line.style.width=meta.alignItems==="stretch"?"100%":meta.widths[i]+"%";
+      if(meta.alignItems==="flex-end"){ line.style.alignSelf="flex-end"; }
+      if(meta.alignItems==="center"){ line.style.alignSelf="center"; }
+      btn.appendChild(line);
+    }
+  }
   const Commands={
     "format.fontFamily":{
       label:"Font",
@@ -2878,6 +2920,38 @@
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
+    "format.alignLeft":{
+      label:"",
+      kind:"button",
+      ariaLabel:"Align Left (靠左對齊)",
+      title:"Align Left (靠左對齊)",
+      decorate:function(btn){ decorateAlignmentButton(btn, "left"); },
+      run:function(inst, arg){ Formatting.applyAlignment(inst, arg && arg.ctx, "left"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.alignCenter":{
+      label:"",
+      kind:"button",
+      ariaLabel:"Center (置中對齊)",
+      title:"Center (置中對齊)",
+      decorate:function(btn){ decorateAlignmentButton(btn, "center"); },
+      run:function(inst, arg){ Formatting.applyAlignment(inst, arg && arg.ctx, "center"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.alignRight":{
+      label:"",
+      kind:"button",
+      ariaLabel:"Align Right (靠右對齊)",
+      title:"Align Right (靠右對齊)",
+      decorate:function(btn){ decorateAlignmentButton(btn, "right"); },
+      run:function(inst, arg){ Formatting.applyAlignment(inst, arg && arg.ctx, "right"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.alignJustify":{
+      label:"",
+      kind:"button",
+      ariaLabel:"Justify (左右對齊)",
+      title:"Justify (左右對齊)",
+      decorate:function(btn){ decorateAlignmentButton(btn, "justify"); },
+      run:function(inst, arg){ Formatting.applyAlignment(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -2920,7 +2994,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2930,7 +3004,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
