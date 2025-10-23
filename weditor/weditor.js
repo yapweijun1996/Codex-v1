@@ -2010,6 +2010,29 @@
       { label:"18", px:"18px", exec:"6" },
       { label:"24", px:"24px", exec:"7" }
     ];
+    const FONT_THEME_COLORS=[
+      { label:"Black", value:"#000000" },
+      { label:"Brown", value:"#7f6000" },
+      { label:"Dark Blue", value:"#1f4e79" },
+      { label:"Blue", value:"#2e75b6" },
+      { label:"Red", value:"#c00000" },
+      { label:"Orange", value:"#f79646" },
+      { label:"Green", value:"#9bbb59" },
+      { label:"Purple", value:"#8064a2" }
+    ];
+    const FONT_STANDARD_COLORS=[
+      { label:"Dark Red", value:"#800000" },
+      { label:"Red", value:"#ff0000" },
+      { label:"Orange", value:"#ffa500" },
+      { label:"Yellow", value:"#ffff00" },
+      { label:"Green", value:"#00b050" },
+      { label:"Teal", value:"#00b0f0" },
+      { label:"Blue", value:"#0070c0" },
+      { label:"Dark Blue", value:"#002060" },
+      { label:"Purple", value:"#7030a0" },
+      { label:"Black", value:"#000000" }
+    ];
+    const FONT_COLOR_DEFAULT="#d13438";
     const HIGHLIGHT_COLORS=[
       { label:"Yellow", value:"#ffff00" },
       { label:"Bright Green", value:"#00ff00" },
@@ -2120,6 +2143,64 @@
       }
       return changed;
     }
+    function fallbackApplyFontColor(target, color){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const doc=target.ownerDocument || document;
+      const span=doc.createElement("span");
+      span.style.color=color;
+      const contents=info.range.extractContents();
+      span.appendChild(contents);
+      info.range.insertNode(span);
+      info.sel.removeAllRanges();
+      const newRange=doc.createRange();
+      newRange.selectNodeContents(span);
+      info.sel.addRange(newRange);
+      return true;
+    }
+    function fallbackClearFontColor(target){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const { range }=info;
+      const doc=target.ownerDocument || document;
+      const nodes=[];
+      if(range.commonAncestorContainer && range.commonAncestorContainer.nodeType===1 && target.contains(range.commonAncestorContainer)){
+        nodes.push(range.commonAncestorContainer);
+      }
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==range.commonAncestorContainer && target.contains(current) && intersectsRange(range, current)){
+          nodes.push(current);
+        }
+        while((current=walker.nextNode())){
+          if(!target.contains(current)) continue;
+          if(!intersectsRange(range, current)) continue;
+          nodes.push(current);
+        }
+      }
+      let changed=false;
+      const unwrap=[];
+      for(let i=0;i<nodes.length;i++){
+        const el=nodes[i];
+        if(!el || el.nodeType!==1) continue;
+        let modified=false;
+        if(el.style && el.style.color){
+          el.style.color="";
+          if(el.getAttribute && el.getAttribute("style")==="") el.removeAttribute("style");
+          modified=true;
+        }
+        if(el.hasAttribute && el.hasAttribute("color")){ el.removeAttribute("color"); modified=true; }
+        if(modified) changed=true;
+        if(el.nodeName==="SPAN" && el.attributes && el.attributes.length===0){ unwrap.push(el); }
+      }
+      for(let i=0;i<unwrap.length;i++){
+        const span=unwrap[i];
+        const parent=span.parentNode;
+        if(!parent) continue;
+        while(span.firstChild){ parent.insertBefore(span.firstChild, span); }
+        parent.removeChild(span);
+      }
+      return changed;
+    }
     function execCommand(target, command, value, useCss){
       if(!target){ return false; }
       focusTarget(target);
@@ -2186,6 +2267,26 @@
       if(success && inst){ inst.highlightColor=null; }
       return success;
     }
+    function applyFontColor(inst, ctx, color){
+      if(!color){ return clearFontColor(inst, ctx); }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      let success=execCommand(target, "foreColor", color, true);
+      if(!success){ success=fallbackApplyFontColor(target, color); }
+      if(success && inst){ inst.fontColor=color; }
+      return success;
+    }
+    function clearFontColor(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      try{ success=document.execCommand("foreColor", false, WCfg.UI.text); }
+      catch(err){ success=false; }
+      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      if(fallbackClearFontColor(target)) success=true;
+      if(success && inst){ inst.fontColor=null; }
+      return success;
+    }
     function applyUnderline(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, "underline", null, true);
@@ -2236,14 +2337,282 @@
       FONT_FAMILIES,
       FONT_SIZES,
       HIGHLIGHT_COLORS,
+      FONT_THEME_COLORS,
+      FONT_STANDARD_COLORS,
+      FONT_COLOR_DEFAULT,
       applyFontFamily,
       applyFontSize,
       applyHighlight,
       clearHighlight,
+      applyFontColor,
+      clearFontColor,
       applyUnderline,
       applyDecorationStyle,
       applySimple
     };
+  })();
+  const FontColorUI=(function(){
+    const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
+    function normalizeCustomColor(input){
+      if(!input) return null;
+      let value=input.trim();
+      if(!value){ return null; }
+      if(/^rgb\s*\(/i.test(value)){
+        value=value.replace(/^rgb\s*\(/i,"").replace(/\)$/,"");
+      }
+      const rgb=value.match(/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/);
+      if(rgb){
+        const r=Math.min(255, parseInt(rgb[1],10));
+        const g=Math.min(255, parseInt(rgb[2],10));
+        const b=Math.min(255, parseInt(rgb[3],10));
+        const toHex=function(num){ const h=num.toString(16); return h.length===1?"0"+h:h; };
+        return "#"+toHex(r)+toHex(g)+toHex(b);
+      }
+      const hex=value.charAt(0)==="#" ? value : "#"+value;
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)){
+        if(hex.length===4){
+          return "#"+hex.charAt(1)+hex.charAt(1)+hex.charAt(2)+hex.charAt(2)+hex.charAt(3)+hex.charAt(3);
+        }
+        return hex.toLowerCase();
+      }
+      return null;
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("title","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("data-command","format.fontColor");
+      button.setAttribute("aria-label","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="48px";
+      button.style.padding="3px 12px";
+      const iconWrap=document.createElement("span");
+      iconWrap.style.display="flex";
+      iconWrap.style.flexDirection="column";
+      iconWrap.style.alignItems="center";
+      iconWrap.style.lineHeight="1";
+      const letter=document.createElement("span");
+      letter.textContent="A";
+      letter.style.fontSize="18px";
+      letter.style.fontWeight="600";
+      letter.style.color=WCfg.UI.text;
+      letter.setAttribute("aria-hidden","true");
+      const underline=document.createElement("span");
+      underline.style.marginTop="3px";
+      underline.style.width="20px";
+      underline.style.height="4px";
+      underline.style.borderRadius="4px";
+      underline.style.background=Formatting.FONT_COLOR_DEFAULT || WCfg.UI.brand;
+      underline.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      underline.setAttribute("aria-hidden","true");
+      iconWrap.appendChild(letter);
+      iconWrap.appendChild(underline);
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(iconWrap);
+      button.appendChild(arrow);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.display="none";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      palette.style.padding="12px";
+      palette.style.zIndex="20";
+      palette.style.minWidth="220px";
+      palette.style.flexDirection="column";
+      palette.style.gap="12px";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const themeColors=Formatting.FONT_THEME_COLORS || [];
+      const standardColors=Formatting.FONT_STANDARD_COLORS || [];
+      let currentColor;
+      if(inst && typeof inst.fontColor!=="undefined"){
+        currentColor=inst.fontColor;
+      } else if(themeColors.length){
+        currentColor=themeColors[0].value;
+        if(inst) inst.fontColor=currentColor;
+      } else {
+        currentColor=Formatting.FONT_COLOR_DEFAULT;
+      }
+      const colorButtons=[];
+      function registerColorButton(value, el){ colorButtons.push({ value, el }); }
+      function updateSelectionUI(selected){
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const isActive=selected===entry.value;
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+      }
+      function updatePreview(color){
+        if(color){
+          underline.style.background=color;
+          underline.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+        } else {
+          underline.style.background=NO_COLOR_PATTERN;
+          underline.style.boxShadow="0 0 0 1px "+WCfg.UI.borderSubtle;
+        }
+      }
+      function pickColor(value){
+        setOpen(false);
+        let changed=false;
+        if(value){
+          changed=!!Formatting.applyFontColor(inst, ctx, value);
+          if(changed) currentColor=value;
+        } else {
+          changed=!!Formatting.clearFontColor(inst, ctx);
+          if(changed) currentColor=null;
+        }
+        if(changed){
+          updatePreview(currentColor);
+          updateSelectionUI(currentColor);
+          updateAutomaticState(currentColor);
+          if(inst) OutputBinding.syncDebounced(inst);
+        }
+      }
+      function createSwatch(color){
+        const swatch=doc.createElement("button");
+        swatch.type="button";
+        swatch.setAttribute("role","menuitem");
+        swatch.setAttribute("data-color", color.value);
+        swatch.setAttribute("aria-label", color.label+" font color");
+        swatch.title=color.label;
+        swatch.style.width="24px";
+        swatch.style.height="24px";
+        swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+        swatch.style.borderRadius="4px";
+        swatch.style.background=color.value;
+        swatch.style.cursor="pointer";
+        swatch.style.padding="0";
+        swatch.style.display="inline-flex";
+        swatch.style.alignItems="center";
+        swatch.style.justifyContent="center";
+        swatch.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(color.value); });
+        swatch.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+        registerColorButton(color.value, swatch);
+        return swatch;
+      }
+      function createSection(title, colors){
+        if(!colors || !colors.length) return;
+        const section=document.createElement("div");
+        section.style.display="flex";
+        section.style.flexDirection="column";
+        section.style.gap="6px";
+        const heading=document.createElement("div");
+        heading.textContent=title;
+        heading.style.font="12px/1.4 Segoe UI,system-ui";
+        heading.style.color=WCfg.UI.textDim;
+        const grid=document.createElement("div");
+        grid.style.display="grid";
+        grid.style.gridTemplateColumns="repeat(auto-fill, minmax(24px, 1fr))";
+        grid.style.gap="6px";
+        for(let i=0;i<colors.length;i++){
+          grid.appendChild(createSwatch(colors[i]));
+        }
+        section.appendChild(heading);
+        section.appendChild(grid);
+        palette.appendChild(section);
+      }
+      createSection("Theme Colors", themeColors);
+      createSection("Standard Colors", standardColors);
+      const automaticBtn=doc.createElement("button");
+      automaticBtn.type="button";
+      automaticBtn.setAttribute("role","menuitem");
+      automaticBtn.textContent="Automatic";
+      automaticBtn.setAttribute("aria-label","Use automatic font color");
+      automaticBtn.style.padding="6px 8px";
+      automaticBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      automaticBtn.style.background="#fff";
+      automaticBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      automaticBtn.style.borderRadius="4px";
+      automaticBtn.style.cursor="pointer";
+      automaticBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(null); });
+      automaticBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      function updateAutomaticState(selected){
+        const active=selected===null || typeof selected==="undefined";
+        automaticBtn.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        automaticBtn.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      palette.appendChild(automaticBtn);
+      const moreColorsBtn=doc.createElement("button");
+      moreColorsBtn.type="button";
+      moreColorsBtn.setAttribute("role","menuitem");
+      moreColorsBtn.textContent="More Colors…";
+      moreColorsBtn.setAttribute("aria-label","Choose a custom font color");
+      moreColorsBtn.style.padding="6px 8px";
+      moreColorsBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      moreColorsBtn.style.background="#fff";
+      moreColorsBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      moreColorsBtn.style.borderRadius="4px";
+      moreColorsBtn.style.cursor="pointer";
+      moreColorsBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        const input=window.prompt("Enter a hex value (e.g. #ff0000) or RGB value (e.g. 255,0,0)", currentColor || "#");
+        if(input===null) return;
+        const normalized=normalizeCustomColor(input);
+        if(!normalized){
+          window.alert("Please enter a valid hex or RGB color value.");
+          return;
+        }
+        pickColor(normalized);
+      });
+      moreColorsBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(moreColorsBtn);
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        button.setAttribute("aria-expanded", state ? "true" : "false");
+        if(state){
+          palette.style.display="flex";
+          palette.setAttribute("aria-hidden","false");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            if(doc.activeElement===button){
+              const first=palette.querySelector("button");
+              if(first) first.focus();
+            }
+          },0);
+        } else {
+          palette.style.display="none";
+          palette.setAttribute("aria-hidden","true");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      let open=false;
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      palette.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      updatePreview(currentColor);
+      updateSelectionUI(currentColor);
+      updateAutomaticState(currentColor);
+      container.appendChild(button);
+      container.appendChild(palette);
+      return container;
+    }
+    return { create };
   })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
@@ -2476,7 +2845,7 @@
       kind:"button",
       ariaLabel:"Underline",
       title:"Underline (Ctrl+U)",
-      decorate:function(btn){ btn.style.textDecoration="underline"; },
+      decorate:function(btn){ btn.style.textDecoration="underline"; btn.style.textDecorationThickness="2px"; },
       run:function(inst, arg){ Formatting.applyUnderline(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
     },
     "format.underlineStyle":{
@@ -2498,6 +2867,11 @@
         Formatting.applyDecorationStyle(inst, arg && arg.ctx, value);
         OutputBinding.syncDebounced(inst);
       }
+    },
+    "format.fontColor":{
+      kind:"custom",
+      ariaLabel:"Font Color (字体颜色 / 文字颜色)",
+      render:function(inst, ctx){ return FontColorUI.create(inst, ctx); }
     },
     "format.highlight":{
       kind:"custom",
@@ -2546,7 +2920,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2556,7 +2930,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -2578,6 +2952,7 @@
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
+    this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
     this._mount();
     OutputBinding.syncDebounced(this);
   }
