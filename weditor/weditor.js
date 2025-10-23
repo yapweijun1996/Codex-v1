@@ -657,11 +657,12 @@
     }
     return { open };
   })();
+  const PAGED_PRINT_STYLES = "div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}";
   const PrintUI=(function(){
     function open(pagedHTML){
       const w=WDom.openBlank(); if(!w) return;
       const html="<!DOCTYPE html><html><head><meta charset='utf-8'>"+
-               "<style>div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}</style>"+
+               "<style>"+PAGED_PRINT_STYLES+"</style>"+
                "</head><body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial' onload='window.print();window.onafterprint=function(){window.close();}'>"+
                pagedHTML+
                "</body></html>";
@@ -1536,7 +1537,7 @@
     }
     function sync(inst){
       if(!inst.outputEl) return;
-      if(inst.outputMode==="paged"){ inst.outputEl.value = Paginator.pagesHTML(inst); }
+      if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
       else { inst.outputEl.value = inst.el.innerHTML; }
     }
     const timers=new WeakMap();
