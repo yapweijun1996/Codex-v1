@@ -229,39 +229,74 @@ body.chat-fullscreen-active {
   width: 100%;
 }
 
-.chat-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.65rem;
+.chat-kpi-visual {
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(160deg, rgba(37, 99, 235, 0.08), rgba(255, 255, 255, 0.97));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
 }
 
-.chat-kpi-card {
-  border: 1px solid rgba(37, 99, 235, 0.15);
-  border-radius: 10px;
-  padding: 0.6rem 0.75rem;
-  background: linear-gradient(160deg, rgba(37, 99, 235, 0.08), rgba(255, 255, 255, 0.95));
+.chat-kpi-visual__header {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
-.chat-kpi-card__label {
+.chat-kpi-visual__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chat-kpi-visual__subtitle {
   font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.chat-kpi-visual__canvaswrap {
+  position: relative;
+  width: 100%;
+  min-height: 180px;
+}
+
+.chat-kpi-visual__canvaswrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.chat-kpi-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.55rem;
+}
+
+.chat-kpi-legend__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+}
+
+.chat-kpi-legend__label {
   color: var(--muted);
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
-.chat-kpi-card__value {
-  font-size: 1.25rem;
-  font-weight: 700;
+.chat-kpi-legend__value {
+  font-size: 1.05rem;
+  font-weight: 600;
   color: var(--text);
 }
 
-.chat-kpi-card__hint {
-  font-size: 0.78rem;
+.chat-kpi-legend__hint {
   color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .chat-bubble--system {
@@ -505,6 +540,11 @@ body.chat-fullscreen-active {
     maximumFractionDigits: 2
   });
 
+  const KPI_CHART_COLORS = ['#2563eb', '#f97316', '#22c55e', '#8b5cf6', '#0ea5e9'];
+  const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+  let chartJsPromise = null;
+  const chartInstances = new WeakMap();
+
   function pickSuggestions(size = 4) {
     if (!SUGGESTION_PRESETS.length) return [];
     const shuffled = [...SUGGESTION_PRESETS].sort(() => Math.random() - 0.5);
@@ -555,12 +595,20 @@ body.chat-fullscreen-active {
     if (!Array.isArray(rows) || !rows.length) {
       return '';
     }
+
     const metrics = [];
-    metrics.push({
-      label: 'Row Count',
-      value: numberFormatter.format(rowCount),
-      hint: '資料筆數'
-    });
+    const registerMetric = (label, value, hint) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return;
+      metrics.push({
+        label,
+        value: numeric,
+        formatted: numberFormatter.format(numeric),
+        hint: hint || ''
+      });
+    };
+
+    registerMetric('Row Count', rowCount, '資料筆數');
 
     const sumKeywords = ['amount', 'total', 'grand', 'revenue', 'net', 'value'];
     const qtyKeywords = ['qty', 'quantity', 'count', 'volume'];
@@ -576,11 +624,7 @@ body.chat-fullscreen-active {
         if (keywordMatch(column, partyKeywords)) {
           const uniqueCount = new Set(rows.map((row) => row[column]).filter(Boolean)).size;
           if (uniqueCount) {
-            metrics.push({
-              label: `${toTitleCase(column)} Unique`,
-              value: numberFormatter.format(uniqueCount),
-              hint: '不同客戶數'
-            });
+            registerMetric(`${toTitleCase(column)} Unique`, uniqueCount, '不同客戶數');
           }
         }
         return;
@@ -588,41 +632,222 @@ body.chat-fullscreen-active {
 
       const total = values.reduce((acc, value) => acc + value, 0);
       if (keywordMatch(column, sumKeywords)) {
-        metrics.push({
-          label: toTitleCase(column),
-          value: numberFormatter.format(total),
-          hint: '加總金額'
-        });
+        registerMetric(toTitleCase(column), total, '加總金額');
       } else if (keywordMatch(column, qtyKeywords)) {
-        metrics.push({
-          label: toTitleCase(column),
-          value: numberFormatter.format(total),
-          hint: '累計數量'
-        });
+        registerMetric(toTitleCase(column), total, '累計數量');
       } else if (isNumericLike(sample)) {
         const average = total / values.length;
-        metrics.push({
-          label: `${toTitleCase(column)} Avg`,
-          value: numberFormatter.format(average),
-          hint: '平均值'
-        });
+        registerMetric(`${toTitleCase(column)} Avg`, average, '平均值');
       }
     });
 
     const trimmed = metrics.slice(0, 4);
     if (!trimmed.length) return '';
-    const cards = trimmed
+
+    const payload = encodeURIComponent(
+      JSON.stringify(
+        trimmed.map((metric) => ({
+          label: metric.label,
+          value: metric.value,
+          formatted: metric.formatted,
+          hint: metric.hint
+        }))
+      )
+    );
+
+    const legend = trimmed
       .map(
         (metric) => `
-        <article class="chat-kpi-card">
-          <span class="chat-kpi-card__label">${escapeHtml(metric.label)}</span>
-          <strong class="chat-kpi-card__value">${escapeHtml(metric.value)}</strong>
-          <span class="chat-kpi-card__hint">${escapeHtml(metric.hint)}</span>
-        </article>
+        <div class="chat-kpi-legend__item">
+          <span class="chat-kpi-legend__label">${escapeHtml(metric.label)}</span>
+          <strong class="chat-kpi-legend__value">${escapeHtml(metric.formatted)}</strong>
+          <span class="chat-kpi-legend__hint">${escapeHtml(metric.hint)}</span>
+        </div>
       `
       )
       .join('');
-    return `<div class="chat-kpi-grid">${cards}</div>`;
+
+    return `
+      <section class="chat-kpi-visual" data-kpi-chart="${payload}">
+        <div class="chat-kpi-visual__header">
+          <h3 class="chat-kpi-visual__title">關鍵指標視覺化</h3>
+          <span class="chat-kpi-visual__subtitle">自動解析 SQL 結果的 KPI 圖表</span>
+        </div>
+        <div class="chat-kpi-visual__canvaswrap">
+          <canvas aria-label="KPI bar chart" role="img"></canvas>
+        </div>
+        <div class="chat-kpi-legend">${legend}</div>
+      </section>
+    `;
+  }
+
+  function ensureChartJs() {
+    if (window.Chart) {
+      return Promise.resolve(window.Chart);
+    }
+    if (chartJsPromise) {
+      return chartJsPromise;
+    }
+    chartJsPromise = new Promise((resolve, reject) => {
+      const handleLoad = () => {
+        if (window.Chart) {
+          resolve(window.Chart);
+        } else {
+          chartJsPromise = null;
+          reject(new Error('Chart.js failed to initialize'));
+        }
+      };
+
+      const handleError = () => {
+        chartJsPromise = null;
+        reject(new Error('Chart.js failed to load'));
+      };
+
+      const existing = document.querySelector('script[data-chat-chartjs]');
+      if (existing) {
+        existing.addEventListener('load', handleLoad, { once: true });
+        existing.addEventListener('error', handleError, { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = CHART_JS_URL;
+      script.async = true;
+      script.dataset.chatChartjs = '1';
+      script.addEventListener('load', handleLoad, { once: true });
+      script.addEventListener('error', handleError, { once: true });
+      document.head.appendChild(script);
+    }).catch((error) => {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('[GPT5-mini][chart] Unable to load Chart.js', error);
+      }
+      throw error;
+    });
+    return chartJsPromise;
+  }
+
+  function hexToRgba(hex, alpha = 0.8) {
+    if (typeof hex !== 'string') {
+      return `rgba(37, 99, 235, ${alpha})`;
+    }
+    const cleaned = hex.replace('#', '');
+    if (cleaned.length !== 6) {
+      return `rgba(37, 99, 235, ${alpha})`;
+    }
+    const bigint = parseInt(cleaned, 16);
+    if (Number.isNaN(bigint)) {
+      return `rgba(37, 99, 235, ${alpha})`;
+    }
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function hydrateSqlBubble(bubble) {
+    if (!bubble) return;
+    const chartNodes = bubble.querySelectorAll('[data-kpi-chart]');
+    if (!chartNodes.length) return;
+
+    ensureChartJs()
+      .then(() => {
+        chartNodes.forEach((node) => {
+          const payload = node.getAttribute('data-kpi-chart');
+          if (!payload) return;
+          let metrics;
+          try {
+            metrics = JSON.parse(decodeURIComponent(payload));
+          } catch (error) {
+            return;
+          }
+          if (!Array.isArray(metrics) || !metrics.length) return;
+          const labels = metrics.map((metric) => metric.label || '');
+          const data = metrics.map((metric) => Number(metric.value));
+          if (!data.some((value) => Number.isFinite(value))) return;
+          const canvas = node.querySelector('canvas');
+          if (!canvas) return;
+          const existing = chartInstances.get(canvas);
+          if (existing && typeof existing.destroy === 'function') {
+            existing.destroy();
+          }
+
+          const computedAccent = getComputedStyle(document.documentElement).getPropertyValue('--accent')?.trim();
+          const palette = labels.map((_, index) => KPI_CHART_COLORS[index % KPI_CHART_COLORS.length] || computedAccent || '#2563eb');
+          const backgroundColor = palette.map((color) => hexToRgba(color, 0.75));
+          const borderColor = palette.map((color) => hexToRgba(color, 1));
+
+          const chart = new window.Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: 'KPI',
+                  data,
+                  backgroundColor,
+                  borderColor,
+                  borderWidth: 1.5,
+                  borderRadius: 6,
+                  maxBarThickness: 48
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: false
+                },
+                tooltip: {
+                  callbacks: {
+                    label(context) {
+                      const metric = metrics[context.dataIndex];
+                      if (metric?.formatted) {
+                        return `${metric.label}: ${metric.formatted}`;
+                      }
+                      const value = context.parsed?.y ?? context.parsed ?? 0;
+                      return `${context.label}: ${numberFormatter.format(value)}`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: {
+                    color: '#475569',
+                    font: {
+                      size: 11
+                    }
+                  },
+                  grid: {
+                    display: false
+                  }
+                },
+                y: {
+                  ticks: {
+                    color: '#475569',
+                    font: {
+                      size: 11
+                    },
+                    callback(value) {
+                      return numberFormatter.format(value);
+                    }
+                  },
+                  grid: {
+                    color: 'rgba(148, 163, 184, 0.25)',
+                    drawBorder: false
+                  }
+                }
+              }
+            }
+          });
+          chartInstances.set(canvas, chart);
+        });
+      })
+      .catch(() => {
+        /* Chart.js 加載失敗時保留文字 legend */
+      });
   }
 
   function renderRowActions(row, index) {
@@ -1394,7 +1619,11 @@ body.chat-fullscreen-active {
 
           const tableHtml = renderSqlResult(rawPayload);
           const prefix = label ? `<p class="chat-sql-meta">${escapeHtml(label)}</p>` : "";
-          appendBubble("assistant", prefix + tableHtml, { asHtml: true, extraClass: "chat-bubble--sql" });
+          const sqlBubble = appendBubble("assistant", prefix + tableHtml, {
+            asHtml: true,
+            extraClass: "chat-bubble--sql"
+          });
+          hydrateSqlBubble(sqlBubble);
           addSqlResultToState({ sql: statement, payload: rawPayload });
           debug.log("sql:execute:success", {
             label,
