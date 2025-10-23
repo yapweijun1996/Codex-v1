@@ -1861,6 +1861,14 @@ body.chat-fullscreen-active {
           return { plan: parsed.plan, clarifyQuestion };
         }
 
+        class SqlAgentQueryError extends Error {
+          constructor(reason = "unknown") {
+            super("SQL agent could not build a valid query.");
+            this.name = "SqlAgentQueryError";
+            this.reason = reason;
+          }
+        }
+
         async function runSqlAgent({ question, plan, agentKey, sqlStep }) {
           const { key: resolvedAgentKey, prompt } = getSqlAgentConfig(agentKey);
           const history = getRecentConversation(6);
@@ -1882,8 +1890,19 @@ body.chat-fullscreen-active {
             messages: [{ role: "user", content: sqlInput }]
           });
           const trimmed = sql.trim();
-          if (!trimmed || trimmed.toUpperCase() === "NO_VALID_QUERY") {
-            throw new Error("SQL agent could not build a valid query.");
+          if (!trimmed) {
+            debug.log("sql-agent:invalid", {
+              agent: resolvedAgentKey,
+              reason: "empty-response"
+            });
+            throw new SqlAgentQueryError("empty-response");
+          }
+          if (trimmed.toUpperCase() === "NO_VALID_QUERY") {
+            debug.log("sql-agent:invalid", {
+              agent: resolvedAgentKey,
+              reason: "no-valid-query"
+            });
+            throw new SqlAgentQueryError("no-valid-query");
           }
           debug.log("sql-agent:output", { agent: resolvedAgentKey, text: trimmed });
           return trimmed;
@@ -2089,6 +2108,17 @@ body.chat-fullscreen-active {
               appendBubble("assistant", cancelMessage);
               state.messages.push({ role: "assistant", content: cancelMessage });
               state.conversation.push({ role: "assistant", content: cancelMessage });
+            } else if (error instanceof SqlAgentQueryError) {
+              const guidanceLines = [
+                "⚠️ SQL agent 無法組出查詢，可能缺少關鍵條件 (missing critical details).",
+                "請補充: 1) 想查的模組或資料表 2) 需要的時間區間 3) 必須的篩選條件/欄位。",
+                "再試一次就可以幫你生成 SQL。"
+              ];
+              const guidanceMessage = guidanceLines.join("\n");
+              appendBubble("assistant", guidanceMessage);
+              state.messages.push({ role: "assistant", content: guidanceMessage });
+              state.conversation.push({ role: "assistant", content: guidanceMessage });
+              debug.log("pipeline:sql-agent-guidance", error.reason);
             } else {
               appendBubble("assistant", `⚠️ ${error.message}`);
               state.messages.push({ role: "assistant", content: `⚠️ ${error.message}` });
