@@ -2287,6 +2287,39 @@
       if(success && inst){ inst.fontColor=null; }
       return success;
     }
+    function fallbackApplyAlign(target, align){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const { range }=info;
+      const doc=target.ownerDocument || document;
+      if(!doc) return false;
+      const normalized=(align||"").toLowerCase();
+      const targetAlign = normalized === "justify" ? "justify" : (normalized === "center" ? "center" : (normalized === "right" ? "right" : "left"));
+      let updated=false;
+      function isBlock(node){
+        if(!node || node.nodeType!==1) return false;
+        const tag=(node.tagName||"").toUpperCase();
+        if(tag==="P" || tag==="DIV" || tag==="LI" || tag==="OL" || tag==="UL" || tag==="TABLE" || tag==="H1" || tag==="H2" || tag==="H3" || tag==="H4" || tag==="H5" || tag==="H6") return true;
+        const display=window.getComputedStyle(node).display;
+        return display==="block" || display==="list-item" || display==="table" || display==="flex" || display==="grid";
+      }
+      let node=range.commonAncestorContainer;
+      while(node && node!==target){
+        if(isBlock(node)){ node.style.textAlign=targetAlign; updated=true; break; }
+        node=node.parentNode;
+      }
+      const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+        acceptNode:function(el){
+          if(el===target) return NodeFilter.FILTER_SKIP;
+          if(!isBlock(el)) return NodeFilter.FILTER_SKIP;
+          return intersectsRange(range, el) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+      });
+      while((node=walker.nextNode())){
+        node.style.textAlign=targetAlign;
+        updated=true;
+      }
+      return updated;
+    }
     function applyUnderline(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, "underline", null, true);
@@ -2333,6 +2366,18 @@
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, command, null, true);
     }
+    function applyAlign(inst, ctx, align){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const map={ left:"justifyLeft", center:"justifyCenter", right:"justifyRight", justify:"justifyFull" };
+      const normalized=(align||"").toLowerCase();
+      const command=map[normalized] || map.left;
+      focusTarget(target);
+      let success=false;
+      try{ success=document.execCommand(command, false, null); }
+      catch(err){ success=false; }
+      if(!success){ success=fallbackApplyAlign(target, normalized); }
+      return success;
+    }
     return {
       FONT_FAMILIES,
       FONT_SIZES,
@@ -2348,7 +2393,8 @@
       clearFontColor,
       applyUnderline,
       applyDecorationStyle,
-      applySimple
+      applySimple,
+      applyAlign
     };
   })();
   const FontColorUI=(function(){
@@ -2797,6 +2843,33 @@
     }
     return { create };
   })();
+  function decorateAlignButton(btn, align){
+    if(!btn) return;
+    const mode=(align||"").toLowerCase();
+    btn.textContent="";
+    btn.style.display="inline-flex";
+    btn.style.alignItems="center";
+    btn.style.justifyContent="center";
+    btn.style.minWidth="36px";
+    btn.style.padding="8px 10px";
+    const icon=document.createElement("span");
+    icon.setAttribute("aria-hidden","true");
+    icon.style.display="grid";
+    icon.style.width="18px";
+    icon.style.gap="3px";
+    icon.style.justifyItems = mode==="right" ? "end" : mode==="center" ? "center" : mode==="justify" ? "stretch" : "start";
+    const barWidths = mode==="justify" ? [100,100,100] : [100,70,90];
+    for(let i=0;i<barWidths.length;i++){
+      const bar=document.createElement("span");
+      bar.style.display="block";
+      bar.style.height="3px";
+      bar.style.borderRadius="999px";
+      bar.style.background=WCfg.UI.text;
+      bar.style.width = mode==="justify" ? "100%" : barWidths[i]+"%";
+      icon.appendChild(bar);
+    }
+    btn.appendChild(icon);
+  }
   const Commands={
     "format.fontFamily":{
       label:"Font",
@@ -2878,6 +2951,38 @@
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
+    "format.alignLeft":{
+      label:"Left",
+      kind:"button",
+      ariaLabel:"Align Left (靠左對齊)",
+      title:"Align Left (靠左對齊)",
+      decorate:function(btn){ decorateAlignButton(btn, "left"); },
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "left"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.alignCenter":{
+      label:"Center",
+      kind:"button",
+      ariaLabel:"Align Center (置中對齊)",
+      title:"Align Center (置中對齊)",
+      decorate:function(btn){ decorateAlignButton(btn, "center"); },
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "center"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.alignRight":{
+      label:"Right",
+      kind:"button",
+      ariaLabel:"Align Right (靠右對齊)",
+      title:"Align Right (靠右對齊)",
+      decorate:function(btn){ decorateAlignButton(btn, "right"); },
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "right"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.alignJustify":{
+      label:"Justify",
+      kind:"button",
+      ariaLabel:"Justify (左右對齊)",
+      title:"Justify (左右對齊)",
+      decorate:function(btn){ decorateAlignButton(btn, "justify"); },
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -2920,7 +3025,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2930,7 +3035,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
