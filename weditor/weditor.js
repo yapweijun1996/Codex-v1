@@ -632,10 +632,46 @@
     function pagesHTML(inst){ return paginate(inst.el.innerHTML, inst).pagesHTML; }
     return { paginate, pagesHTML };
   })();
+  const PrintStyles=(function(){
+    const CSS="div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;background:#fff!important;}div[data-page]:not([data-page=\\"1\\"]){page-break-before:always;break-before:page;}div[data-page=\\"1\\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}";
+    function applyInline(html){
+      if(!html){ return html||""; }
+      const wrap=document.createElement("div");
+      wrap.innerHTML=html;
+      const pages=wrap.querySelectorAll("div[data-page]");
+      pages.forEach(function(page, index){
+        page.style.borderRadius="0";
+        page.style.boxShadow="none";
+        page.style.border="none";
+        page.style.outline="none";
+        page.style.background="#fff";
+        if(index===0){
+          page.style.pageBreakBefore="auto";
+          page.style.breakBefore="auto";
+        } else {
+          page.style.pageBreakBefore="always";
+          page.style.breakBefore="page";
+        }
+      });
+      wrap.querySelectorAll(".weditor_page-header").forEach(function(header){
+        header.style.border="none";
+        header.style.boxShadow="none";
+        header.style.borderBottom="0";
+      });
+      wrap.querySelectorAll(".weditor_page-footer").forEach(function(footer){
+        footer.style.border="none";
+        footer.style.boxShadow="none";
+        footer.style.borderTop="0";
+      });
+      return wrap.innerHTML;
+    }
+    return { cssText:CSS, applyInline };
+  })();
   const ExportUI=(function(){
     function open(pagedHTML, rawHTML){
       const w=WDom.openBlank(); if(!w) return;
       function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+      const inlinePrintHTML=PrintStyles.applyInline(pagedHTML);
       const html="<!DOCTYPE html><meta charset='utf-8'>"+
         "<body style='margin:0;font-family:Segoe UI,system-ui,-apple-system,Arial'>"+
         "<div style='display:flex;gap:12px;padding:12px;align-items:center;border-bottom:1px solid #c8c6c4;background:#fafafa'>"+
@@ -646,6 +682,10 @@
           "<div style='flex:1;display:flex;flex-direction:column;border-right:1px solid #e1dfdd'>"+
             "<div style='padding:8px 12px;font:12px Segoe UI;color:#605e5c;background:#fff;border-bottom:1px solid #e1dfdd'>Paged HTML</div>"+
             "<textarea style='flex:1;border:0;outline:none;padding:12px;font:12px/1.4 ui-monospace,monospace'>"+esc(pagedHTML)+"</textarea>"+
+          "</div>"+
+          "<div style='flex:1;display:flex;flex-direction:column;border-right:1px solid #e1dfdd'>"+
+            "<div style='padding:8px 12px;font:12px Segoe UI;color:#605e5c;background:#fff;border-bottom:1px solid #e1dfdd'>Print-ready HTML (inline CSS)</div>"+
+            "<textarea style='flex:1;border:0;outline:none;padding:12px;font:12px/1.4 ui-monospace,monospace'>"+esc(inlinePrintHTML)+"</textarea>"+
           "</div>"+
           "<div style='flex:1;display:flex;flex-direction:column'>"+
             "<div style='padding:8px 12px;font:12px Segoe UI;color:#605e5c;background:#fff;border-bottom:1px solid #e1dfdd'>Raw HTML</div>"+
@@ -661,7 +701,7 @@
     function open(pagedHTML){
       const w=WDom.openBlank(); if(!w) return;
       const html="<!DOCTYPE html><html><head><meta charset='utf-8'>"+
-               "<style>div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}</style>"+
+               "<style>"+PrintStyles.cssText+"</style>"+
                "</head><body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial' onload='window.print();window.onafterprint=function(){window.close();}'>"+
                pagedHTML+
                "</body></html>";
