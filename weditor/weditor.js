@@ -1748,10 +1748,13 @@
       saveCloseBtn.setAttribute("aria-label","Save changes and close fullscreen editor");
       saveCloseBtn.addEventListener("click", function(){ ctx.saveClose(); });
       saveCloseWrap.appendChild(saveCloseBtn);
+      const defaultLeftPadding = left.style.padding || "48px 36px";
+      const compactLeftPadding = "28px 18px";
       function layout(){
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
         split.style.flexDirection = isColumn ? "column" : "row";
         rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
+        left.style.padding = isColumn ? compactLeftPadding : defaultLeftPadding;
       }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); modal.appendChild(saveCloseWrap); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
@@ -1775,6 +1778,12 @@
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
+        const isColumn = window.innerWidth < WCfg.MOBILE_BP;
+        if(isColumn){
+          stage.style.maxWidth="100%";
+          stage.style.gap="24px";
+          stage.style.padding="8px 0 32px";
+        }
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
           page.style.margin="0";
