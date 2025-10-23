@@ -26,7 +26,7 @@
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
       modal:{ width:"100%", maxWidth:"none", height:"100%", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"0", boxShadow:"none", overflow:"hidden" },
       split:{ flex:"1", minHeight:"0", display:"flex", background:"#fff" },
-      left:{ flex:"1", minWidth:"0", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", alignContent:"start", background:"#fff", overflowX:"hidden", overflowY:"auto" },
+      left:{ flex:"1", minWidth:"0", padding:"32px 24px 48px", display:"grid", gridTemplateColumns:"1fr", gap:"28px", justifyItems:"center", alignContent:"start", background:"linear-gradient(180deg, #f5f4f2 0%, #edebe9 100%)", overflowX:"hidden", overflowY:"auto" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
@@ -1764,8 +1764,27 @@
         const paddingLeft=parseFloat(computed.paddingLeft||"0")||0;
         const paddingRight=parseFloat(computed.paddingRight||"0")||0;
         const available=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
-        let scale=available>0 ? Math.min(1, available / WCfg.A4W) : 1;
-        if(!isFinite(scale) || scale<=0){ scale=1; }
+        let padX=Math.max(16, Math.min(24, Math.round((available||0) * 0.05)));
+        if(available<=padX*2){ padX=Math.max(8, Math.floor(available / 6)); }
+        const padY=36;
+        const padX2=padX*2;
+        let scaleLimit;
+        if(available>padX2){
+          scaleLimit=(available - padX2) / WCfg.A4W;
+        }else if(available>0){
+          scaleLimit=available / (WCfg.A4W + padX2);
+        }else{
+          scaleLimit=0.88;
+        }
+        if(!isFinite(scaleLimit) || scaleLimit<=0){ scaleLimit=0.88; }
+        let scale=Math.min(scaleLimit, 0.88);
+        if(scaleLimit<0.4){
+          scale=scaleLimit;
+        }else if(scale<0.7){
+          scale=Math.min(scaleLimit, 0.7);
+        }
+        if(scaleLimit>0 && scale>scaleLimit){ scale=scaleLimit; }
+        if(!isFinite(scale) || scale<=0){ scale=0.7; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const frag=document.createDocumentFragment();
@@ -1774,6 +1793,34 @@
           page.style.margin="0";
           page.style.transform="";
           page.style.transformOrigin="";
+          const stage=document.createElement("div");
+          stage.style.width="100%";
+          stage.style.display="flex";
+          stage.style.flexDirection="column";
+          stage.style.alignItems="center";
+          stage.style.justifyContent="flex-start";
+          stage.style.gap="12px";
+          stage.style.padding="0";
+          const board=document.createElement("div");
+          board.style.width=Math.max(scaledWidth + padX2, 0)+"px";
+          board.style.maxWidth="100%";
+          board.style.boxSizing="border-box";
+          board.style.padding=padY+"px "+padX+"px";
+          board.style.background="linear-gradient(180deg,#fdfdfc 0%,#f9f8f6 100%)";
+          board.style.borderRadius="22px";
+          board.style.boxShadow="0 26px 60px rgba(29,32,37,.18)";
+          board.style.border="1px solid rgba(90,88,86,.28)";
+          board.style.display="flex";
+          board.style.justifyContent="center";
+          board.style.alignItems="flex-start";
+          board.style.position="relative";
+          board.style.overflow="visible";
+          const viewport=document.createElement("div");
+          viewport.style.width=scaledWidth+"px";
+          viewport.style.height=scaledHeight+"px";
+          viewport.style.position="relative";
+          viewport.style.display="block";
+          viewport.style.overflow="visible";
           const wrap=document.createElement("div");
           wrap.style.width=WCfg.A4W+"px";
           wrap.style.height=WCfg.A4H+"px";
@@ -1781,28 +1828,28 @@
           wrap.style.transform="scale("+scale+")";
           wrap.style.display="flex";
           wrap.style.alignItems="flex-start";
-          wrap.style.justifyContent="flex-start";
+          wrap.style.justifyContent="center";
           wrap.style.position="absolute";
           wrap.style.left="0";
           wrap.style.top="0";
-          wrap.style.maxWidth="100%";
           wrap.style.overflow="visible";
-          const outer=document.createElement("div");
-          outer.style.width=scaledWidth+"px";
-          outer.style.height=scaledHeight+"px";
-          outer.style.display="block";
-          outer.style.position="relative";
-          outer.style.maxWidth="100%";
-          outer.style.margin="0 auto";
-          outer.style.overflow="visible";
           wrap.appendChild(page);
-          outer.appendChild(wrap);
-          frag.appendChild(outer);
+          viewport.appendChild(wrap);
+          board.appendChild(viewport);
+          stage.appendChild(board);
+          frag.appendChild(stage);
           if(i<out.pages.length-1){
+            const brWrap=document.createElement("div");
+            brWrap.style.width="100%";
+            brWrap.style.display="flex";
+            brWrap.style.justifyContent="center";
+            brWrap.style.alignItems="center";
+            brWrap.style.padding="4px 0 24px";
             const br=document.createElement("div");
             br.textContent="Page Break";
-            br.style.cssText="width:"+scaledWidth+"px;text-align:center;color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;margin:6px 0 2px 0;border-top:1px dashed "+WCfg.UI.borderSubtle+";opacity:.7";
-            frag.appendChild(br);
+            br.style.cssText="flex:0 1 "+Math.max(scaledWidth + padX2, 0)+"px;text-align:center;color:"+WCfg.UI.textDim+";font:12px Segoe UI,system-ui;border-top:1px dashed "+WCfg.UI.borderSubtle+";padding-top:6px;opacity:.72";
+            brWrap.appendChild(br);
+            frag.appendChild(brWrap);
           }
         }
         left.innerHTML="";
