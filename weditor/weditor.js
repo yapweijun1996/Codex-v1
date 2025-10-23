@@ -2378,6 +2378,69 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
+    function findListFromSelection(target){
+      const info=ensureSelectionInfo(target);
+      if(!info) return null;
+      let node=info.range.commonAncestorContainer;
+      if(node && node.nodeType===3){ node=node.parentNode; }
+      while(node && node!==target){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toUpperCase();
+          if(tag==="UL" || tag==="OL"){ return node; }
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function toggleList(inst, ctx, type, style){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const command=type==="ordered"?"insertOrderedList":"insertUnorderedList";
+      const success=execCommand(target, command, null, true);
+      if(success){
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        if(style){ applyListStyle(inst, ctx, style, type, true); }
+        return true;
+      }
+      return false;
+    }
+    function applyListStyle(inst, ctx, style, type, skipCreate){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let list=findListFromSelection(target);
+      if(!list && !skipCreate){
+        const command=type==="ordered"?"insertOrderedList":"insertUnorderedList";
+        try{ document.execCommand(command, false, null); }
+        catch(err){}
+        Normalizer.fixStructure(target);
+        list=findListFromSelection(target);
+      }
+      if(list){
+        if(style){ list.style.listStyleType=style; }
+        else { list.style.removeProperty("list-style-type"); }
+        return true;
+      }
+      return false;
+    }
+    function applyCustomBullet(inst, ctx, symbol){
+      if(!symbol) return false;
+      const trimmed=symbol.replace(/\s+/g," ").trim();
+      if(!trimmed) return false;
+      const cssValue='"'+trimmed.replace(/"/g,'\\"')+'"';
+      return applyListStyle(inst, ctx, cssValue, "unordered");
+    }
+    function indentList(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const ok=execCommand(target, "indent", null, true);
+      if(ok){ Normalizer.fixStructure(target); }
+      return ok;
+    }
+    function outdentList(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const ok=execCommand(target, "outdent", null, true);
+      if(ok){ Normalizer.fixStructure(target); }
+      return ok;
+    }
     return {
       FONT_FAMILIES,
       FONT_SIZES,
@@ -2394,8 +2457,277 @@
       applyUnderline,
       applyDecorationStyle,
       applySimple,
-      applyAlign
+      applyAlign,
+      toggleList,
+      applyListStyle,
+      applyCustomBullet,
+      indentList,
+      outdentList
     };
+  })();
+  const ListUI=(function(){
+    function createSplitButton(options){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      container.style.gap="0";
+      const primary=WDom.btn(options.primaryLabel||"", false, options.primaryTitle);
+      primary.setAttribute("aria-label", options.primaryAria||options.primaryTitle||options.primaryLabel||"");
+      primary.style.display="inline-flex";
+      primary.style.alignItems="center";
+      primary.style.justifyContent="center";
+      primary.style.gap="8px";
+      primary.style.borderTopRightRadius="0";
+      primary.style.borderBottomRightRadius="0";
+      primary.style.marginRight="0";
+      primary.style.borderRight="0";
+      const arrow=WDom.btn("▼", false, options.menuTitle||"More options");
+      arrow.setAttribute("aria-haspopup","true");
+      arrow.setAttribute("aria-expanded","false");
+      arrow.style.minWidth="34px";
+      arrow.style.padding="0 10px";
+      arrow.style.fontSize="12px";
+      arrow.style.borderTopLeftRadius="0";
+      arrow.style.borderBottomLeftRadius="0";
+      arrow.style.borderLeft="1px solid "+WCfg.UI.borderSubtle;
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.minWidth="220px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="8px";
+      menu.style.zIndex="30";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const doc=container.ownerDocument || document;
+      let open=false;
+      function setOpen(state){
+        open=state;
+        menu.style.display=open?"flex":"none";
+        menu.setAttribute("aria-hidden", open?"false":"true");
+        arrow.setAttribute("aria-expanded", open?"true":"false");
+        if(open){
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+        } else {
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); arrow.focus(); } }
+      let primaryHandler=null;
+      function setPrimaryHandler(handler){ primaryHandler = typeof handler==="function" ? handler : null; }
+      arrow.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); if(open){ window.setTimeout(function(){ const first=menu.querySelector("button"); if(first) first.focus(); },0); } });
+      arrow.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); const first=menu.querySelector("button"); if(first) first.focus(); } });
+      menu.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); arrow.focus(); } });
+      primary.addEventListener("click", function(e){
+        if(primaryHandler){ primaryHandler(e, { closeMenu:setOpen.bind(null,false) }); }
+      });
+      container.appendChild(primary);
+      container.appendChild(arrow);
+      container.appendChild(menu);
+      return { container, primary, arrow, menu, setOpen, setPrimaryHandler };
+    }
+    function createMenuButton(label){
+      const btn=document.createElement("button");
+      btn.type="button";
+      btn.textContent=label;
+      btn.style.display="flex";
+      btn.style.alignItems="center";
+      btn.style.justifyContent="space-between";
+      btn.style.gap="12px";
+      btn.style.padding="8px 12px";
+      btn.style.background="transparent";
+      btn.style.border="0";
+      btn.style.borderRadius="6px";
+      btn.style.cursor="pointer";
+      btn.style.font="13px/1.3 Segoe UI,system-ui";
+      btn.style.color=WCfg.UI.text;
+      btn.addEventListener("mouseenter", function(){ btn.style.background="#f3f2f1"; });
+      btn.addEventListener("mouseleave", function(){ btn.style.background="transparent"; });
+      return btn;
+    }
+    function createBulleted(inst, ctx){
+      const split=createSplitButton({
+        primaryLabel:"Bulleted",
+        primaryTitle:"Bulleted List (項目符號清單)",
+        primaryAria:"Bulleted List (項目符號清單)",
+        menuTitle:"Bulleted List styles"
+      });
+      const { container, primary, menu, setOpen }=split;
+      const icon=document.createElement("span");
+      icon.textContent="•";
+      icon.style.fontSize="18px";
+      icon.style.lineHeight="1";
+      icon.setAttribute("aria-hidden","true");
+      const label=document.createElement("span");
+      label.textContent="Bulleted List";
+      label.style.fontSize="13px";
+      label.style.lineHeight="1";
+      primary.textContent="";
+      primary.appendChild(icon);
+      primary.appendChild(label);
+      let currentStyle="disc";
+      let currentPreview="•";
+      function updatePreview(preview){
+        currentPreview=preview;
+        icon.textContent=preview;
+      }
+      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "unordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      const options=[
+        { label:"• Disc", style:"disc", preview:"•" },
+        { label:"○ Circle", style:"circle", preview:"○" },
+        { label:"▪ Square", style:"square", preview:"▪" },
+        { label:"Custom bullet…", custom:true }
+      ];
+      for(let i=0;i<options.length;i++){
+        const opt=options[i];
+        const btn=createMenuButton(opt.label);
+        btn.setAttribute("role","menuitem");
+        btn.addEventListener("click", function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          let changed=false;
+          if(opt.custom){
+            const input=window.prompt("Enter custom bullet symbol", currentPreview);
+            if(input){
+              const cleaned=input.replace(/\s+/g," ").trim();
+              if(cleaned){
+                changed=Formatting.applyCustomBullet(inst, ctx, cleaned);
+                if(changed){ currentStyle='"'+cleaned.replace(/"/g,'\\"')+'"'; updatePreview(cleaned); }
+              }
+            }
+          } else {
+            changed=Formatting.applyListStyle(inst, ctx, opt.style, "unordered");
+            if(changed){ currentStyle=opt.style; updatePreview(opt.preview); }
+          }
+          if(changed){ OutputBinding.syncDebounced(inst); }
+          setOpen(false);
+        });
+        menu.appendChild(btn);
+      }
+      return container;
+    }
+    function createNumbered(inst, ctx){
+      const split=createSplitButton({
+        primaryLabel:"Numbered",
+        primaryTitle:"Numbered List (編號清單)",
+        primaryAria:"Numbered List (編號清單)",
+        menuTitle:"Numbered List styles"
+      });
+      const { container, primary, menu, setOpen }=split;
+      const icon=document.createElement("span");
+      icon.textContent="1.";
+      icon.style.fontSize="16px";
+      icon.style.lineHeight="1";
+      icon.style.fontWeight="600";
+      icon.setAttribute("aria-hidden","true");
+      const label=document.createElement("span");
+      label.textContent="Numbered List";
+      label.style.fontSize="13px";
+      label.style.lineHeight="1";
+      primary.textContent="";
+      primary.appendChild(icon);
+      primary.appendChild(label);
+      let currentStyle="decimal";
+      function updatePreview(preview){
+        const text=preview.length>6 ? preview.slice(0,6)+"…" : preview;
+        icon.textContent=text;
+      }
+      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      const options=[
+        { label:"1. 2. 3.", style:"decimal", preview:"1." },
+        { label:"a. b. c.", style:"lower-alpha", preview:"a." },
+        { label:"A. B. C.", style:"upper-alpha", preview:"A." },
+        { label:"i. ii. iii.", style:"lower-roman", preview:"i." },
+        { label:"I. II. III.", style:"upper-roman", preview:"I." },
+        { label:"Custom style…", custom:true }
+      ];
+      for(let i=0;i<options.length;i++){
+        const opt=options[i];
+        const btn=createMenuButton(opt.label);
+        btn.setAttribute("role","menuitem");
+        btn.addEventListener("click", function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          let changed=false;
+          if(opt.custom){
+            const value=window.prompt("Enter CSS list-style-type", currentStyle);
+            if(value){
+              const cleaned=value.trim();
+              if(cleaned){
+                changed=Formatting.applyListStyle(inst, ctx, cleaned, "ordered");
+                if(changed){ currentStyle=cleaned; updatePreview(cleaned); }
+              }
+            }
+          } else {
+            changed=Formatting.applyListStyle(inst, ctx, opt.style, "ordered");
+            if(changed){ currentStyle=opt.style; updatePreview(opt.preview); }
+          }
+          if(changed){ OutputBinding.syncDebounced(inst); }
+          setOpen(false);
+        });
+        menu.appendChild(btn);
+      }
+      return container;
+    }
+    function createMultilevel(inst, ctx){
+      const split=createSplitButton({
+        primaryLabel:"Multilevel",
+        primaryTitle:"Multilevel List (多層次清單)",
+        primaryAria:"Multilevel List (多層次清單)",
+        menuTitle:"Multilevel controls"
+      });
+      const { container, primary, menu, setOpen }=split;
+      const icon=document.createElement("span");
+      icon.style.display="inline-flex";
+      icon.style.flexDirection="column";
+      icon.style.alignItems="flex-start";
+      icon.style.fontSize="12px";
+      icon.style.lineHeight="1.2";
+      icon.setAttribute("aria-hidden","true");
+      const line1=document.createElement("span"); line1.textContent="1.";
+      const line2=document.createElement("span"); line2.textContent="  a.";
+      const line3=document.createElement("span"); line3.textContent="    i.";
+      icon.appendChild(line1); icon.appendChild(line2); icon.appendChild(line3);
+      const label=document.createElement("span");
+      label.textContent="Multilevel";
+      label.style.fontSize="13px";
+      label.style.lineHeight="1";
+      primary.textContent="";
+      primary.appendChild(icon);
+      primary.appendChild(label);
+      let currentStyle="decimal";
+      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      const controls=[
+        { label:"Increase level (升階)", action:function(){ return Formatting.indentList(inst, ctx); } },
+        { label:"Decrease level (降階)", action:function(){ return Formatting.outdentList(inst, ctx); } },
+        { label:"Reset numbering style", action:function(){ return Formatting.applyListStyle(inst, ctx, currentStyle, "ordered"); } }
+      ];
+      for(let i=0;i<controls.length;i++){
+        const item=controls[i];
+        const btn=createMenuButton(item.label);
+        btn.setAttribute("role","menuitem");
+        btn.addEventListener("click", function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          const changed=!!item.action();
+          if(changed){ OutputBinding.syncDebounced(inst); }
+          setOpen(false);
+        });
+        menu.appendChild(btn);
+      }
+      return container;
+    }
+    return { createBulleted, createNumbered, createMultilevel };
   })();
   const FontColorUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
@@ -2941,6 +3273,21 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.bulletedList":{
+      kind:"custom",
+      ariaLabel:"Bulleted List (項目符號清單)",
+      render:function(inst, ctx){ return ListUI.createBulleted(inst, ctx); }
+    },
+    "format.numberedList":{
+      kind:"custom",
+      ariaLabel:"Numbered List (編號清單)",
+      render:function(inst, ctx){ return ListUI.createNumbered(inst, ctx); }
+    },
+    "format.multilevelList":{
+      kind:"custom",
+      ariaLabel:"Multilevel List (多層次清單)",
+      render:function(inst, ctx){ return ListUI.createMultilevel(inst, ctx); }
+    },
     "format.fontColor":{
       kind:"custom",
       ariaLabel:"Font Color (字体颜色 / 文字颜色)",
@@ -3025,7 +3372,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -3035,7 +3382,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
