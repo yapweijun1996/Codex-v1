@@ -26,7 +26,16 @@
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
       modal:{ width:"100%", maxWidth:"none", height:"100%", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"0", boxShadow:"none", overflow:"hidden" },
       split:{ flex:"1", minHeight:"0", display:"flex", background:"#fff" },
-      left:{ flex:"1", minWidth:"0", padding:"20px", display:"grid", gridTemplateColumns:"1fr", gap:"18px", justifyItems:"center", alignContent:"start", background:"#fff", overflowX:"hidden", overflowY:"auto" },
+      left:{ flex:"1", minWidth:"0", padding:"24px 24px 32px", display:"flex", flexDirection:"column", gap:"18px", alignItems:"stretch", background:"linear-gradient(180deg,#f8f7f6,#ecebe8)", overflowX:"hidden", overflowY:"auto" },
+      previewWrap:{ width:"100%", display:"flex", flexDirection:"column", gap:"16px", alignItems:"stretch" },
+      previewToolbar:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", color:UI.textDim, font:"12px/1.4 Segoe UI,system-ui" },
+      previewToolbarControls:{ display:"inline-flex", alignItems:"center", gap:"8px" },
+      previewToolbarLabel:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim, textTransform:"uppercase", letterSpacing:".12em" },
+      previewToolbarSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"999px", background:"#fff", color:UI.text, font:"12px/1.3 Segoe UI,system-ui", cursor:"pointer" },
+      previewToolbarValue:{ font:"12px/1.3 Segoe UI,system-ui", color:UI.text },
+      previewHint:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, textAlign:"center" },
+      previewViewport:{ width:"100%", flex:"1", minHeight:"0", display:"flex", alignItems:"stretch", justifyContent:"center", background:"linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.6))", borderRadius:"18px", boxShadow:"inset 0 1px 0 rgba(255,255,255,.8), 0 0 0 1px rgba(0,0,0,.04)", position:"relative", overflow:"auto" },
+      previewStage:{ width:"100%", display:"flex", flexDirection:"column", alignItems:"center", gap:"24px", padding:"36px 32px 48px", boxSizing:"border-box", background:"repeating-linear-gradient(45deg, rgba(240,240,240,.6), rgba(240,240,240,.6) 12px, rgba(255,255,255,.6) 12px, rgba(255,255,255,.6) 24px)", borderRadius:"16px", boxShadow:"inset 0 1px 3px rgba(0,0,0,.06)" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
@@ -1729,6 +1738,41 @@
       const cmdBarWrap=document.createElement("div");
       const split=document.createElement("div"); applyStyles(split, WCfg.Style.split);
       const left=document.createElement("div"); applyStyles(left, WCfg.Style.left);
+      const previewWrap=document.createElement("div"); applyStyles(previewWrap, WCfg.Style.previewWrap);
+      const previewToolbar=document.createElement("div"); applyStyles(previewToolbar, WCfg.Style.previewToolbar);
+      const previewToolbarLabel=document.createElement("span"); previewToolbarLabel.textContent="Zoom · 縮放"; applyStyles(previewToolbarLabel, WCfg.Style.previewToolbarLabel);
+      const previewToolbarControls=document.createElement("div"); applyStyles(previewToolbarControls, WCfg.Style.previewToolbarControls);
+      const zoomSelect=document.createElement("select"); applyStyles(zoomSelect, WCfg.Style.previewToolbarSelect);
+      zoomSelect.setAttribute("aria-label","Preview zoom");
+      const zoomOptions=[
+        { value:"fit", label:"Fit to width" },
+        { value:"actual", label:"Actual size (100%)" },
+        { value:"95", label:"95%" },
+        { value:"90", label:"90%" },
+        { value:"85", label:"85%" },
+        { value:"80", label:"80%" },
+        { value:"70", label:"70%" }
+      ];
+      for(let i=0;i<zoomOptions.length;i++){
+        const opt=document.createElement("option");
+        opt.value=zoomOptions[i].value;
+        opt.textContent=zoomOptions[i].label;
+        zoomSelect.appendChild(opt);
+      }
+      zoomSelect.value="fit";
+      const zoomValue=document.createElement("span"); zoomValue.textContent="100%"; applyStyles(zoomValue, WCfg.Style.previewToolbarValue);
+      const previewViewport=document.createElement("div"); applyStyles(previewViewport, WCfg.Style.previewViewport);
+      const previewStage=document.createElement("div"); applyStyles(previewStage, WCfg.Style.previewStage);
+      previewViewport.appendChild(previewStage);
+      previewToolbarControls.appendChild(zoomSelect);
+      previewToolbarControls.appendChild(zoomValue);
+      previewToolbar.appendChild(previewToolbarLabel);
+      previewToolbar.appendChild(previewToolbarControls);
+      previewWrap.appendChild(previewToolbar);
+      const previewHint=document.createElement("div"); previewHint.textContent="A4 preview · 210 × 297 mm"; applyStyles(previewHint, WCfg.Style.previewHint);
+      previewWrap.appendChild(previewHint);
+      previewWrap.appendChild(previewViewport);
+      left.appendChild(previewWrap);
       const rightWrap=document.createElement("div"); applyStyles(rightWrap, WCfg.Style.rightWrap);
       rightWrap.appendChild(WDom.title("Editor"));
       const area=document.createElement("div"); area.contentEditable="true"; applyStyles(area, WCfg.Style.area); area.innerHTML=inst.el.innerHTML; rightWrap.appendChild(area);
@@ -1739,6 +1783,7 @@
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
+      let zoomMode="fit";
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
       const saveCloseWrap=document.createElement("div"); applyStyles(saveCloseWrap, WCfg.Style.fsSaveCloseWrap);
       const saveCloseBtn=WDom.btn("Save & Close", true, "Save changes and close fullscreen");
@@ -1760,14 +1805,23 @@
       function render(attempt){
         attempt = attempt || 0;
         const out=Paginator.paginate(area.innerHTML, inst);
-        const computed=window.getComputedStyle(left);
-        const paddingLeft=parseFloat(computed.paddingLeft||"0")||0;
-        const paddingRight=parseFloat(computed.paddingRight||"0")||0;
-        const available=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
-        let scale=available>0 ? Math.min(1, available / WCfg.A4W) : 1;
+        const stageComputed=window.getComputedStyle(previewStage);
+        const stagePaddingLeft=parseFloat(stageComputed.paddingLeft||"0")||0;
+        const stagePaddingRight=parseFloat(stageComputed.paddingRight||"0")||0;
+        const stageWidth=Math.max(0, previewStage.clientWidth - stagePaddingLeft - stagePaddingRight);
+        let scale;
+        if(zoomMode==="fit"){
+          scale = stageWidth>0 ? Math.min(1, stageWidth / WCfg.A4W) : 1;
+        } else if(zoomMode==="actual"){
+          scale = 1;
+        } else {
+          const custom=parseFloat(zoomMode);
+          scale = isFinite(custom) && custom>0 ? custom/100 : 1;
+        }
         if(!isFinite(scale) || scale<=0){ scale=1; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
+        zoomValue.textContent=Math.round(scale*100)+"%";
         const frag=document.createDocumentFragment();
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
@@ -1805,16 +1859,20 @@
             frag.appendChild(br);
           }
         }
-        left.innerHTML="";
-        left.appendChild(frag);
+        previewStage.innerHTML="";
+        previewStage.appendChild(frag);
         if(attempt>=2){ return; }
         window.requestAnimationFrame(function(){
-          const adjustedAvailable=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
-          if(Math.abs(adjustedAvailable - available)>0.5){
+          const adjustedStageWidth=Math.max(0, previewStage.clientWidth - stagePaddingLeft - stagePaddingRight);
+          if(Math.abs(adjustedStageWidth - stageWidth)>0.5){
             render(attempt+1);
           }
         });
       }
+      zoomSelect.addEventListener("change", function(){
+        zoomMode=this.value;
+        render();
+      });
       function cleanup(){
         window.removeEventListener("resize", onR);
         A11y.unlockScroll();
