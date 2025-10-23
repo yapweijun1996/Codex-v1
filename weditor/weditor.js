@@ -23,6 +23,9 @@
       controlWrap:{ display:"inline-flex", alignItems:"center", gap:"6px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
       controlLabel:{ font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
+      colorControl:{ position:"relative", display:"inline-flex", alignItems:"stretch" },
+      colorMenu:{ position:"absolute", top:"100%", left:"0", marginTop:"6px", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 8px 24px rgba(0,0,0,.12)", padding:"8px", display:"none", gridTemplateColumns:"repeat(4, minmax(0, 36px))", gap:"8px", zIndex:"10" },
+      colorSwatch:{ width:"32px", height:"32px", borderRadius:"6px", border:"1px solid "+UI.borderSubtle, padding:"0", background:"#fff", cursor:"pointer" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
@@ -1687,6 +1690,35 @@
     return { resolve, sync, syncDebounced };
   })();
   const ToolbarFactory=(function(){
+    let activeDropdown=null;
+    let dropdownHandlersAttached=false;
+    function closeDropdown(){
+      if(!activeDropdown){ return; }
+      const ctrl=activeDropdown; activeDropdown=null;
+      if(ctrl && typeof ctrl.hide==="function"){ ctrl.hide(); }
+    }
+    function openDropdown(ctrl){
+      if(activeDropdown && activeDropdown!==ctrl){
+        const prev=activeDropdown; activeDropdown=null;
+        if(prev && typeof prev.hide==="function"){ prev.hide(); }
+      }
+      activeDropdown=ctrl;
+      if(ctrl && typeof ctrl.show==="function"){ ctrl.show(); }
+    }
+    function ensureDropdownHandlers(){
+      if(dropdownHandlersAttached){ return; }
+      if(typeof document==="undefined"){ return; }
+      document.addEventListener("click", function(e){
+        if(!activeDropdown){ return; }
+        const wrap=activeDropdown && activeDropdown.wrap;
+        if(wrap && wrap.contains(e.target)){ return; }
+        closeDropdown();
+      });
+      document.addEventListener("keydown", function(e){
+        if(e.key === "Escape"){ closeDropdown(); }
+      });
+      dropdownHandlersAttached=true;
+    }
     function createCommandButton(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
       if(meta.kind==="select"){
@@ -1712,6 +1744,119 @@
           if(meta.run) meta.run(inst, { event:e, ctx, value:select.value });
         };
         wrap.appendChild(select);
+        return wrap;
+      }
+      if(meta.kind==="color"){
+        ensureDropdownHandlers();
+        const wrap=document.createElement("div"); applyStyles(wrap, WCfg.Style.colorControl);
+        wrap.setAttribute("data-command", id);
+        wrap.setAttribute("role","group");
+        const mainBtn=WDom.btn(meta.shortLabel||"", !!meta.primary, meta.title||meta.label||"");
+        mainBtn.setAttribute("aria-label", meta.ariaLabel || meta.label || "Color");
+        mainBtn.style.display="inline-flex";
+        mainBtn.style.alignItems="center";
+        mainBtn.style.justifyContent="center";
+        mainBtn.style.gap="4px";
+        mainBtn.style.borderTopRightRadius="0";
+        mainBtn.style.borderBottomRightRadius="0";
+        mainBtn.style.borderRight="0";
+        const iconWrap=document.createElement("span");
+        iconWrap.style.display="inline-flex";
+        iconWrap.style.flexDirection="column";
+        iconWrap.style.alignItems="center";
+        iconWrap.style.justifyContent="center";
+        const pen=document.createElement("span"); pen.textContent="🖊️"; pen.setAttribute("aria-hidden","true"); pen.style.fontSize="15px";
+        const underline=document.createElement("span");
+        underline.style.display="block";
+        underline.style.width="20px";
+        underline.style.height="4px";
+        underline.style.borderRadius="999px";
+        underline.style.marginTop="4px";
+        underline.style.border="1px solid transparent";
+        iconWrap.appendChild(pen); iconWrap.appendChild(underline);
+        mainBtn.textContent="";
+        mainBtn.appendChild(iconWrap);
+        const arrowBtn=WDom.btn("▼", false, meta.title||meta.label||"");
+        arrowBtn.setAttribute("aria-haspopup","true");
+        arrowBtn.setAttribute("aria-expanded","false");
+        arrowBtn.setAttribute("aria-label", (meta.ariaLabel||meta.label||"Color")+" palette");
+        arrowBtn.style.borderTopLeftRadius="0";
+        arrowBtn.style.borderBottomLeftRadius="0";
+        arrowBtn.style.marginLeft="-1px";
+        arrowBtn.style.borderLeft="0";
+        arrowBtn.style.padding="8px 10px";
+        const palette=document.createElement("div"); applyStyles(palette, WCfg.Style.colorMenu);
+        palette.setAttribute("role","menu");
+        const colors=Array.isArray(meta.palette)?meta.palette:[];
+        function updatePreview(color){
+          if(color && color.trim()){
+            underline.style.background=color;
+            underline.style.borderColor="rgba(0,0,0,0.08)";
+            underline.style.backgroundImage="none";
+          } else {
+            underline.style.backgroundImage="linear-gradient(45deg, rgba(96,94,92,.45) 25%, transparent 25%, transparent 75%, rgba(96,94,92,.45) 75%, rgba(96,94,92,.45))";
+            underline.style.backgroundSize="8px 8px";
+            underline.style.backgroundColor="transparent";
+            underline.style.borderColor=WCfg.UI.borderSubtle;
+          }
+        }
+        const defaultColor=(typeof meta.getCurrentColor==="function"?meta.getCurrentColor(inst):meta.defaultValue)||meta.defaultValue;
+        updatePreview(defaultColor);
+        function applyColor(value, event){
+          meta.run(inst, { event:event, ctx, value:value });
+          const current=(typeof meta.getCurrentColor==="function"?meta.getCurrentColor(inst):value);
+          updatePreview(current);
+          closeDropdown();
+        }
+        mainBtn.addEventListener("click", function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          let current=(typeof meta.getCurrentColor==="function"?meta.getCurrentColor(inst):undefined);
+          if(typeof current==="undefined" || current===null){ current = meta.defaultValue || ""; }
+          applyColor(current, e);
+        });
+        const ctrl={ wrap,
+          show:function(){ palette.style.display="grid"; arrowBtn.setAttribute("aria-expanded","true"); },
+          hide:function(){ palette.style.display="none"; arrowBtn.setAttribute("aria-expanded","false"); }
+        };
+        arrowBtn.addEventListener("click", function(e){
+          e.preventDefault(); e.stopPropagation();
+          if(activeDropdown===ctrl){
+            closeDropdown();
+          } else {
+            openDropdown(ctrl);
+          }
+        });
+        for(let i=0;i<colors.length;i++){
+          const color=colors[i];
+          const swatch=document.createElement("button");
+          swatch.type="button";
+          applyStyles(swatch, WCfg.Style.colorSwatch);
+          swatch.setAttribute("role","menuitem");
+          swatch.title=color && color.label ? color.label : "";
+          swatch.setAttribute("aria-label", color && color.label ? color.label : "Color");
+          swatch.style.display="inline-flex";
+          swatch.style.alignItems="center";
+          swatch.style.justifyContent="center";
+          if(color && color.value){
+            swatch.style.backgroundColor=color.value;
+            swatch.style.borderColor="rgba(0,0,0,0.08)";
+          } else {
+            swatch.style.backgroundImage="linear-gradient(45deg, rgba(96,94,92,.45) 25%, transparent 25%, transparent 75%, rgba(96,94,92,.45) 75%, rgba(96,94,92,.45))";
+            swatch.style.backgroundSize="8px 8px";
+            swatch.style.borderColor=WCfg.UI.borderSubtle;
+          }
+          swatch.addEventListener("click", function(ev){
+            ev.preventDefault(); ev.stopPropagation();
+            const value=color ? color.value : "";
+            applyColor(typeof value==="string"?value:"", ev);
+          });
+          palette.appendChild(swatch);
+        }
+        wrap.appendChild(mainBtn);
+        wrap.appendChild(arrowBtn);
+        wrap.appendChild(palette);
+        ctrl.palette=palette;
         return wrap;
       }
       const isToggle = meta.kind==="toggle";
@@ -2009,6 +2154,17 @@
       { label:"18", px:"18px", exec:"6" },
       { label:"24", px:"24px", exec:"7" }
     ];
+    const HIGHLIGHT_COLORS=[
+      { label:"No Color", value:"" },
+      { label:"Yellow", value:"#fff59d" },
+      { label:"Green", value:"#ccff90" },
+      { label:"Pink", value:"#ffd6ff" },
+      { label:"Blue", value:"#a7ffeb" },
+      { label:"Orange", value:"#ffe0b2" },
+      { label:"Purple", value:"#e1bee7" },
+      { label:"Gray", value:"#d7ccc8" }
+    ];
+    const DEFAULT_HIGHLIGHT="#fff59d";
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function focusTarget(target){ if(target && typeof target.focus==="function"){ try{ target.focus({ preventScroll:true }); } catch(e){ target.focus(); } } }
     function execCommand(target, command, value, useCss){
@@ -2086,6 +2242,36 @@
         }
       }
     }
+    function applyHighlight(inst, ctx, color){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      const value=(typeof color==="string"?color:null);
+      const doc=target.ownerDocument || (typeof document!=="undefined" ? document : null);
+      const supportsHilite=!!(doc && doc.queryCommandSupported && (doc.queryCommandSupported("HiliteColor") || doc.queryCommandSupported("hiliteColor")));
+      const command=supportsHilite ? "hiliteColor" : "backColor";
+      execCommand(target, command, value && value.trim()?value:"transparent", true);
+      if(!value || !value.trim()){
+        cleanupHighlight(target);
+      }
+    }
+    function cleanupHighlight(target){
+      if(!target || !target.ownerDocument){ return; }
+      const doc=target.ownerDocument;
+      const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, null);
+      const updates=[]; let node;
+      while((node=walker.nextNode())){ updates.push(node); }
+      for(let i=0;i<updates.length;i++){
+        const el=updates[i];
+        if(!el || !el.style){ continue; }
+        const bg=(el.style.backgroundColor||"").trim().toLowerCase();
+        if(bg==="" || bg==="transparent" || bg==="rgba(0, 0, 0, 0)" || bg==="initial" || bg==="inherit"){
+          el.style.backgroundColor="";
+          if(el.getAttribute && el.getAttribute("style")!==null){
+            const styleAttr=el.getAttribute("style");
+            if(styleAttr && styleAttr.trim()==="") el.removeAttribute("style");
+          }
+        }
+      }
+    }
     function applySimple(inst, ctx, command){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, command, null, true);
@@ -2093,10 +2279,13 @@
     return {
       FONT_FAMILIES,
       FONT_SIZES,
+      HIGHLIGHT_COLORS,
+      DEFAULT_HIGHLIGHT,
       applyFontFamily,
       applyFontSize,
       applyUnderline,
       applyDecorationStyle,
+      applyHighlight,
       applySimple
     };
   })();
@@ -2171,6 +2360,34 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.highlight":{
+      label:"Text Highlight Color",
+      kind:"color",
+      ariaLabel:"Text highlight color",
+      title:"Text Highlight Color (文字底色 / 文本荧光笔)",
+      palette:Formatting.HIGHLIGHT_COLORS,
+      defaultValue:Formatting.DEFAULT_HIGHLIGHT,
+      getCurrentColor:function(inst){
+        if(!inst) return Formatting.DEFAULT_HIGHLIGHT;
+        if(typeof inst.highlightColor==="string") return inst.highlightColor;
+        return Formatting.DEFAULT_HIGHLIGHT;
+      },
+      run:function(inst, arg){
+        if(!inst) return;
+        let value;
+        if(arg && Object.prototype.hasOwnProperty.call(arg, "value")){
+          value = arg.value;
+        } else if(typeof inst.highlightColor==="string"){
+          value = inst.highlightColor;
+        }
+        if(typeof value==="undefined" || value===null){
+          value = Formatting.DEFAULT_HIGHLIGHT;
+        }
+        Formatting.applyHighlight(inst, arg && arg.ctx, value);
+        inst.highlightColor = typeof value==="string" ? value : Formatting.DEFAULT_HIGHLIGHT;
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -2213,7 +2430,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2223,7 +2440,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -2244,6 +2461,7 @@
     this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
+    this.highlightColor = Formatting.DEFAULT_HIGHLIGHT;
     this._mount();
     OutputBinding.syncDebounced(this);
   }
