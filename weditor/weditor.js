@@ -1,7 +1,7 @@
 (function(){
   "use strict";
   const WCfg=(function(){
-    const A4W=794, A4H=1123, HDR_H=84, FTR_H=64, PAD=28;
+    const A4W=794, A4H=1123, HDR_H=84, FTR_H=64, PAD=0;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
     const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=1;
     const innerHFWidth = A4W - 36;
