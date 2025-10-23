@@ -779,7 +779,8 @@
     }
     return { open };
   })();
-  const PAGED_PRINT_STYLES = "div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}";
+  const LIST_STYLE_CSS = ".weditor-outline-classic,.weditor-outline-classic ol{counter-reset:weditorOutline;list-style:none;padding-left:1.8em;margin:0;}.weditor-outline-classic li{counter-increment:weditorOutline;list-style:none;position:relative;padding-left:1.4em;}.weditor-outline-classic li::before{content:counters(weditorOutline,\".\")\". ";position:absolute;left:-1.4em;width:1.2em;text-align:right;font-weight:600;color:#323130;}";
+  const PAGED_PRINT_STYLES = "div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}"+LIST_STYLE_CSS;
   const PrintUI=(function(){
     function open(pagedHTML){
       const w=WDom.openBlank(); if(!w) return;
@@ -1992,6 +1993,39 @@
     }
     return { open };
   })();
+  const ListStyles=(function(){
+    const STYLE_TAG_ID="weditor-list-styles";
+    function ensure(doc){
+      const targetDoc = doc && doc.nodeType === 9 ? doc : (doc && doc.ownerDocument) ? doc.ownerDocument : document;
+      if(!targetDoc) return;
+      if(targetDoc.getElementById(STYLE_TAG_ID)) return;
+      const head = targetDoc.head || targetDoc.getElementsByTagName("head")[0];
+      if(!head) return;
+      const style = targetDoc.createElement("style");
+      style.id = STYLE_TAG_ID;
+      style.textContent = LIST_STYLE_CSS;
+      head.appendChild(style);
+    }
+    function applyOutline(list, style){
+      if(!list) return;
+      clearOutline(list);
+      if(!style) return;
+      ensure(list.ownerDocument || document);
+      if(style==="classic"){
+        list.classList.add("weditor-outline-classic");
+        list.setAttribute("data-weditor-outline", style);
+        list.style.listStyleType = "none";
+      }
+    }
+    function clearOutline(list){
+      if(!list) return;
+      list.classList.remove("weditor-outline-classic");
+      if(list.getAttribute && list.getAttribute("data-weditor-outline")){
+        list.removeAttribute("data-weditor-outline");
+      }
+    }
+    return { ensure, applyOutline, clearOutline };
+  })();
   const Formatting=(function(){
     const FONT_FAMILIES=[
       { label:"Arial", value:"Arial, Helvetica, sans-serif" },
@@ -2084,6 +2118,195 @@
       const beforeEnd=range.compareBoundaryPoints(END_TO_START, test) < 0;
       const afterStart=range.compareBoundaryPoints(START_TO_END, test) > 0;
       return beforeEnd && afterStart;
+    }
+    function resolveRange(target){
+      if(!target || !target.ownerDocument) return null;
+      const win=target.ownerDocument.defaultView || window;
+      const sel=win && typeof win.getSelection==="function" ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(!range) return null;
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && container!==target && !target.contains(container)){
+        let start=range.startContainer;
+        if(start && start.nodeType===3){ start=start.parentNode; }
+        if(!start || (start!==target && !target.contains(start))){ return null; }
+      }
+      return range;
+    }
+    function findListFromSelection(target, preferType){
+      const range=resolveRange(target);
+      if(!range) return null;
+      let node=range.startContainer;
+      if(node && node.nodeType===3){ node=node.parentNode; }
+      let fallback=null;
+      while(node && node!==target){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toUpperCase();
+          if(tag==="UL" || tag==="OL"){
+            if(!preferType) return node;
+            if(preferType==="unordered" && tag==="UL") return node;
+            if(preferType==="ordered" && tag==="OL") return node;
+            if(!fallback) fallback=node;
+          }
+        }
+        node=node.parentNode;
+      }
+      return fallback;
+    }
+    function toggleListCommand(target, type){
+      if(!target) return false;
+      const command=type==="ordered" ? "insertOrderedList" : "insertUnorderedList";
+      focusTarget(target);
+      let success=false;
+      try{ success=document.execCommand(command, false, null); }
+      catch(err){ success=false; }
+      return success;
+    }
+    function ensureList(target, type){
+      let list=findListFromSelection(target, type);
+      if(list) return list;
+      toggleListCommand(target, type);
+      return findListFromSelection(target, type);
+    }
+    function cleanupCustomBullet(list){
+      if(!list || typeof list.querySelectorAll!=="function") return;
+      const markers=list.querySelectorAll("span[data-weditor-bullet-marker]");
+      for(let i=0;i<markers.length;i++){
+        const marker=markers[i];
+        if(marker && marker.parentNode){ marker.parentNode.removeChild(marker); }
+      }
+      if(list.removeAttribute){
+        list.removeAttribute("data-weditor-bullet-symbol");
+        list.removeAttribute("data-weditor-bullet-style");
+      }
+    }
+    function setCustomBullet(list, symbol){
+      if(!list) return;
+      cleanupCustomBullet(list);
+      if(list.setAttribute){
+        list.setAttribute("data-weditor-bullet-style", "custom");
+        list.setAttribute("data-weditor-bullet-symbol", symbol);
+      }
+      list.style.listStyleType="none";
+      if(typeof list.querySelectorAll!=="function") return;
+      const items=list.querySelectorAll("li");
+      for(let i=0;i<items.length;i++){
+        const li=items[i];
+        if(!li) continue;
+        let marker=li.querySelector ? li.querySelector("span[data-weditor-bullet-marker]") : null;
+        if(!marker){
+          marker=list.ownerDocument ? list.ownerDocument.createElement("span") : document.createElement("span");
+          marker.setAttribute("data-weditor-bullet-marker","1");
+          marker.style.display="inline-block";
+          marker.style.minWidth="1em";
+          marker.style.marginRight="0.5em";
+          marker.style.textAlign="center";
+          marker.style.fontWeight="600";
+          li.insertBefore(marker, li.firstChild);
+        }
+        marker.textContent=symbol;
+      }
+    }
+    function toggleList(inst, ctx, type){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      toggleListCommand(target, type==="ordered"?"ordered":"unordered");
+    }
+    function applyBulletStyle(inst, ctx, style){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      let list=ensureList(target, "unordered");
+      if(!list) return;
+      if(list.tagName && list.tagName.toUpperCase()==="OL"){
+        toggleListCommand(target, "unordered");
+        list=ensureList(target, "unordered");
+        if(!list) return;
+      }
+      ListStyles.clearOutline(list);
+      if(list.removeAttribute){ list.removeAttribute("data-weditor-number-style"); }
+      if(style==="custom") return;
+      cleanupCustomBullet(list);
+      list.style.listStyleType = style || "disc";
+      if(list.setAttribute){ list.setAttribute("data-weditor-bullet-style", style || "disc"); }
+    }
+    function applyCustomBullet(inst, ctx, symbol){
+      if(!symbol) return;
+      const trimmed=String(symbol).trim();
+      if(!trimmed){ return; }
+      const marker=trimmed.length>3 ? trimmed.slice(0,3) : trimmed;
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      let list=ensureList(target, "unordered");
+      if(!list) return;
+      if(list.tagName && list.tagName.toUpperCase()==="OL"){
+        toggleListCommand(target, "unordered");
+        list=ensureList(target, "unordered");
+        if(!list) return;
+      }
+      ListStyles.clearOutline(list);
+      if(list.removeAttribute){ list.removeAttribute("data-weditor-number-style"); }
+      setCustomBullet(list, marker);
+    }
+    function applyNumberStyle(inst, ctx, style){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      let list=ensureList(target, "ordered");
+      if(!list) return;
+      if(list.tagName && list.tagName.toUpperCase()==="UL"){
+        toggleListCommand(target, "ordered");
+        list=ensureList(target, "ordered");
+        if(!list) return;
+      }
+      ListStyles.clearOutline(list);
+      cleanupCustomBullet(list);
+      const applied=style || "decimal";
+      list.style.listStyleType = applied;
+      if(list.setAttribute){
+        list.setAttribute("data-weditor-number-style", applied);
+        list.removeAttribute("data-weditor-bullet-style");
+        list.removeAttribute("data-weditor-bullet-symbol");
+      }
+    }
+    function applyOutlineStyle(inst, ctx, style){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      let list=ensureList(target, "ordered");
+      if(!list) return;
+      if(list.tagName && list.tagName.toUpperCase()==="UL"){
+        toggleListCommand(target, "ordered");
+        list=ensureList(target, "ordered");
+        if(!list) return;
+      }
+      cleanupCustomBullet(list);
+      if(list.setAttribute){
+        list.removeAttribute("data-weditor-bullet-style");
+        list.removeAttribute("data-weditor-bullet-symbol");
+      }
+      if(style){
+        ListStyles.applyOutline(list, style);
+        if(list.removeAttribute){ list.removeAttribute("data-weditor-number-style"); }
+      } else {
+        ListStyles.clearOutline(list);
+        const fallback=list.getAttribute ? list.getAttribute("data-weditor-number-style") : null;
+        list.style.listStyleType = fallback || "decimal";
+      }
+    }
+    function adjustIndent(inst, ctx, direction){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      const command = direction==="decrease" ? "outdent" : "indent";
+      try{ document.execCommand(command, false, null); }
+      catch(err){}
+    }
+    function getActiveListType(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return null;
+      const list=findListFromSelection(target);
+      if(!list) return null;
+      const tag=list.tagName ? list.tagName.toUpperCase() : "";
+      if(tag==="OL") return "ordered";
+      if(tag==="UL") return "unordered";
+      return null;
     }
     function fallbackApplyHighlight(target, color){
       const info=ensureSelectionInfo(target); if(!info) return false;
@@ -2394,7 +2617,14 @@
       applyUnderline,
       applyDecorationStyle,
       applySimple,
-      applyAlign
+      applyAlign,
+      toggleList,
+      applyBulletStyle,
+      applyCustomBullet,
+      applyNumberStyle,
+      applyOutlineStyle,
+      adjustIndent,
+      getActiveListType
     };
   })();
   const FontColorUI=(function(){
@@ -2843,6 +3073,197 @@
     }
     return { create };
   })();
+  const ListUI=(function(){
+    function createSplitButton(inst, ctx, config){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      container.style.gap="0";
+      container.setAttribute("role","group");
+      const mainBtn=WDom.btn(config.label, false, config.title || config.label);
+      mainBtn.setAttribute("data-command", config.id);
+      mainBtn.setAttribute("aria-label", config.ariaLabel || config.label);
+      mainBtn.style.borderTopRightRadius="0";
+      mainBtn.style.borderBottomRightRadius="0";
+      mainBtn.style.borderRight="0";
+      const arrowBtn=WDom.btn("▼", false, config.menuTitle || (config.label+" options"));
+      arrowBtn.setAttribute("data-command", config.id+".menu");
+      arrowBtn.setAttribute("aria-label", config.menuAriaLabel || (config.label+" options"));
+      arrowBtn.setAttribute("aria-haspopup","true");
+      arrowBtn.setAttribute("aria-expanded","false");
+      arrowBtn.style.padding="8px 10px";
+      arrowBtn.style.minWidth="34px";
+      arrowBtn.style.borderTopLeftRadius="0";
+      arrowBtn.style.borderBottomLeftRadius="0";
+      arrowBtn.style.borderLeft="1px solid "+WCfg.UI.borderSubtle;
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 4px)";
+      menu.style.right="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.alignItems="stretch";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="10px";
+      menu.style.boxShadow="0 10px 28px rgba(0,0,0,.16)";
+      menu.style.padding="6px";
+      menu.style.minWidth=config.menuWidth || "220px";
+      menu.style.zIndex="24";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      let open=false;
+      const doc=container.ownerDocument || document;
+      function closeMenu(){
+        if(!open) return;
+        open=false;
+        menu.style.display="none";
+        menu.setAttribute("aria-hidden","true");
+        arrowBtn.setAttribute("aria-expanded","false");
+        doc.removeEventListener("mousedown", handleDocPointer, true);
+        doc.removeEventListener("touchstart", handleDocPointer, true);
+        doc.removeEventListener("focusin", handleDocFocus, true);
+        doc.removeEventListener("keydown", handleDocKey, true);
+      }
+      function openMenu(){
+        if(open) return;
+        open=true;
+        menu.style.display="flex";
+        menu.setAttribute("aria-hidden","false");
+        arrowBtn.setAttribute("aria-expanded","true");
+        doc.addEventListener("mousedown", handleDocPointer, true);
+        doc.addEventListener("touchstart", handleDocPointer, true);
+        doc.addEventListener("focusin", handleDocFocus, true);
+        doc.addEventListener("keydown", handleDocKey, true);
+      }
+      function handleDocPointer(e){ if(!container.contains(e.target)){ closeMenu(); } }
+      function handleDocFocus(e){ if(!container.contains(e.target)){ closeMenu(); } }
+      function handleDocKey(e){ if(e.key==="Escape"){ e.preventDefault(); closeMenu(); arrowBtn.focus(); } }
+      mainBtn.addEventListener("click", function(e){
+        e.preventDefault(); e.stopPropagation();
+        if(typeof config.onPrimary==="function"){
+          const result=config.onPrimary();
+          if(result!==false && inst){ OutputBinding.syncDebounced(inst); }
+        }
+      });
+      mainBtn.addEventListener("keydown", function(e){
+        if(e.key==="ArrowDown"){ e.preventDefault(); openMenu(); window.setTimeout(function(){ const first=menu.querySelector("button"); if(first) first.focus(); },0); }
+      });
+      arrowBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); if(open) closeMenu(); else openMenu(); });
+      arrowBtn.addEventListener("keydown", function(e){
+        if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); openMenu(); window.setTimeout(function(){ const first=menu.querySelector("button"); if(first) first.focus(); },0); }
+        else if(e.key==="Escape"){ e.preventDefault(); closeMenu(); }
+      });
+      menu.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); closeMenu(); arrowBtn.focus(); } });
+      const options=config.options || [];
+      for(let i=0;i<options.length;i++){
+        const opt=options[i];
+        const optionBtn=doc.createElement("button");
+        optionBtn.type="button";
+        optionBtn.setAttribute("role","menuitem");
+        optionBtn.style.border="0";
+        optionBtn.style.background="transparent";
+        optionBtn.style.textAlign="left";
+        optionBtn.style.padding="8px 10px";
+        optionBtn.style.borderRadius="6px";
+        optionBtn.style.cursor="pointer";
+        optionBtn.style.display="flex";
+        optionBtn.style.flexDirection="column";
+        optionBtn.style.alignItems="flex-start";
+        optionBtn.style.gap=opt.description?"2px":"0";
+        optionBtn.style.font="13px/1.35 Segoe UI,system-ui";
+        optionBtn.style.color=WCfg.UI.text;
+        optionBtn.onmouseenter=function(){ optionBtn.style.background=WCfg.UI.canvas; };
+        optionBtn.onmouseleave=function(){ optionBtn.style.background="transparent"; };
+        const label=doc.createElement("span");
+        label.textContent=opt.label;
+        label.style.fontWeight="600";
+        label.style.color=WCfg.UI.text;
+        optionBtn.appendChild(label);
+        if(opt.description){
+          const desc=doc.createElement("span");
+          desc.textContent=opt.description;
+          desc.style.fontSize="11px";
+          desc.style.color=WCfg.UI.textDim;
+          optionBtn.appendChild(desc);
+        }
+        optionBtn.addEventListener("click", function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          closeMenu();
+          if(typeof opt.onSelect==="function"){ const res=opt.onSelect(); if(res!==false && inst){ OutputBinding.syncDebounced(inst); } }
+        });
+        menu.appendChild(optionBtn);
+      }
+      container.appendChild(mainBtn);
+      container.appendChild(arrowBtn);
+      container.appendChild(menu);
+      return container;
+    }
+    function createBulleted(inst, ctx){
+      return createSplitButton(inst, ctx, {
+        id:"format.listBulleted",
+        label:"Bulleted List",
+        title:"Bulleted List (項目符號清單)",
+        ariaLabel:"Bulleted List (項目符號清單)",
+        menuTitle:"Bullet Library (項目符號庫)",
+        menuAriaLabel:"Bullet Library (項目符號庫)",
+        onPrimary:function(){
+          const active=Formatting.getActiveListType(inst, ctx)==="unordered";
+          Formatting.toggleList(inst, ctx, "unordered");
+          if(!active){ Formatting.applyBulletStyle(inst, ctx, "disc"); }
+          return true;
+        },
+        options:[
+          { label:"• Disc (實心圓)", description:"Classic bullet point", onSelect:function(){ Formatting.applyBulletStyle(inst, ctx, "disc"); } },
+          { label:"○ Circle (空心圓)", description:"Open circle bullet", onSelect:function(){ Formatting.applyBulletStyle(inst, ctx, "circle"); } },
+          { label:"▪ Square (方塊)", description:"Square bullet symbol", onSelect:function(){ Formatting.applyBulletStyle(inst, ctx, "square"); } },
+          { label:"Custom… (自訂符號)", description:"Type your own bullet symbol", onSelect:function(){ const input=window.prompt("Enter custom bullet symbol (輸入自訂項目符號)", "•"); if(input){ Formatting.applyCustomBullet(inst, ctx, input); } } }
+        ]
+      });
+    }
+    function createNumbered(inst, ctx){
+      return createSplitButton(inst, ctx, {
+        id:"format.listNumbered",
+        label:"Numbered List",
+        title:"Numbered List (編號清單)",
+        ariaLabel:"Numbered List (編號清單)",
+        menuTitle:"Number format (編號格式)",
+        menuAriaLabel:"Number format (編號格式)",
+        onPrimary:function(){
+          const active=Formatting.getActiveListType(inst, ctx)==="ordered";
+          Formatting.toggleList(inst, ctx, "ordered");
+          if(!active){ Formatting.applyNumberStyle(inst, ctx, "decimal"); }
+          return true;
+        },
+        options:[
+          { label:"1. 2. 3.", description:"Decimal numbers (十進位)", onSelect:function(){ Formatting.applyNumberStyle(inst, ctx, "decimal"); } },
+          { label:"a. b. c.", description:"Lower alpha (小寫字母)", onSelect:function(){ Formatting.applyNumberStyle(inst, ctx, "lower-alpha"); } },
+          { label:"A. B. C.", description:"Upper alpha (大寫字母)", onSelect:function(){ Formatting.applyNumberStyle(inst, ctx, "upper-alpha"); } },
+          { label:"i. ii. iii.", description:"Lower roman (小寫羅馬數字)", onSelect:function(){ Formatting.applyNumberStyle(inst, ctx, "lower-roman"); } },
+          { label:"I. II. III.", description:"Upper roman (大寫羅馬數字)", onSelect:function(){ Formatting.applyNumberStyle(inst, ctx, "upper-roman"); } }
+        ]
+      });
+    }
+    function createMultilevel(inst, ctx){
+      return createSplitButton(inst, ctx, {
+        id:"format.listMultilevel",
+        label:"Multilevel List",
+        title:"Multilevel List (多層次清單)",
+        ariaLabel:"Multilevel List (多層次清單)",
+        menuTitle:"Outline gallery (大綱樣式)",
+        menuAriaLabel:"Outline gallery (大綱樣式)",
+        onPrimary:function(){ Formatting.applyOutlineStyle(inst, ctx, "classic"); return true; },
+        options:[
+          { label:"Classic 1.1.1", description:"Layered outline style (階層式編號)", onSelect:function(){ Formatting.applyOutlineStyle(inst, ctx, "classic"); } },
+          { label:"Increase Indent →", description:"Promote to deeper level (向右縮排)", onSelect:function(){ Formatting.adjustIndent(inst, ctx, "increase"); } },
+          { label:"Decrease Indent ←", description:"Move item up a level (向左縮排)", onSelect:function(){ Formatting.adjustIndent(inst, ctx, "decrease"); } },
+          { label:"Reset Outline", description:"Remove outline styling (移除多層次)", onSelect:function(){ Formatting.applyOutlineStyle(inst, ctx, null); } }
+        ]
+      });
+    }
+    return { createBulleted, createNumbered, createMultilevel };
+  })();
   function decorateAlignButton(btn, align){
     if(!btn) return;
     const mode=(align||"").toLowerCase();
@@ -2951,6 +3372,21 @@
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
+    "format.listBulleted":{
+      kind:"custom",
+      ariaLabel:"Bulleted List (項目符號清單)",
+      render:function(inst, ctx){ return ListUI.createBulleted(inst, ctx); }
+    },
+    "format.listNumbered":{
+      kind:"custom",
+      ariaLabel:"Numbered List (編號清單)",
+      render:function(inst, ctx){ return ListUI.createNumbered(inst, ctx); }
+    },
+    "format.listMultilevel":{
+      kind:"custom",
+      ariaLabel:"Multilevel List (多層次清單)",
+      render:function(inst, ctx){ return ListUI.createMultilevel(inst, ctx); }
+    },
     "format.alignLeft":{
       label:"Left",
       kind:"button",
@@ -3025,7 +3461,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.listBulleted","format.listNumbered","format.listMultilevel","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -3035,7 +3471,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.listBulleted","format.listNumbered","format.listMultilevel","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -3065,6 +3501,7 @@
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
+    ListStyles.ensure(document);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
     Breaks.ensurePlaceholders(this.el);
