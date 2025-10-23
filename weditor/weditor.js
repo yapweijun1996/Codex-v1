@@ -2244,6 +2244,7 @@
       container.style.display="inline-flex";
       container.style.alignItems="center";
       const button=WDom.btn("", false, "Text Highlight Color (文字底色 / 文本荧光笔)");
+      button.setAttribute("title","Text Highlight Color (文字底色 / 文本荧光笔)");
       button.setAttribute("data-command","format.highlight");
       button.setAttribute("aria-label","Text Highlight Color (文字底色 / 文本荧光笔)");
       button.setAttribute("aria-haspopup","true");
@@ -2253,6 +2254,7 @@
       button.style.justifyContent="center";
       button.style.gap="8px";
       button.style.minWidth="44px";
+      button.style.padding="3px 12px";
       const iconWrap=document.createElement("span");
       iconWrap.style.display="flex";
       iconWrap.style.flexDirection="column";
