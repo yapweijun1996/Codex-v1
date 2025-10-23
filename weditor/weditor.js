@@ -2266,10 +2266,10 @@
       }
       return changed;
     }
-    function applyFontColor(inst, ctx, color){
-      if(!color) return clearFontColor(inst, ctx);
+    function applyFontColor(inst, ctx, color, opts){
+      if(!color) return clearFontColor(inst, ctx, opts);
       const target=resolveTarget(inst, ctx); if(!target) return false;
-      focusTarget(target);
+      if(!(opts && opts.skipFocus)){ focusTarget(target); }
       let success=false;
       try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
       try{ success=document.execCommand("foreColor", false, color); }
@@ -2279,9 +2279,9 @@
       if(success && inst){ inst.fontColor=color; }
       return success;
     }
-    function clearFontColor(inst, ctx){
+    function clearFontColor(inst, ctx, opts){
       const target=resolveTarget(inst, ctx); if(!target) return false;
-      focusTarget(target);
+      if(!(opts && opts.skipFocus)){ focusTarget(target); }
       let success=false;
       try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
       try{ success=document.execCommand("foreColor", false, "inherit"); }
@@ -2583,9 +2583,11 @@
       customInput.addEventListener("input", function(e){
         const val=e.target && e.target.value;
         if(!val) return;
+        const applied=Formatting.applyFontColor(inst, ctx, val, { skipFocus:true });
         updatePreview(val);
         updateSelectionUI(val);
         updateAutomaticState(val);
+        if(applied && inst){ OutputBinding.syncDebounced(inst); }
       });
       customInput.addEventListener("change", function(e){
         const val=e.target && e.target.value;
@@ -2595,9 +2597,15 @@
       customInput.addEventListener("cancel", function(){
         const fallback=currentColor && /^#/.test(currentColor) ? currentColor : Formatting.FONT_COLOR_DEFAULT || "#d13438";
         customInput.value=fallback;
+        if(currentColor){
+          Formatting.applyFontColor(inst, ctx, currentColor, { skipFocus:true });
+        } else {
+          Formatting.clearFontColor(inst, ctx, { skipFocus:true });
+        }
         updatePreview(currentColor);
         updateSelectionUI(currentColor);
         updateAutomaticState(currentColor);
+        if(inst){ OutputBinding.syncDebounced(inst); }
         deactivateCustomPicker();
       });
       customInput.addEventListener("blur", function(){
