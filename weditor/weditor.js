@@ -276,10 +276,17 @@
       }
       while(li.firstChild && li.firstChild.nodeType===3 && !(li.firstChild.nodeValue||"").trim()){ li.removeChild(li.firstChild); }
     }
+    function isBreakCommentNode(node){
+      if(!node || node.nodeType!==8) return false;
+      return String(node.nodeValue||"").trim().toLowerCase()==="page:break";
+    }
     function convertWordLists(container){
       let node=container.firstChild; let activeList=null; let activeType="";
       while(node){ const next=node.nextSibling;
-        if(node.nodeType===8){ container.removeChild(node); node=next; continue; }
+        if(node.nodeType===8){
+          if(isBreakCommentNode(node)){ node=next; continue; }
+          container.removeChild(node); node=next; continue;
+        }
         if(node.nodeType===3 && !(node.nodeValue||"").trim()){ container.removeChild(node); node=next; continue; }
         if(node.nodeType===1 && node.tagName==="P" && isWordListPara(node)){
           const type=detectListType(node);
