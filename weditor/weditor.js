@@ -1748,10 +1748,15 @@
       saveCloseBtn.setAttribute("aria-label","Save changes and close fullscreen editor");
       saveCloseBtn.addEventListener("click", function(){ ctx.saveClose(); });
       saveCloseWrap.appendChild(saveCloseBtn);
+      const defaultLeftPadding = left.style.padding || "48px 36px";
+      const defaultLeftOverflowX = left.style.overflowX || "hidden";
+      const compactLeftPadding = "20px 12px";
       function layout(){
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
         split.style.flexDirection = isColumn ? "column" : "row";
         rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
+        left.style.padding = isColumn ? compactLeftPadding : defaultLeftPadding;
+        left.style.overflowX = isColumn ? "auto" : defaultLeftOverflowX;
       }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); modal.appendChild(saveCloseWrap); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
@@ -1764,17 +1769,34 @@
         attempt = attempt || 0;
         const out=Paginator.paginate(area.innerHTML, inst);
         const computed=window.getComputedStyle(left);
+        const leftRect = left.getBoundingClientRect();
         const paddingLeft=parseFloat(computed.paddingLeft||"0")||0;
         const paddingRight=parseFloat(computed.paddingRight||"0")||0;
         const available=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
-        const fitScale=available>0 ? Math.min(1, available / WCfg.A4W) : 1;
-        let scale=fitScale;
-        if(WCfg.PREVIEW_MAX_SCALE && scale>WCfg.PREVIEW_MAX_SCALE){ scale=WCfg.PREVIEW_MAX_SCALE; }
+        const widthScale = available>0 ? available / WCfg.A4W : 1;
+        const isColumn = window.innerWidth < WCfg.MOBILE_BP;
+        let maxScale = WCfg.PREVIEW_MAX_SCALE || 1;
+        let scale = widthScale>0 ? Math.min(1, widthScale) : 1;
+        if(isColumn){
+          const heightAllowance = Math.max(0, window.innerHeight - leftRect.top - 48);
+          const heightScale = heightAllowance>0 ? Math.min(1, heightAllowance / WCfg.A4H) : scale;
+          scale = Math.max(scale, heightScale);
+          maxScale = 1;
+        }
+        if(scale>maxScale){ scale=maxScale; }
         if(!isFinite(scale) || scale<=0){ scale=1; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
+        if(isColumn){
+          stage.style.maxWidth=scaledWidth+"px";
+          stage.style.width=scaledWidth+"px";
+          stage.style.minWidth=scaledWidth+"px";
+          stage.style.gap="20px";
+          stage.style.padding="8px 0 32px";
+          stage.style.margin="0 auto";
+        }
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
           page.style.margin="0";
