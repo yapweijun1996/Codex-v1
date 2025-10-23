@@ -2010,6 +2010,24 @@
       { label:"18", px:"18px", exec:"6" },
       { label:"24", px:"24px", exec:"7" }
     ];
+    const FONT_COLORS=[
+      { label:"Red", value:"#d13438" },
+      { label:"Dark Red", value:"#a4262c" },
+      { label:"Orange", value:"#ca5010" },
+      { label:"Gold", value:"#986f0b" },
+      { label:"Yellow", value:"#f8d22a" },
+      { label:"Dark Green", value:"#0b6a0b" },
+      { label:"Green", value:"#16a64d" },
+      { label:"Teal", value:"#038387" },
+      { label:"Blue", value:"#0078d4" },
+      { label:"Dark Blue", value:"#004578" },
+      { label:"Purple", value:"#5c2d91" },
+      { label:"Black", value:"#000000" },
+      { label:"Charcoal", value:"#323130" },
+      { label:"Gray", value:"#605e5c" },
+      { label:"Slate", value:"#7a7574" },
+      { label:"Light Gray", value:"#c8c6c4" }
+    ];
     const HIGHLIGHT_COLORS=[
       { label:"Yellow", value:"#ffff00" },
       { label:"Bright Green", value:"#00ff00" },
@@ -2061,6 +2079,76 @@
       const beforeEnd=range.compareBoundaryPoints(END_TO_START, test) < 0;
       const afterStart=range.compareBoundaryPoints(START_TO_END, test) > 0;
       return beforeEnd && afterStart;
+    }
+    function fallbackApplyFontColor(target, color){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const doc=target.ownerDocument || document;
+      const span=doc.createElement("span");
+      span.style.color=color;
+      const contents=info.range.extractContents();
+      span.appendChild(contents);
+      info.range.insertNode(span);
+      info.sel.removeAllRanges();
+      const newRange=doc.createRange();
+      newRange.selectNodeContents(span);
+      info.sel.addRange(newRange);
+      return true;
+    }
+    function fallbackClearFontColor(target){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const { range }=info;
+      const doc=target.ownerDocument || document;
+      const nodes=[];
+      if(range.commonAncestorContainer && range.commonAncestorContainer.nodeType===1 && target.contains(range.commonAncestorContainer)){
+        nodes.push(range.commonAncestorContainer);
+      }
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==range.commonAncestorContainer && target.contains(current) && intersectsRange(range, current)){
+          nodes.push(current);
+        }
+        while((current=walker.nextNode())){
+          if(!target.contains(current)) continue;
+          if(!intersectsRange(range, current)) continue;
+          nodes.push(current);
+        }
+      }
+      let changed=false;
+      const unwrap=[];
+      for(let i=0;i<nodes.length;i++){
+        const el=nodes[i];
+        if(!el || el.nodeType!==1) continue;
+        let modified=false;
+        if(el.style && el.style.color){
+          el.style.color="";
+          if(el.getAttribute && el.getAttribute("style")==="") el.removeAttribute("style");
+          modified=true;
+        }
+        if(el.hasAttribute && el.hasAttribute("color")){ el.removeAttribute("color"); modified=true; }
+        if(modified) changed=true;
+        if((el.nodeName==="SPAN" || el.nodeName==="FONT") && el.attributes && el.attributes.length===0){ unwrap.push(el); }
+      }
+      for(let i=0;i<unwrap.length;i++){
+        const span=unwrap[i];
+        const parent=span.parentNode;
+        if(!parent) continue;
+        while(span.firstChild){ parent.insertBefore(span.firstChild, span); }
+        parent.removeChild(span);
+      }
+      return changed;
+    }
+    function convertFontColorTags(target){
+      if(!target || !target.querySelectorAll) return;
+      const doc=target.ownerDocument || document;
+      const fonts=target.querySelectorAll("font[color]");
+      for(let i=0;i<fonts.length;i++){
+        const fontEl=fonts[i];
+        const span=doc.createElement("span");
+        span.style.color = fontEl.getAttribute("color") || "";
+        while(fontEl.firstChild){ span.appendChild(fontEl.firstChild); }
+        fontEl.parentNode.replaceChild(span, fontEl);
+      }
     }
     function fallbackApplyHighlight(target, color){
       const info=ensureSelectionInfo(target); if(!info) return false;
@@ -2153,6 +2241,31 @@
       execCommand(target, "fontSize", meta.exec, true);
       convertFontTags(target, meta.exec, meta.px);
     }
+    function applyFontColor(inst, ctx, color){
+      if(!color){ return clearFontColor(inst, ctx); }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      try{ success=document.execCommand("foreColor", false, color); }
+      catch(err){ success=false; }
+      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      if(!success){ success=fallbackApplyFontColor(target, color); }
+      if(success){ convertFontColorTags(target); if(inst){ inst.fontColor=color; } }
+      return success;
+    }
+    function clearFontColor(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      try{ success=document.execCommand("foreColor", false, ""); }
+      catch(err){ success=false; }
+      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      if(fallbackClearFontColor(target)) success=true;
+      if(success && inst){ inst.fontColor=null; }
+      return success;
+    }
     function applyHighlight(inst, ctx, color){
       if(!color){ return clearHighlight(inst, ctx); }
       const target=resolveTarget(inst, ctx); if(!target) return false;
@@ -2235,15 +2348,244 @@
     return {
       FONT_FAMILIES,
       FONT_SIZES,
+      FONT_COLORS,
       HIGHLIGHT_COLORS,
       applyFontFamily,
       applyFontSize,
+      applyFontColor,
+      clearFontColor,
       applyHighlight,
       clearHighlight,
       applyUnderline,
       applyDecorationStyle,
       applySimple
     };
+  })();
+  const FontColorUI=(function(){
+    function normalizeColor(value){
+      if(!value){ return null; }
+      let v=value.trim();
+      if(!v){ return null; }
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)){
+        if(v.length===4){ v="#"+v[1]+v[1]+v[2]+v[2]+v[3]+v[3]; }
+        return v.toLowerCase();
+      }
+      if(/^[0-9a-f]{6}$/i.test(v)){ return "#"+v.toLowerCase(); }
+      if(/^rgb\s*\(/i.test(v)){ return v; }
+      return null;
+    }
+    function appliedColor(value){
+      if(value && value.trim()){ return value; }
+      return WCfg.UI.text;
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("title","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("data-command","format.fontColor");
+      button.setAttribute("aria-label","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="44px";
+      button.style.padding="3px 12px";
+      const iconWrap=document.createElement("span");
+      iconWrap.style.display="flex";
+      iconWrap.style.flexDirection="column";
+      iconWrap.style.alignItems="center";
+      iconWrap.style.lineHeight="1";
+      const letter=document.createElement("span");
+      letter.textContent="A";
+      letter.setAttribute("aria-hidden","true");
+      letter.style.fontWeight="700";
+      letter.style.fontSize="16px";
+      const underline=document.createElement("span");
+      underline.style.marginTop="4px";
+      underline.style.width="20px";
+      underline.style.height="3px";
+      underline.style.borderRadius="4px";
+      underline.style.background="#d13438";
+      underline.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      iconWrap.appendChild(letter);
+      iconWrap.appendChild(underline);
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(iconWrap);
+      button.appendChild(arrow);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.display="none";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      palette.style.padding="12px";
+      palette.style.zIndex="20";
+      palette.style.gap="8px";
+      palette.style.gridTemplateColumns="repeat(4, 28px)";
+      palette.style.alignItems="center";
+      palette.style.justifyItems="center";
+      palette.style.gridAutoRows="28px";
+      palette.style.gridAutoFlow="row";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      const colors=Formatting.FONT_COLORS || [];
+      let currentColor=null;
+      if(inst && typeof inst.fontColor!=="undefined"){
+        currentColor=inst.fontColor;
+      } else if(colors.length){
+        currentColor=colors[0].value;
+        if(inst){ inst.fontColor=currentColor; }
+      }
+      const colorButtons=[];
+      const doc=button.ownerDocument || document;
+      function updatePreview(color){
+        const tone=appliedColor(color);
+        letter.style.color=tone;
+        underline.style.background=tone;
+        underline.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      }
+      function updateSelectionUI(selected){
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const isActive=selected===entry.value;
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+      }
+      const autoBtn=doc.createElement("button");
+      autoBtn.type="button";
+      autoBtn.setAttribute("role","menuitem");
+      autoBtn.textContent="Automatic";
+      autoBtn.style.gridColumn="1 / -1";
+      autoBtn.style.marginBottom="4px";
+      autoBtn.style.padding="6px 8px";
+      autoBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      autoBtn.style.background="#fff";
+      autoBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      autoBtn.style.borderRadius="4px";
+      autoBtn.style.cursor="pointer";
+      function updateAutoState(selected){
+        const active=selected===null || typeof selected==="undefined";
+        autoBtn.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        autoBtn.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      function pickColor(value){
+        setOpen(false);
+        let changed=false;
+        if(value){
+          changed=!!Formatting.applyFontColor(inst, ctx, value);
+          if(changed) currentColor=value;
+        } else {
+          changed=!!Formatting.clearFontColor(inst, ctx);
+          if(changed) currentColor=null;
+        }
+        if(changed){
+          updatePreview(currentColor);
+          updateSelectionUI(currentColor);
+          updateAutoState(currentColor);
+          if(inst) OutputBinding.syncDebounced(inst);
+        }
+      }
+      autoBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(null); });
+      autoBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(autoBtn);
+      for(let i=0;i<colors.length;i++){
+        const swatch=doc.createElement("button");
+        swatch.type="button";
+        swatch.setAttribute("role","menuitem");
+        swatch.setAttribute("data-color", colors[i].value);
+        swatch.setAttribute("aria-label", colors[i].label+" font color");
+        swatch.title=colors[i].label;
+        swatch.style.width="28px";
+        swatch.style.height="28px";
+        swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+        swatch.style.borderRadius="4px";
+        swatch.style.background=colors[i].value;
+        swatch.style.cursor="pointer";
+        swatch.style.padding="0";
+        swatch.style.display="inline-flex";
+        swatch.style.alignItems="center";
+        swatch.style.justifyContent="center";
+        swatch.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(colors[i].value); });
+        swatch.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+        palette.appendChild(swatch);
+        colorButtons.push({ value:colors[i].value, el:swatch });
+      }
+      const moreBtn=doc.createElement("button");
+      moreBtn.type="button";
+      moreBtn.setAttribute("role","menuitem");
+      moreBtn.textContent="More Colors…";
+      moreBtn.style.gridColumn="1 / -1";
+      moreBtn.style.marginTop="8px";
+      moreBtn.style.padding="6px 8px";
+      moreBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      moreBtn.style.background="#fff";
+      moreBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      moreBtn.style.borderRadius="4px";
+      moreBtn.style.cursor="pointer";
+      moreBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        const input=window.prompt("Enter a custom color (hex or rgb)", currentColor || "#d13438");
+        const normalized=normalizeColor(input || "");
+        if(!normalized){
+          if(input && input.trim()){ window.alert("Please enter a valid hex (#RRGGBB) or rgb() color value."); }
+          return;
+        }
+        pickColor(normalized);
+      });
+      moreBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(moreBtn);
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        button.setAttribute("aria-expanded", state?"true":"false");
+        if(state){
+          palette.style.display="grid";
+          palette.setAttribute("aria-hidden","false");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            if(doc.activeElement===button){
+              const first=palette.querySelector("button");
+              if(first) first.focus();
+            }
+          },0);
+        } else {
+          palette.style.display="none";
+          palette.setAttribute("aria-hidden","true");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      palette.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      updatePreview(currentColor);
+      updateSelectionUI(currentColor);
+      updateAutoState(currentColor);
+      container.appendChild(button);
+      container.appendChild(palette);
+      return container;
+    }
+    return { create };
   })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
@@ -2499,6 +2841,11 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.fontColor":{
+      kind:"custom",
+      ariaLabel:"Font Color (字体颜色 / 文字颜色)",
+      render:function(inst, ctx){ return FontColorUI.create(inst, ctx); }
+    },
     "format.highlight":{
       kind:"custom",
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
@@ -2546,7 +2893,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2556,7 +2903,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -2577,6 +2924,7 @@
     this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
+    this.fontColor = (Formatting && Formatting.FONT_COLORS && Formatting.FONT_COLORS.length ? Formatting.FONT_COLORS[0].value : "#d13438");
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this._mount();
     OutputBinding.syncDebounced(this);
