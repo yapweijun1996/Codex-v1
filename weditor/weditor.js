@@ -3,7 +3,7 @@
   const WCfg=(function(){
     const A4W=794, A4H=1123, HDR_H=84, FTR_H=64, PAD=28;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
-    const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=0.92;
+    const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=1;
     const innerHFWidth = A4W - 36;
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
@@ -1781,16 +1781,10 @@
           page.style.transform="";
           page.style.transformOrigin="";
           const wrap=document.createElement("div");
-          wrap.style.width=WCfg.A4W+"px";
-          wrap.style.height=WCfg.A4H+"px";
-          wrap.style.transformOrigin="top left";
-          wrap.style.transform="scale("+scale+")";
-          wrap.style.display="flex";
-          wrap.style.alignItems="flex-start";
-          wrap.style.justifyContent="flex-start";
-          wrap.style.position="absolute";
-          wrap.style.left="0";
-          wrap.style.top="0";
+          wrap.style.width=scaledWidth+"px";
+          wrap.style.height=scaledHeight+"px";
+          wrap.style.display="block";
+          wrap.style.position="relative";
           wrap.style.maxWidth="100%";
           wrap.style.overflow="visible";
           const outer=document.createElement("div");
@@ -1801,8 +1795,15 @@
           outer.style.maxWidth="100%";
           outer.style.margin="0 auto";
           outer.style.overflow="visible";
-          wrap.appendChild(page);
+          page.style.transformOrigin="top left";
+          page.style.transform="scale("+scale+")";
+          page.style.position="absolute";
+          page.style.left="0";
+          page.style.top="0";
+          page.style.width=WCfg.A4W+"px";
+          page.style.height=WCfg.A4H+"px";
           outer.appendChild(wrap);
+          wrap.appendChild(page);
           stage.appendChild(outer);
           if(i<out.pages.length-1){
             const br=document.createElement("div");
