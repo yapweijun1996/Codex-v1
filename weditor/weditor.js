@@ -31,6 +31,9 @@
       left:{ flex:"1", minWidth:"0", padding:"48px 36px", display:"grid", gridTemplateColumns:"minmax(0,1fr)", gap:"28px", justifyItems:"center", alignContent:"start", background:"linear-gradient(180deg,#f6f4f3 0%,#ecebea 100%)", overflowX:"hidden", overflowY:"auto", boxSizing:"border-box" },
       previewStage:{ display:"grid", justifyItems:"center", gap:"32px", width:"100%", maxWidth:"min(100%, "+Math.round(A4W*PREVIEW_MAX_SCALE+120)+"px)", margin:"0 auto", padding:"12px 0 48px", boxSizing:"border-box" },
       pageDivider:{ width:"100%", textAlign:"center", color:UI.textDim, font:"12px/1.4 Segoe UI,system-ui", borderTop:"1px dashed "+UI.borderSubtle, padding:"14px 0 0", opacity:"0.75" },
+      breakMarker:{ display:"flex", flexWrap:"nowrap", alignItems:"center", justifyContent:"center", gap:"8px", margin:"12px 0", padding:"6px 12px", border:"1px dashed "+UI.brand, borderRadius:"999px", background:"#f1f8ff", color:UI.brand, font:"11px/1.4 Segoe UI,system-ui", letterSpacing:".08em", textTransform:"uppercase", userSelect:"none" },
+      breakMarkerLine:{ flex:"1", height:"1px", background:UI.brand, opacity:"0.35" },
+      breakMarkerLabel:{ font:"11px/1.4 Segoe UI,system-ui", fontWeight:"600", whiteSpace:"nowrap" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
@@ -368,6 +371,132 @@
     return { apply };
   })();
   const Breaks=(function(){
+    const MARKER_ATTR="data-weditor-break-marker";
+    const MARKER_SELECTOR="["+MARKER_ATTR+"]";
+    function isBreakComment(node){ return node && node.nodeType===8 && String(node.nodeValue).trim().toLowerCase()==="page:break"; }
+    function isWhitespace(node){ return node && node.nodeType===3 && !node.nodeValue.trim(); }
+    function isMarker(node){ return node && node.nodeType===1 && node.hasAttribute && node.hasAttribute(MARKER_ATTR); }
+    function refreshMarker(marker){
+      if(!marker) return marker;
+      marker.setAttribute(MARKER_ATTR,"1");
+      marker.dataset.weditorBreakMarker="1";
+      marker.setAttribute("contenteditable","false");
+      marker.setAttribute("role","separator");
+      marker.setAttribute("aria-label","Page break");
+      marker.setAttribute("title","Page break");
+      applyStyles(marker, WCfg.Style.breakMarker || {});
+      let spans = marker.querySelectorAll ? Array.prototype.slice.call(marker.querySelectorAll("span")) : [];
+      if(!spans || spans.length<3){
+        marker.innerHTML="";
+        const left=document.createElement("span");
+        const label=document.createElement("span");
+        const right=document.createElement("span");
+        left.setAttribute("aria-hidden","true");
+        right.setAttribute("aria-hidden","true");
+        label.textContent="Page Break";
+        marker.appendChild(left);
+        marker.appendChild(label);
+        marker.appendChild(right);
+        spans=[left,label,right];
+      }
+      if(spans.length>=3){
+        applyStyles(spans[0], WCfg.Style.breakMarkerLine || {});
+        applyStyles(spans[2], WCfg.Style.breakMarkerLine || {});
+        applyStyles(spans[1], WCfg.Style.breakMarkerLabel || {});
+        if(!spans[1].textContent || !spans[1].textContent.trim()) spans[1].textContent="Page Break";
+        spans[0].setAttribute("aria-hidden","true");
+        spans[2].setAttribute("aria-hidden","true");
+      }
+      return marker;
+    }
+    function createMarker(){
+      const marker=document.createElement("div");
+      return refreshMarker(marker);
+    }
+    function ensureMarker(comment){
+      if(!comment || !comment.parentNode) return null;
+      let sibling=comment.nextSibling;
+      while(isWhitespace(sibling)) sibling=sibling.nextSibling;
+      if(isMarker(sibling)) return refreshMarker(sibling);
+      const marker=createMarker();
+      const parent=comment.parentNode;
+      if(sibling) parent.insertBefore(marker, sibling);
+      else parent.appendChild(marker);
+      return marker;
+    }
+    function getCommentForMarker(marker){
+      if(!marker) return null;
+      let prev=marker.previousSibling;
+      while(prev && isWhitespace(prev)) prev=prev.previousSibling;
+      if(isBreakComment(prev)) return prev;
+      let next=marker.nextSibling;
+      while(next && isWhitespace(next)) next=next.nextSibling;
+      if(isBreakComment(next)) return next;
+      return null;
+    }
+    function ensureCommentForMarker(marker){
+      if(!marker || !marker.parentNode) return null;
+      const existing=getCommentForMarker(marker);
+      if(existing){
+        if(existing.nextSibling!==marker){ marker.parentNode.insertBefore(existing, marker); }
+        return existing;
+      }
+      const comment=document.createComment("page:break");
+      marker.parentNode.insertBefore(comment, marker);
+      return comment;
+    }
+    function removeMarkerElement(marker){ if(marker && marker.parentNode) marker.parentNode.removeChild(marker); }
+    function removeMarkersForComment(comment){
+      if(!comment || !comment.parentNode) return;
+      let next=comment.nextSibling;
+      while(next && isWhitespace(next)) next=next.nextSibling;
+      if(isMarker(next)) removeMarkerElement(next);
+      let prev=comment.previousSibling;
+      while(prev && isWhitespace(prev)) prev=prev.previousSibling;
+      if(isMarker(prev)) removeMarkerElement(prev);
+    }
+    function ensureMarkers(root){
+      if(!root) return;
+      if(root.querySelectorAll){
+        const markers=root.querySelectorAll(MARKER_SELECTOR);
+        for(let i=0;i<markers.length;i++){
+          const marker=markers[i];
+          const refreshed=refreshMarker(marker);
+          ensureCommentForMarker(refreshed);
+        }
+      }
+      const walker=document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, false);
+      let node;
+      while((node=walker.nextNode())){
+        if(isBreakComment(node)) ensureMarker(node);
+      }
+    }
+    function stripMarkers(root){
+      if(!root || !root.querySelectorAll) return;
+      const markers=root.querySelectorAll(MARKER_SELECTOR);
+      for(let i=0;i<markers.length;i++){
+        const marker=markers[i];
+        removeMarkerElement(marker);
+      }
+    }
+    function htmlWithoutMarkers(html){
+      if(typeof document==="undefined") return html;
+      const tmp=document.createElement("div");
+      tmp.innerHTML=html;
+      stripMarkers(tmp);
+      return tmp.innerHTML;
+    }
+    function commentFromNode(node){
+      if(isBreakComment(node)) return node;
+      if(isMarker(node)) return getCommentForMarker(node);
+      return null;
+    }
+    function removeCommentNode(comment){
+      if(!comment) return false;
+      removeMarkersForComment(comment);
+      if(comment.parentNode) comment.parentNode.removeChild(comment);
+      return true;
+    }
     function insert(targetEl){
       function liftNodeToTarget(node){
         while(node.parentNode && node.parentNode!==targetEl){
@@ -403,10 +532,15 @@
       }else{
         targetEl.appendChild(comment);
       }
+      const marker=ensureMarker(comment);
       function nextContentSibling(node){
         let current=node.nextSibling;
         while(current){
-          if(current.nodeType===8 && String(current.nodeValue).trim().toLowerCase()==="page:break"){
+          if(isBreakComment(current)){
+            current=current.nextSibling;
+            continue;
+          }
+          if(isMarker(current)){
             current=current.nextSibling;
             continue;
           }
@@ -448,6 +582,7 @@
         selection.addRange(range);
       }
       let caretTarget=nextContentSibling(comment);
+      if(!caretTarget && marker) caretTarget=nextContentSibling(marker);
       if(!caretTarget){
         const placeholder=document.createElement("p");
         const text=document.createTextNode("");
@@ -461,16 +596,28 @@
     function remove(targetEl){
       const sel=window.getSelection ? window.getSelection() : null; let node=(sel && sel.rangeCount) ? sel.anchorNode : null;
       if(!node || !targetEl.contains(node)){
-        for(let i=targetEl.childNodes.length-1;i>=0;i--){ const n=targetEl.childNodes[i]; if(n.nodeType===8 && String(n.nodeValue).trim().toLowerCase()==="page:break"){ n.remove(); return true; } }
+        for(let i=targetEl.childNodes.length-1;i>=0;i--){
+          const n=targetEl.childNodes[i];
+          const comment=commentFromNode(n);
+          if(comment){
+            removeCommentNode(comment);
+            return true;
+          }
+        }
         alert("No page break found near cursor."); return false;
       }
       while(node && node.parentNode!==targetEl){ node=node.parentNode; }
-      function isWS(n){ return n && n.nodeType===3 && !n.nodeValue.trim(); }
-      let f=node.nextSibling; while(isWS(f)) f=f.nextSibling; if(f && f.nodeType===8 && String(f.nodeValue).trim().toLowerCase()==="page:break"){ f.remove(); return true; }
-      let b=node.previousSibling; while(isWS(b)) b=b.previousSibling; if(b && b.nodeType===8 && String(b.nodeValue).trim().toLowerCase()==="page:break"){ b.remove(); return true; }
+      let f=node.nextSibling; while(isWhitespace(f)) f=f.nextSibling;
+      let comment=commentFromNode(f);
+      if(comment && removeCommentNode(comment)) return true;
+      if(isMarker(f)){ removeMarkerElement(f); return true; }
+      let b=node.previousSibling; while(isWhitespace(b)) b=b.previousSibling;
+      comment=commentFromNode(b);
+      if(comment && removeCommentNode(comment)) return true;
+      if(isMarker(b)){ removeMarkerElement(b); return true; }
       alert("No page break found next to the cursor."); return false;
     }
-    return { insert, remove };
+    return { insert, remove, ensureMarkers, htmlWithoutMarkers };
   })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -588,7 +735,8 @@
       const headerHeight=layout.headerHeight;
       const footerHeight=layout.footerHeight;
       const AVAIL=Math.max(64, A4H - headerHeight - footerHeight - 2*PAD);
-      const sourceHTML=Sanitizer.clean(rawHTML);
+      const preparedHTML = Breaks && typeof Breaks.htmlWithoutMarkers==="function" ? Breaks.htmlWithoutMarkers(rawHTML) : rawHTML;
+      const sourceHTML=Sanitizer.clean(preparedHTML);
       const src=document.createElement("div"); src.innerHTML=sourceHTML;
       function para(htmlOrText){
         const p=document.createElement("p"); p.style.cssText="margin:.6em 0";
@@ -1611,7 +1759,10 @@
     function sync(inst){
       if(!inst.outputEl) return;
       if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
-      else { inst.outputEl.value = inst.el.innerHTML; }
+      else {
+        const raw=inst.el.innerHTML;
+        inst.outputEl.value = Breaks && typeof Breaks.htmlWithoutMarkers==="function" ? Breaks.htmlWithoutMarkers(raw) : raw;
+      }
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
@@ -1807,11 +1958,11 @@
       const left=document.createElement("div"); applyStyles(left, WCfg.Style.left);
       const rightWrap=document.createElement("div"); applyStyles(rightWrap, WCfg.Style.rightWrap);
       rightWrap.appendChild(WDom.title("Editor"));
-      const area=document.createElement("div"); area.contentEditable="true"; applyStyles(area, WCfg.Style.area); area.innerHTML=inst.el.innerHTML; rightWrap.appendChild(area);
+      const area=document.createElement("div"); area.contentEditable="true"; applyStyles(area, WCfg.Style.area); area.innerHTML=inst.el.innerHTML; Breaks.ensureMarkers(area); rightWrap.appendChild(area);
       const ctx={
         area,
         refreshPreview:render,
-        writeBack:function(){ inst.el.innerHTML = Sanitizer.clean(area.innerHTML); OutputBinding.sync(inst); return true; },
+        writeBack:function(){ inst.el.innerHTML = Sanitizer.clean(area.innerHTML); Breaks.ensureMarkers(inst.el); OutputBinding.sync(inst); return true; },
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
@@ -1830,8 +1981,8 @@
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
       window.setTimeout(function(){ area.focus(); },0);
       layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
-      area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); }, 0); });
-      let t=null; area.addEventListener("input", function(){ if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
+      area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensureMarkers(area); }, 0); });
+      let t=null; area.addEventListener("input", function(){ Breaks.ensureMarkers(area); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
       render();
       function render(attempt){
         attempt = attempt || 0;
@@ -2125,7 +2276,7 @@
       run:function(inst){ inst.footerEnabled = !inst.footerEnabled; OutputBinding.syncDebounced(inst); } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
-    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(inst.el.innerHTML)); } },
+    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); const raw=Breaks && typeof Breaks.htmlWithoutMarkers==="function" ? Breaks.htmlWithoutMarkers(inst.el.innerHTML) : inst.el.innerHTML; ExportUI.open(html, Sanitizer.clean(raw)); } },
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
@@ -2172,10 +2323,11 @@
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
-    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); },0); }; }(this));
+    Breaks.ensureMarkers(this.el);
+    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensureMarkers(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
-    this.el.addEventListener("input", (function(self){ return function(){ OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("input", (function(self){ return function(){ Breaks.ensureMarkers(self.el); OutputBinding.syncDebounced(self); }; })(this));
     this.el.__winst = this;
   };
   const WEditor=(function(){
