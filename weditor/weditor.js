@@ -656,9 +656,10 @@
       const AVAIL=Math.max(64, A4H - headerHeight - footerHeight - 2*PAD);
       const sourceHTML=Sanitizer.clean(rawHTML);
       const src=document.createElement("div"); src.innerHTML=sourceHTML;
-      function para(htmlOrText){
+      function para(htmlOrText, opts){
         const p=document.createElement("p"); p.style.cssText="margin:.6em 0";
         if(typeof htmlOrText==="string") p.innerHTML=htmlOrText; else p.textContent=htmlOrText;
+        if(opts && opts.filler){ p.dataset.weditorFiller="1"; }
         return p;
       }
       const linear=[];
@@ -670,8 +671,8 @@
         }else if(n.nodeType===3){
           const txt=n.nodeValue.trim(); if(txt) linear.push({t:"block", node:para(txt)});
         }else if(n.nodeType===1){
-          if(n.tagName==="DIV" && n.childNodes.length===1 && n.firstChild.nodeName==="BR"){ linear.push({t:"block", node:para("&nbsp;")}); }
-          else if(n.tagName==="DIV" && n.innerHTML.trim()===""){ linear.push({t:"block", node:para("&nbsp;")}); }
+          if(n.tagName==="DIV" && n.childNodes.length===1 && n.firstChild.nodeName==="BR"){ linear.push({t:"block", node:para("&nbsp;", {filler:true})}); }
+          else if(n.tagName==="DIV" && n.innerHTML.trim()===""){ linear.push({t:"block", node:para("&nbsp;", {filler:true})}); }
           else { const wrap=document.createElement("div"); wrap.style.cssText="margin:.6em 0"; wrap.appendChild(n.cloneNode(true)); linear.push({t:"block", node:wrap}); }
         }
       }
@@ -686,7 +687,8 @@
         const text=(pg.content.textContent||"").replace(/\u00a0/g," ").replace(/\u200b/g,"").trim();
         if(text) return true;
         if(!pg.content.querySelector) return false;
-        return !!pg.content.querySelector("img,table,svg,canvas,video,figure,ul,ol,li,blockquote,hr,pre,code");
+        const fillerSelector="[data-weditor-filler=\"1\"]";
+        return !!pg.content.querySelector(`*:not(${fillerSelector})`);
       }
       function push(force){ if(force || hasContent(cur)){ pages.push(cur); } }
       function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); used=0; }
