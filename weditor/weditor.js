@@ -2564,7 +2564,19 @@
       customInput.style.pointerEvents="none";
       customInput.style.width="0";
       customInput.style.height="0";
-      moreBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); customInput.click(); });
+      let suppressClose=false;
+      function beginCustomSelection(){
+        suppressClose=true;
+      }
+      function endCustomSelection(){
+        suppressClose=false;
+      }
+      moreBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        beginCustomSelection();
+        customInput.click();
+      });
       customInput.addEventListener("input", function(e){
         const val=e.target && e.target.value;
         if(!val) return;
@@ -2573,16 +2585,19 @@
         updateAutomaticState(val);
       });
       customInput.addEventListener("change", function(e){
+        endCustomSelection();
         const val=e.target && e.target.value;
         if(val){ pickColor(val); }
       });
       customInput.addEventListener("cancel", function(){
+        endCustomSelection();
         const fallback=currentColor && /^#/.test(currentColor) ? currentColor : Formatting.FONT_COLOR_DEFAULT || "#d13438";
         customInput.value=fallback;
         updatePreview(currentColor);
         updateSelectionUI(currentColor);
         updateAutomaticState(currentColor);
       });
+      customInput.addEventListener("blur", endCustomSelection);
       customRow.appendChild(moreBtn);
       customRow.appendChild(customPreview);
       customRow.appendChild(customInput);
@@ -2611,7 +2626,7 @@
           doc.removeEventListener("keydown", onDocKey);
         }
       }
-      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocPointer(e){ if(suppressClose) return; if(!container.contains(e.target)){ setOpen(false); } }
       function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
       button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
       button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
