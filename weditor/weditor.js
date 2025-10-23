@@ -1711,6 +1711,9 @@
         select.onchange=function(e){
           if(meta.run) meta.run(inst, { event:e, ctx, value:select.value });
         };
+        if(typeof meta.decorate==="function"){
+          meta.decorate(select, wrap);
+        }
         wrap.appendChild(select);
         return wrap;
       }
@@ -2009,6 +2012,15 @@
       { label:"18", px:"18px", exec:"6" },
       { label:"24", px:"24px", exec:"7" }
     ];
+    const HIGHLIGHT_COLORS=[
+      { label:"Yellow 黃色", value:"#fff176" },
+      { label:"Green 綠色", value:"#c8e6c9" },
+      { label:"Pink 粉紅", value:"#f8bbd0" },
+      { label:"Blue 藍色", value:"#b3e5fc" },
+      { label:"Orange 橙色", value:"#ffe0b2" },
+      { label:"Lavender 薰衣草", value:"#e1bee7" },
+      { label:"No Color 無底色", value:"__none" }
+    ];
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function focusTarget(target){ if(target && typeof target.focus==="function"){ try{ target.focus({ preventScroll:true }); } catch(e){ target.focus(); } } }
     function execCommand(target, command, value, useCss){
@@ -2090,14 +2102,88 @@
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, command, null, true);
     }
+    function highlightCommandName(){
+      if(document.queryCommandSupported){
+        if(document.queryCommandSupported("hiliteColor")) return "hiliteColor";
+        if(document.queryCommandSupported("backColor")) return "backColor";
+      }
+      return "backColor";
+    }
+    function toggleStyleWithCSS(enable){
+      try{ document.execCommand("styleWithCSS", false, enable); } catch(e){}
+    }
+    function execHighlight(command, value){
+      const useCss = command === "backColor";
+      if(useCss) toggleStyleWithCSS(true);
+      try{ document.execCommand(command, false, value); } catch(e){}
+      if(useCss) toggleStyleWithCSS(false);
+    }
+    function clearInlineHighlight(target){
+      if(!target) return;
+      const sel=window.getSelection();
+      if(!sel || sel.rangeCount===0){ return; }
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.commonAncestorContainer)){ return; }
+      if(range.collapsed){ return; }
+      const doc=target.ownerDocument || document;
+      const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+        acceptNode:function(node){
+          if(!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
+          if(node.style && (node.style.backgroundColor || node.style.background)) return NodeFilter.FILTER_ACCEPT;
+          const styleAttr=node.getAttribute ? node.getAttribute("style") : null;
+          if(styleAttr && /background(?:-color)?\s*:/i.test(styleAttr)) return NodeFilter.FILTER_ACCEPT;
+          return NodeFilter.FILTER_SKIP;
+        }
+      });
+      const updates=[]; let node;
+      while((node=walker.nextNode())){ updates.push(node); }
+      for(let i=0;i<updates.length;i++){
+        const el=updates[i];
+        if(el.style){
+          el.style.removeProperty("background");
+          el.style.removeProperty("background-color");
+          const styleAttr=el.getAttribute("style");
+          if(styleAttr && !styleAttr.replace(/\s|;|:/g,"").length){
+            el.removeAttribute("style");
+          }
+        } else if(el.getAttribute){
+          const styleAttr=el.getAttribute("style");
+          if(styleAttr){
+            const cleaned=styleAttr.replace(/background(?:-color)?\s*:[^;]+;?/ig,"");
+            if(cleaned.trim()){ el.setAttribute("style", cleaned); }
+            else { el.removeAttribute("style"); }
+          }
+        }
+        if(el.tagName && el.tagName.toLowerCase()==="span" && el.attributes.length===0){
+          const parent=el.parentNode;
+          if(parent){
+            while(el.firstChild){ parent.insertBefore(el.firstChild, el); }
+            parent.removeChild(el);
+          }
+        }
+      }
+    }
+    function applyHighlight(inst, ctx, color){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      const command=highlightCommandName();
+      if(color===null || color==="__none"){
+        execHighlight(command, "transparent");
+        clearInlineHighlight(target);
+        return;
+      }
+      execHighlight(command, color);
+    }
     return {
       FONT_FAMILIES,
       FONT_SIZES,
+      HIGHLIGHT_COLORS,
       applyFontFamily,
       applyFontSize,
       applyUnderline,
       applyDecorationStyle,
-      applySimple
+      applySimple,
+      applyHighlight
     };
   })();
   const Commands={
@@ -2171,6 +2257,55 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.highlight":{
+      label:"🖊️",
+      kind:"select",
+      ariaLabel:"Text highlight color (文字底色)",
+      placeholder:"Highlight 色彩",
+      options:Formatting.HIGHLIGHT_COLORS.map(function(item){ return { label:item.label, value:item.value }; }),
+      decorate:function(select, wrap){
+        if(select){ select.style.minWidth="120px"; select.title="Text highlight color"; }
+        if(wrap){
+          const labelEl=wrap.querySelector("span");
+          if(labelEl){
+            labelEl.textContent="🖊️";
+            labelEl.style.fontSize="18px";
+            labelEl.style.lineHeight="1";
+            labelEl.style.borderBottom="4px solid #ffe066";
+            labelEl.style.paddingBottom="2px";
+            labelEl.style.display="inline-flex";
+            labelEl.style.alignItems="center";
+            labelEl.style.justifyContent="center";
+            labelEl.setAttribute("aria-hidden","true");
+          }
+        }
+        if(select){
+          if(!select.getAttribute("data-highlight-decorated")){
+            select.setAttribute("data-highlight-decorated","1");
+            for(let i=0;i<select.options.length;i++){
+              const opt=select.options[i];
+              if(!opt || !opt.value){ continue; }
+              if(opt.value==="__none"){ opt.style.backgroundColor="#ffffff"; opt.style.color="#444"; }
+              else { opt.style.backgroundColor=opt.value; opt.style.color="#111"; }
+            }
+          }
+        }
+      },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value){ return; }
+        const color=value==="__none" ? null : value;
+        Formatting.applyHighlight(inst, arg && arg.ctx, color);
+        OutputBinding.syncDebounced(inst);
+        if(arg && arg.event && arg.event.target){
+          const select=arg.event.target;
+          window.setTimeout(function(){
+            select.selectedIndex=0;
+            select.style.background="";
+          }, 0);
+        }
+      }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -2213,7 +2348,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2223,7 +2358,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
