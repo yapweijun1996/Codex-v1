@@ -2,6 +2,7 @@
   "use strict";
   const WCfg=(function(){
     const A4W=794, A4H=1123, HDR_H=84, FTR_H=64, PAD=0;
+    const HDR_MIN=24, FTR_MIN=20;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
     const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=1;
     const innerHFWidth = A4W - 36;
@@ -69,7 +70,7 @@
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
-    return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
+    return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
   })();
   function applyStyles(el, styles){ for(const k in styles){ el.style[k]=styles[k]; } }
   const StyleMirror=(function(){
@@ -495,7 +496,8 @@
       if(headerEnabled){
         header=document.createElement("div");
         header.className="weditor_page-header";
-        header.style.cssText="position:absolute;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+WCfg.HDR_H+"px;";
+        const minHeaderHeight=Math.max(WCfg.HDR_MIN, headerHeight);
+        header.style.cssText="position:absolute;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+minHeaderHeight+"px;";
         header.innerHTML=headerHTML;
         HFAlign.applyHeader(header, headerAlign);
         page.appendChild(header);
@@ -514,7 +516,8 @@
       if(footerEnabled){
         footer=document.createElement("div");
         footer.className="weditor_page-footer";
-        footer.style.cssText="position:absolute;left:0;right:0;bottom:0;"+FOOTER_BASE_STYLE+"min-height:"+WCfg.FTR_H+"px;";
+        const minFooterHeight=Math.max(WCfg.FTR_MIN, footerHeight);
+        footer.style.cssText="position:absolute;left:0;right:0;bottom:0;"+FOOTER_BASE_STYLE+"min-height:"+minFooterHeight+"px;";
         const fl=document.createElement("div");
         fl.className="weditor_page-footer-left";
         fl.style.cssText="flex:1 1 auto;min-width:160px";
@@ -545,7 +548,9 @@
       const host=document.createElement("div");
       host.style.cssText="position:absolute;left:-99999px;top:-99999px;width:"+WCfg.A4W+"px;visibility:hidden;pointer-events:none;opacity:0;";
       const box=document.createElement("div");
-      box.style.cssText=(kind==="header"?HEADER_BASE_STYLE:FOOTER_BASE_STYLE)+"min-height:"+(kind==="header"?WCfg.HDR_H:WCfg.FTR_H)+"px;width:"+WCfg.A4W+"px;";
+      const minHeight=kind==="header"?WCfg.HDR_MIN:WCfg.FTR_MIN;
+      const fallbackHeight=kind==="header"?WCfg.HDR_H:WCfg.FTR_H;
+      box.style.cssText=(kind==="header"?HEADER_BASE_STYLE:FOOTER_BASE_STYLE)+"min-height:"+minHeight+"px;width:"+WCfg.A4W+"px;";
       if(kind==="footer"){
         box.style.display="flex";
         const left=document.createElement("div");
@@ -562,11 +567,10 @@
       host.appendChild(box);
       document.body.appendChild(host);
       const rect=box.getBoundingClientRect();
-      const min=kind==="header"?WCfg.HDR_H:WCfg.FTR_H;
       let height=Math.ceil(rect.height||0);
-      if(!height || !isFinite(height)) height=min;
+      if(!height || !isFinite(height)) height=fallbackHeight;
       document.body.removeChild(host);
-      return Math.max(min, height);
+      return Math.max(minHeight, height);
     }
     function measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign){
       const headerHeight = headerEnabled ? measureSection("header", substituteTokensForMeasure(headerHTML||""), headerAlign) : 0;
@@ -657,19 +661,19 @@
         const pg=pages[i];
         if(headerEnabled && pg.headerNode) Tokens.apply(pg.headerNode, {page:i+1,total,date:dateStr});
         if(footerEnabled && pg.footerNode) Tokens.apply(pg.footerNode, {page:i+1,total,date:dateStr});
-        let topOffset=headerHeight;
+        let topOffset=Math.max(WCfg.HDR_MIN, headerHeight);
         if(headerEnabled && pg.headerNode){
           const rect=pg.headerNode.getBoundingClientRect();
-          const actual=Math.max(headerHeight, Math.ceil(rect.height||0));
-          topOffset=Math.max(WCfg.HDR_H, actual);
-          pg.headerNode.style.minHeight=WCfg.HDR_H+"px";
+          const actual=Math.max(Math.ceil(rect.height||0), WCfg.HDR_MIN);
+          topOffset=Math.max(headerHeight, actual);
+          pg.headerNode.style.minHeight=Math.max(actual, WCfg.HDR_MIN)+"px";
         }
-        let bottomOffset=footerHeight;
+        let bottomOffset=Math.max(WCfg.FTR_MIN, footerHeight);
         if(footerEnabled && pg.footerNode){
           const rect=pg.footerNode.getBoundingClientRect();
-          const actual=Math.max(footerHeight, Math.ceil(rect.height||0));
-          bottomOffset=Math.max(WCfg.FTR_H, actual);
-          pg.footerNode.style.minHeight=WCfg.FTR_H+"px";
+          const actual=Math.max(Math.ceil(rect.height||0), WCfg.FTR_MIN);
+          bottomOffset=Math.max(footerHeight, actual);
+          pg.footerNode.style.minHeight=Math.max(actual, WCfg.FTR_MIN)+"px";
         }
         if(pg.content){
           pg.content.style.top = (headerEnabled?topOffset:0)+"px";
