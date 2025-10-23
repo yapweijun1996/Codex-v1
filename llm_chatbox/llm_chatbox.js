@@ -638,7 +638,7 @@ body.chat-fullscreen-active {
               "After the summary, add a `System Insight 💡` section with 2-3 short sentences or bullet points that interpret the data (status meaning, risks, suggested next actions).",
               "Include a section titled `Executed SQL` that wraps the query in a ```sql``` block and keep any brief commentary outside the fence.",
               "Where helpful, translate workflow/status codes into plain language inside parentheses so non-technical users understand.",
-              "Workflow status code cheat sheet: drf = Draft 草稿 (still editable), sbm = Submitted 已送審 (waiting approval), apr = Approved 已核准 (ready for fulfilment), cir = Certified 已結案/已核准 (ready for billing), rej = Rejected 已退回 (needs rework), cls = Closed 已結束 (no further action), void = Void 作廢 (cancelled), hol = On Hold 暫停 (awaiting follow-up). For unfamiliar codes, mention it as 未知代碼 <code> and ask if they can clarify.",
+              "Workflow status code cheat sheet: drf = Draft 草稿 (still editable), cir = Circulation 送審中 (pending approval), app = Approved 已核准 (ready for fulfilment/billing), sbm = Submitted 已送審 (waiting routing), rej = Rejected 已退回 (needs rework), cls = Closed 已結束 (no further action), void = Void 作廢 (cancelled), hol = On Hold 暫停 (awaiting follow-up). For unfamiliar codes, mention it as 未知代碼 <code> and ask if they can clarify.",
               "Keep the overall response tight, friendly, and decision oriented; avoid raw tables because the UI already shows them."
         ].join(" "),
             examples: [
