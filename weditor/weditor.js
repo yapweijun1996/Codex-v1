@@ -2366,6 +2366,116 @@
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, command, null, true);
     }
+    function toggleList(inst, ctx, mode){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const command = mode==="ordered" ? "insertOrderedList" : "insertUnorderedList";
+      return execCommand(target, command, null, false);
+    }
+    function closestListFromSelection(target, listTag){
+      if(!target) return null;
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      while(container && container!==target){
+        if(container.nodeType===1){
+          const tag=(container.tagName||"").toLowerCase();
+          if(listTag==="ul" && tag==="ul") return container;
+          if(listTag==="ol" && tag==="ol") return container;
+          if(listTag==="any" && (tag==="ul" || tag==="ol")) return container;
+        }
+        container=container.parentNode;
+      }
+      return null;
+    }
+    function ensureList(inst, ctx, listTag, createIfMissing){
+      const target=resolveTarget(inst, ctx); if(!target) return null;
+      let list=closestListFromSelection(target, listTag);
+      if(list) return list;
+      if(createIfMissing===false){ return null; }
+      toggleList(inst, ctx, listTag==="ol" ? "ordered" : "unordered");
+      list=closestListFromSelection(target, listTag);
+      return list;
+    }
+    function applyListStyle(inst, ctx, listTag, style){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const list=ensureList(inst, ctx, listTag, true);
+      if(!list) return false;
+      if(!style || style==="default"){
+        list.style.removeProperty("list-style-type");
+        if(listTag==="ul") list.removeAttribute("data-weditor-custom-bullet");
+        return true;
+      }
+      list.style.listStyleType = style;
+      if(listTag==="ul"){
+        if(style.charAt(0)==="\""){
+          const symbol=style.replace(/^"|"$/g,"").trim();
+          if(symbol){ list.setAttribute("data-weditor-custom-bullet", symbol); }
+        } else {
+          list.removeAttribute("data-weditor-custom-bullet");
+        }
+      }
+      return true;
+    }
+    function applyCustomBullet(inst, ctx, symbol){
+      if(typeof symbol!=="string"){ return false; }
+      let value=symbol.trim();
+      if(!value){ return false; }
+      if(value.length>4){ value=value.slice(0,4); }
+      const escaped=value.replace(/"/g,"\"");
+      return applyListStyle(inst, ctx, "ul", "\""+escaped+" \"");
+    }
+    function getListStyle(inst, ctx, listTag){
+      const target=resolveTarget(inst, ctx); if(!target) return null;
+      const list=closestListFromSelection(target, listTag);
+      if(!list) return null;
+      const custom=list.getAttribute("data-weditor-custom-bullet");
+      if(custom){ return "custom:"+custom; }
+      const inline=list.style && list.style.listStyleType ? list.style.listStyleType.trim() : "";
+      if(inline){ return inline; }
+      if(window.getComputedStyle){
+        const computed=window.getComputedStyle(list);
+        if(computed && computed.listStyleType){ return computed.listStyleType.trim(); }
+      }
+      return null;
+    }
+    function listDepth(list){
+      let depth=0; let node=list.parentNode;
+      while(node){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toLowerCase();
+          if(tag==="ol"){ depth++; }
+        }
+        node=node.parentNode;
+      }
+      return depth;
+    }
+    function applyMultilevelPreset(inst, ctx, preset, createIfMissing){
+      if(!preset || !Array.isArray(preset.levels)){ return false; }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const root=ensureList(inst, ctx, "ol", createIfMissing!==false);
+      if(!root) return false;
+      const lists=[root].concat(Array.prototype.slice.call(root.querySelectorAll("ol")));
+      for(let i=0;i<lists.length;i++){
+        const list=lists[i];
+        const depth=listDepth(list);
+        const style=preset.levels[Math.min(depth, preset.levels.length-1)];
+        if(style){ list.style.listStyleType = style; }
+      }
+      root.setAttribute("data-weditor-multilevel", preset.id || "custom");
+      return true;
+    }
+    function getMultilevelPreset(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return null;
+      const list=closestListFromSelection(target, "ol");
+      if(!list) return null;
+      const preset=list.getAttribute("data-weditor-multilevel");
+      if(preset){ return preset; }
+      return null;
+    }
     function applyAlign(inst, ctx, align){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       const map={ left:"justifyLeft", center:"justifyCenter", right:"justifyRight", justify:"justifyFull" };
@@ -2394,7 +2504,13 @@
       applyUnderline,
       applyDecorationStyle,
       applySimple,
-      applyAlign
+      applyAlign,
+      toggleList,
+      applyListStyle,
+      applyCustomBullet,
+      getListStyle,
+      applyMultilevelPreset,
+      getMultilevelPreset
     };
   })();
   const FontColorUI=(function(){
@@ -2659,6 +2775,297 @@
       return container;
     }
     return { create };
+  })();
+  const ListUI=(function(){
+    function createSplit(inst, ctx, config){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      container.style.gap="0";
+      const main=WDom.btn(config.mainLabel, !!config.primary, config.mainTitle||config.ariaLabel);
+      main.setAttribute("data-command", config.id||"");
+      main.setAttribute("aria-label", config.ariaLabel||config.mainLabel);
+      main.style.borderTopRightRadius="0";
+      main.style.borderBottomRightRadius="0";
+      main.style.marginRight="0";
+      main.style.display="inline-flex";
+      main.style.alignItems="center";
+      main.style.gap="6px";
+      if(config.decorateMain){ config.decorateMain(main); }
+      const arrow=WDom.btn("▼", false, config.menuTitle||"More options");
+      arrow.setAttribute("aria-label", (config.menuTitle||"More options")+" for "+(config.mainLabel||""));
+      arrow.setAttribute("aria-haspopup","true");
+      arrow.setAttribute("aria-expanded","false");
+      arrow.style.marginLeft="-1px";
+      arrow.style.borderTopLeftRadius="0";
+      arrow.style.borderBottomLeftRadius="0";
+      arrow.style.minWidth="32px";
+      arrow.style.padding="0 10px";
+      arrow.style.fontSize="11px";
+      arrow.style.lineHeight="1";
+      arrow.style.display="flex";
+      arrow.style.alignItems="center";
+      arrow.style.justifyContent="center";
+      arrow.textContent="▼";
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.minWidth=config.menuWidth||"220px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="10px";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.gap="6px";
+      menu.style.zIndex="32";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const entries=[];
+      const doc=main.ownerDocument || document;
+      for(let i=0;i<(config.menuItems||[]).length;i++){
+        const item=config.menuItems[i];
+        const btn=doc.createElement("button");
+        btn.type="button";
+        const roleAttr=item.role || (item.kind==="action"?"menuitem":"menuitemradio");
+        btn.setAttribute("role", roleAttr);
+        if(roleAttr!=="menuitem"){
+          btn.setAttribute("aria-checked","false");
+        }
+        btn.textContent="";
+        btn.style.display="flex";
+        btn.style.alignItems="center";
+        btn.style.justifyContent="space-between";
+        btn.style.gap="12px";
+        btn.style.padding="8px 10px";
+        btn.style.border="1px solid "+WCfg.UI.borderSubtle;
+        btn.style.borderRadius="6px";
+        btn.style.background="#fff";
+        btn.style.cursor="pointer";
+        btn.style.font="13px/1.3 Segoe UI,system-ui";
+        const labelSpan=doc.createElement("span");
+        labelSpan.textContent=item.label;
+        labelSpan.style.display="inline-flex";
+        labelSpan.style.alignItems="center";
+        labelSpan.style.gap="6px";
+        if(item.preview){
+          const preview=doc.createElement("span");
+          preview.textContent=item.preview;
+          preview.setAttribute("aria-hidden","true");
+          preview.style.fontWeight="600";
+          preview.style.fontSize="16px";
+          labelSpan.insertBefore(preview, labelSpan.firstChild);
+        }
+        btn.appendChild(labelSpan);
+        if(item.description){
+          const desc=doc.createElement("span");
+          desc.textContent=item.description;
+          desc.style.fontSize="11px";
+          desc.style.color=WCfg.UI.textDim;
+          btn.appendChild(desc);
+        }
+        btn.addEventListener("click", function(e){
+          e.preventDefault(); e.stopPropagation();
+          if(item.onSelect){ item.onSelect(); }
+          setOpen(false);
+          if(config.afterSelect){ config.afterSelect(); }
+          main.focus();
+        });
+        btn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); main.focus(); } });
+        menu.appendChild(btn);
+        entries.push({ item, btn });
+      }
+      function updateActive(){
+        if(!config.getActive){ return; }
+        const active=config.getActive(inst, ctx);
+        for(let i=0;i<entries.length;i++){
+          const entry=entries[i];
+          if(entry.item.kind==="action" && !entry.item.isRadio){ continue; }
+          const roleAttr=entry.btn.getAttribute("role");
+          if(roleAttr==="menuitem"){ continue; }
+          const isActive=entry.item.isActive ? entry.item.isActive(active) : active===entry.item.id;
+          entry.btn.setAttribute("aria-checked", isActive?"true":"false");
+          entry.btn.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.btn.style.background = isActive ? "#e6f2fb" : "#fff";
+        }
+      }
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        if(open){
+          updateActive();
+          menu.style.display="flex";
+          menu.setAttribute("aria-hidden","false");
+          arrow.setAttribute("aria-expanded","true");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            const first=menu.querySelector("button");
+            if(first && doc.activeElement===arrow){ first.focus(); }
+          },0);
+        } else {
+          menu.style.display="none";
+          menu.setAttribute("aria-hidden","true");
+          arrow.setAttribute("aria-expanded","false");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); arrow.focus(); } }
+      main.addEventListener("click", function(e){
+        e.preventDefault(); e.stopPropagation();
+        if(config.onPrimary){ config.onPrimary(inst, ctx); }
+        if(config.afterSelect){ config.afterSelect(); }
+      });
+      arrow.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      arrow.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      menu.addEventListener("click", function(e){ e.stopPropagation(); });
+      container.appendChild(main);
+      container.appendChild(arrow);
+      container.appendChild(menu);
+      return container;
+    }
+    const BULLET_ITEMS=[
+      { id:"default", label:"Default", preview:"•", description:"Browser default bullet", onSelect:null,
+        isActive:function(value){ return !value || value==="disc" || value==="initial"; } },
+      { id:"disc", label:"Solid Bullet", preview:"•", onSelect:null,
+        isActive:function(value){ return value==="disc"; } },
+      { id:"circle", label:"Hollow Bullet", preview:"○", onSelect:null,
+        isActive:function(value){ return value==="circle"; } },
+      { id:"square", label:"Square Bullet", preview:"▪", onSelect:null,
+        isActive:function(value){ return value==="square"; } },
+      { id:"dash", label:"Dash Bullet", preview:"–", onSelect:null,
+        isActive:function(value){ return value==="custom:–" || value==="custom:-"; } },
+      { id:"custom", label:"Define New Bullet…", description:"Pick custom symbol", onSelect:null,
+        isActive:function(value){ return value && value.indexOf("custom:")===0 && value!=="custom:–" && value!=="custom:-"; } }
+    ];
+    const NUMBERED_ITEMS=[
+      { id:"decimal", label:"1, 2, 3", preview:"1.", onSelect:null,
+        isActive:function(value){ return !value || value==="decimal"; } },
+      { id:"decimal-leading-zero", label:"01, 02, 03", preview:"01.", onSelect:null,
+        isActive:function(value){ return value==="decimal-leading-zero"; } },
+      { id:"lower-alpha", label:"a, b, c", preview:"a.", onSelect:null,
+        isActive:function(value){ return value==="lower-alpha"; } },
+      { id:"upper-alpha", label:"A, B, C", preview:"A.", onSelect:null,
+        isActive:function(value){ return value==="upper-alpha"; } },
+      { id:"lower-roman", label:"i, ii, iii", preview:"i.", onSelect:null,
+        isActive:function(value){ return value==="lower-roman"; } },
+      { id:"upper-roman", label:"I, II, III", preview:"I.", onSelect:null,
+        isActive:function(value){ return value==="upper-roman"; } },
+      { id:"custom", label:"Custom Style…", description:"Enter CSS list-style", onSelect:null,
+        isActive:function(value){
+          if(!value) return false;
+          const presets=["decimal","decimal-leading-zero","lower-alpha","upper-alpha","lower-roman","upper-roman"];
+          return presets.indexOf(value)<0;
+        } }
+    ];
+    const MULTILEVEL_PRESETS=[
+      { id:"standard", label:"1. 1.1 1.1.1", preview:"1.1", description:"Decimal outline", levels:["decimal","decimal","decimal"] },
+      { id:"alpha", label:"A. 1. a.", preview:"A.1", description:"Alpha + decimal", levels:["upper-alpha","decimal","lower-alpha"] },
+      { id:"roman", label:"I. A. 1.", preview:"I.A", description:"Roman + alpha", levels:["upper-roman","upper-alpha","decimal"] },
+      { id:"custom", label:"Custom Levels…", description:"Comma separated styles", levels:[] }
+    ];
+    function createBulleted(inst, ctx){
+      const items=BULLET_ITEMS.map(function(item){ return Object.assign({}, item); });
+      for(let i=0;i<items.length;i++){
+        if(items[i].id==="default"){ items[i].onSelect=function(){ Formatting.applyListStyle(inst, ctx, "ul", "default"); }; }
+        else if(items[i].id==="disc"){ items[i].onSelect=function(){ Formatting.applyListStyle(inst, ctx, "ul", "disc"); }; }
+        else if(items[i].id==="circle"){ items[i].onSelect=function(){ Formatting.applyListStyle(inst, ctx, "ul", "circle"); }; }
+        else if(items[i].id==="square"){ items[i].onSelect=function(){ Formatting.applyListStyle(inst, ctx, "ul", "square"); }; }
+        else if(items[i].id==="dash"){ items[i].onSelect=function(){ Formatting.applyCustomBullet(inst, ctx, "–"); }; }
+        else if(items[i].id==="custom"){ items[i].onSelect=function(){
+          const symbol=window.prompt("Enter custom bullet symbol", "•");
+          if(symbol){ Formatting.applyCustomBullet(inst, ctx, symbol); }
+        }; }
+      }
+      return createSplit(inst, ctx, {
+        id:"format.bulletedList",
+        mainLabel:"• Bullets",
+        mainTitle:"Bulleted List (項目符號清單)",
+        ariaLabel:"Bulleted List (項目符號清單)",
+        menuTitle:"Bullet style gallery",
+        menuItems:items,
+        onPrimary:function(){ Formatting.toggleList(inst, ctx, "unordered"); },
+        getActive:function(instArg, ctxArg){ return Formatting.getListStyle(instArg, ctxArg, "ul"); },
+        afterSelect:function(){ OutputBinding.syncDebounced(inst); }
+      });
+    }
+    function createNumbered(inst, ctx){
+      const items=NUMBERED_ITEMS.map(function(item){ return Object.assign({}, item); });
+      for(let i=0;i<items.length;i++){
+        const item=items[i];
+        if(item.id && item.id!=="custom"){ item.onSelect=function(){ Formatting.applyListStyle(inst, ctx, "ol", item.id); }; }
+        if(item.id==="custom"){ item.onSelect=function(){
+          const value=window.prompt("Enter CSS list-style-type (e.g. decimal, upper-roman, '•')", "decimal");
+          if(value){
+            const trimmed=value.trim();
+            if(trimmed){ Formatting.applyListStyle(inst, ctx, "ol", trimmed); }
+          }
+        }; }
+      }
+      return createSplit(inst, ctx, {
+        id:"format.numberedList",
+        mainLabel:"1. Numbers",
+        mainTitle:"Numbered List (編號清單)",
+        ariaLabel:"Numbered List (編號清單)",
+        menuTitle:"Numbering options",
+        menuItems:items,
+        onPrimary:function(){ Formatting.toggleList(inst, ctx, "ordered"); },
+        getActive:function(instArg, ctxArg){ return Formatting.getListStyle(instArg, ctxArg, "ol"); },
+        afterSelect:function(){ OutputBinding.syncDebounced(inst); }
+      });
+    }
+    function parseCustomLevels(input){
+      if(!input) return null;
+      const parts=input.split(",").map(function(part){ return part.trim(); }).filter(Boolean);
+      return parts.length?parts:null;
+    }
+    function createMultilevel(inst, ctx){
+      const items=MULTILEVEL_PRESETS.map(function(item){ return Object.assign({}, item); });
+      for(let i=0;i<items.length;i++){
+        const item=items[i];
+        if(item.id!=="custom"){ item.onSelect=function(){ Formatting.applyMultilevelPreset(inst, ctx, item); }; }
+        else {
+          item.onSelect=function(){
+            const value=window.prompt("Enter comma separated list styles (e.g. decimal, upper-alpha, lower-roman)");
+            const levels=parseCustomLevels(value);
+            if(levels){ Formatting.applyMultilevelPreset(inst, ctx, { id:"custom", levels:levels }); }
+          };
+        }
+        if(item.id!=="custom"){ item.isActive=function(value){ return value===item.id; }; }
+        else {
+          item.isActive=function(value){ return value && value!=="standard" && value!=="alpha" && value!=="roman"; };
+        }
+      }
+      return createSplit(inst, ctx, {
+        id:"format.multilevelList",
+        mainLabel:"1.1 Outline",
+        mainTitle:"Multilevel List (多層次清單)",
+        ariaLabel:"Multilevel List (多層次清單)",
+        menuTitle:"Outline options",
+        menuItems:items,
+        onPrimary:function(){
+          Formatting.toggleList(inst, ctx, "ordered");
+          const hasList=!!Formatting.getListStyle(inst, ctx, "ol");
+          if(!hasList){ return; }
+          const presetId=Formatting.getMultilevelPreset(inst, ctx);
+          let presetToUse=null;
+          if(presetId){
+            for(let i=0;i<items.length;i++){ if(items[i].id===presetId){ presetToUse=items[i]; break; } }
+          }
+          if(!presetToUse && items.length){ presetToUse=items[0]; }
+          if(presetToUse){ Formatting.applyMultilevelPreset(inst, ctx, presetToUse, false); }
+        },
+        getActive:function(instArg, ctxArg){ return Formatting.getMultilevelPreset(instArg, ctxArg); },
+        afterSelect:function(){ OutputBinding.syncDebounced(inst); }
+      });
+    }
+    return { createBulleted:createBulleted, createNumbered:createNumbered, createMultilevel:createMultilevel };
   })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
@@ -2983,6 +3390,21 @@
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
+    "format.bulletedList":{
+      kind:"custom",
+      ariaLabel:"Bulleted List (項目符號清單)",
+      render:function(inst, ctx){ return ListUI.createBulleted(inst, ctx); }
+    },
+    "format.numberedList":{
+      kind:"custom",
+      ariaLabel:"Numbered List (編號清單)",
+      render:function(inst, ctx){ return ListUI.createNumbered(inst, ctx); }
+    },
+    "format.multilevelList":{
+      kind:"custom",
+      ariaLabel:"Multilevel List (多層次清單)",
+      render:function(inst, ctx){ return ListUI.createMultilevel(inst, ctx); }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -3025,7 +3447,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.bulletedList","format.numberedList","format.multilevelList","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -3035,7 +3457,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.bulletedList","format.numberedList","format.multilevelList","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
