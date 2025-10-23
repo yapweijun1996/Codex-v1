@@ -1817,7 +1817,7 @@
       };
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
       const saveCloseWrap=document.createElement("div"); applyStyles(saveCloseWrap, WCfg.Style.fsSaveCloseWrap);
-      const saveCloseBtn=WDom.btn("Save & Close", true, "Save changes and close fullscreen");
+      const saveCloseBtn=WDom.btn("Close", true, "Save changes and close fullscreen");
       saveCloseBtn.setAttribute("aria-label","Save changes and close fullscreen editor");
       saveCloseBtn.addEventListener("click", function(){ ctx.saveClose(); });
       saveCloseWrap.appendChild(saveCloseBtn);
@@ -2127,7 +2127,7 @@
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
     "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(inst.el.innerHTML)); } },
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
-    "fullscreen.saveClose":{ label:"Save & Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
+    "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
