@@ -164,6 +164,45 @@ body.chat-fullscreen-active {
   scroll-behavior: smooth;
 }
 
+.chat-widget__hints {
+  background: #f0f4ff;
+  border: 1px solid rgba(37, 99, 235, 0.1);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.chat-hints__label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.chat-suggestion-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chat-suggestion-pill {
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: #ffffff;
+  font-size: 0.78rem;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.chat-suggestion-pill:hover {
+  background: #e4ecff;
+  transform: translateY(-1px);
+}
+
 .chat-bubble {
   max-width: min(90%, 360px);
   padding: 0.6rem 0.75rem;
@@ -188,6 +227,76 @@ body.chat-fullscreen-active {
 .chat-bubble--sql {
   max-width: 100%;
   width: 100%;
+}
+
+.chat-kpi-visual {
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(160deg, rgba(37, 99, 235, 0.08), rgba(255, 255, 255, 0.97));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.chat-kpi-visual__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.chat-kpi-visual__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chat-kpi-visual__subtitle {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.chat-kpi-visual__canvaswrap {
+  position: relative;
+  width: 100%;
+  min-height: 180px;
+}
+
+.chat-kpi-visual__canvaswrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.chat-kpi-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.55rem;
+}
+
+.chat-kpi-legend__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+}
+
+.chat-kpi-legend__label {
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.chat-kpi-legend__value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chat-kpi-legend__hint {
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .chat-bubble--system {
@@ -319,6 +428,36 @@ body.chat-fullscreen-active {
   word-break: initial;
 }
 
+.chat-row-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.chat-action-button {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+  background: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.chat-action-button:hover {
+  background: #ebf1ff;
+}
+
+.chat-error-note {
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  background: rgba(254, 226, 226, 0.85);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  color: #991b1b;
+  font-size: 0.85rem;
+}
+
 .chat-sql-table tbody tr:nth-child(even) {
   background: #f8fafc;
 }
@@ -342,6 +481,10 @@ body.chat-fullscreen-active {
 
   .chat-widget {
     max-width: 100%;
+  }
+
+  .chat-widget__hints {
+    font-size: 0.85rem;
   }
 
   .chat-widget__composer {
@@ -368,6 +511,452 @@ body.chat-fullscreen-active {
     document.addEventListener('DOMContentLoaded', injectStyles, { once: true });
   } else {
     injectStyles();
+  }
+
+  const SUGGESTION_PRESETS = [
+    {
+      label: "本週 KPI",
+      prompt: "請彙總本週 sal_inv 單據的總金額、平均單價與單量，並以趨勢解釋。"
+    },
+    {
+      label: "待審核",
+      prompt: "找出 workflow_status = 'pending' 的 sal_inv 單據，依照 date_trans 由新到舊。"
+    },
+    {
+      label: "異常提醒",
+      prompt: "偵測金額超過 200000 的 sal_inv 單據，請標記出客戶與負責人。"
+    },
+    {
+      label: "Top 客戶",
+      prompt: "列出近 30 天銷售金額前五名的客戶與合計金額。"
+    },
+    {
+      label: "比對月份",
+      prompt: "比較本月與上月的 sal_inv 總金額與單數，並提供差異摘要。"
+    }
+  ];
+
+  const numberFormatter = new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 2
+  });
+
+  const KPI_CHART_COLORS = ['#2563eb', '#f97316', '#22c55e', '#8b5cf6', '#0ea5e9'];
+  const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
+  let chartJsPromise = null;
+  const chartInstances = new WeakMap();
+
+  function pickSuggestions(size = 4) {
+    if (!SUGGESTION_PRESETS.length) return [];
+    const shuffled = [...SUGGESTION_PRESETS].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, size);
+  }
+
+  function renderSuggestionBar(container, onSelect) {
+    if (!container) return;
+    container.innerHTML = '';
+    const items = pickSuggestions();
+    items.forEach((item) => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'chat-suggestion-pill';
+      pill.textContent = `${item.label} · ${item.prompt}`;
+      pill.setAttribute('data-prompt', item.prompt);
+      pill.addEventListener('click', () => {
+        if (typeof onSelect === 'function') {
+          onSelect(item.prompt);
+        }
+      });
+      container.appendChild(pill);
+    });
+  }
+
+  function isNumericLike(value) {
+    if (value === null || value === undefined || value === '') return false;
+    const num = Number(value);
+    return Number.isFinite(num);
+  }
+
+  function keywordMatch(label, keywords = []) {
+    if (!label) return false;
+    const lowered = label.toLowerCase();
+    return keywords.some((keyword) => lowered.includes(keyword));
+  }
+
+  function toTitleCase(text) {
+    return String(text || '')
+      .replace(/_/g, ' ')
+      .split(' ')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+
+  function buildKpiCards(columns, rows, rowCount) {
+    if (!Array.isArray(rows) || !rows.length) {
+      return '';
+    }
+
+    const metrics = [];
+    const registerMetric = (label, value, hint) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return;
+      metrics.push({
+        label,
+        value: numeric,
+        formatted: numberFormatter.format(numeric),
+        hint: hint || ''
+      });
+    };
+
+    registerMetric('Row Count', rowCount, '資料筆數');
+
+    const sumKeywords = ['amount', 'total', 'grand', 'revenue', 'net', 'value'];
+    const qtyKeywords = ['qty', 'quantity', 'count', 'volume'];
+    const partyKeywords = ['customer', 'client', 'party', 'account'];
+
+    columns.forEach((column) => {
+      const sample = rows[0]?.[column];
+      const values = rows
+        .map((row) => row[column])
+        .filter((value) => isNumericLike(value))
+        .map((value) => Number(value));
+      if (!values.length) {
+        if (keywordMatch(column, partyKeywords)) {
+          const uniqueCount = new Set(rows.map((row) => row[column]).filter(Boolean)).size;
+          if (uniqueCount) {
+            registerMetric(`${toTitleCase(column)} Unique`, uniqueCount, '不同客戶數');
+          }
+        }
+        return;
+      }
+
+      const total = values.reduce((acc, value) => acc + value, 0);
+      if (keywordMatch(column, sumKeywords)) {
+        registerMetric(toTitleCase(column), total, '加總金額');
+      } else if (keywordMatch(column, qtyKeywords)) {
+        registerMetric(toTitleCase(column), total, '累計數量');
+      } else if (isNumericLike(sample)) {
+        const average = total / values.length;
+        registerMetric(`${toTitleCase(column)} Avg`, average, '平均值');
+      }
+    });
+
+    const trimmed = metrics.slice(0, 4);
+    if (!trimmed.length) return '';
+
+    const payload = encodeURIComponent(
+      JSON.stringify(
+        trimmed.map((metric) => ({
+          label: metric.label,
+          value: metric.value,
+          formatted: metric.formatted,
+          hint: metric.hint
+        }))
+      )
+    );
+
+    const legend = trimmed
+      .map(
+        (metric) => `
+        <div class="chat-kpi-legend__item">
+          <span class="chat-kpi-legend__label">${escapeHtml(metric.label)}</span>
+          <strong class="chat-kpi-legend__value">${escapeHtml(metric.formatted)}</strong>
+          <span class="chat-kpi-legend__hint">${escapeHtml(metric.hint)}</span>
+        </div>
+      `
+      )
+      .join('');
+
+    return `
+      <section class="chat-kpi-visual" data-kpi-chart="${payload}">
+        <div class="chat-kpi-visual__header">
+          <h3 class="chat-kpi-visual__title">關鍵指標視覺化</h3>
+          <span class="chat-kpi-visual__subtitle">自動解析 SQL 結果的 KPI 圖表</span>
+        </div>
+        <div class="chat-kpi-visual__canvaswrap">
+          <canvas aria-label="KPI bar chart" role="img"></canvas>
+        </div>
+        <div class="chat-kpi-legend">${legend}</div>
+      </section>
+    `;
+  }
+
+  function ensureChartJs() {
+    if (window.Chart) {
+      return Promise.resolve(window.Chart);
+    }
+    if (chartJsPromise) {
+      return chartJsPromise;
+    }
+    chartJsPromise = new Promise((resolve, reject) => {
+      const handleLoad = () => {
+        if (window.Chart) {
+          resolve(window.Chart);
+        } else {
+          chartJsPromise = null;
+          reject(new Error('Chart.js failed to initialize'));
+        }
+      };
+
+      const handleError = () => {
+        chartJsPromise = null;
+        reject(new Error('Chart.js failed to load'));
+      };
+
+      const existing = document.querySelector('script[data-chat-chartjs]');
+      if (existing) {
+        existing.addEventListener('load', handleLoad, { once: true });
+        existing.addEventListener('error', handleError, { once: true });
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = CHART_JS_URL;
+      script.async = true;
+      script.dataset.chatChartjs = '1';
+      script.addEventListener('load', handleLoad, { once: true });
+      script.addEventListener('error', handleError, { once: true });
+      document.head.appendChild(script);
+    }).catch((error) => {
+      if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+        console.warn('[GPT5-mini][chart] Unable to load Chart.js', error);
+      }
+      throw error;
+    });
+    return chartJsPromise;
+  }
+
+  function hexToRgba(hex, alpha = 0.8) {
+    if (typeof hex !== 'string') {
+      return `rgba(37, 99, 235, ${alpha})`;
+    }
+    const cleaned = hex.replace('#', '');
+    if (cleaned.length !== 6) {
+      return `rgba(37, 99, 235, ${alpha})`;
+    }
+    const bigint = parseInt(cleaned, 16);
+    if (Number.isNaN(bigint)) {
+      return `rgba(37, 99, 235, ${alpha})`;
+    }
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function hydrateSqlBubble(bubble) {
+    if (!bubble) return;
+    const chartNodes = bubble.querySelectorAll('[data-kpi-chart]');
+    if (!chartNodes.length) return;
+
+    ensureChartJs()
+      .then(() => {
+        chartNodes.forEach((node) => {
+          const payload = node.getAttribute('data-kpi-chart');
+          if (!payload) return;
+          let metrics;
+          try {
+            metrics = JSON.parse(decodeURIComponent(payload));
+          } catch (error) {
+            return;
+          }
+          if (!Array.isArray(metrics) || !metrics.length) return;
+          const labels = metrics.map((metric) => metric.label || '');
+          const data = metrics.map((metric) => Number(metric.value));
+          if (!data.some((value) => Number.isFinite(value))) return;
+          const canvas = node.querySelector('canvas');
+          if (!canvas) return;
+          const existing = chartInstances.get(canvas);
+          if (existing && typeof existing.destroy === 'function') {
+            existing.destroy();
+          }
+
+          const computedAccent = getComputedStyle(document.documentElement).getPropertyValue('--accent')?.trim();
+          const palette = labels.map((_, index) => KPI_CHART_COLORS[index % KPI_CHART_COLORS.length] || computedAccent || '#2563eb');
+          const backgroundColor = palette.map((color) => hexToRgba(color, 0.75));
+          const borderColor = palette.map((color) => hexToRgba(color, 1));
+
+          const chart = new window.Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: 'KPI',
+                  data,
+                  backgroundColor,
+                  borderColor,
+                  borderWidth: 1.5,
+                  borderRadius: 6,
+                  maxBarThickness: 48
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: false
+                },
+                tooltip: {
+                  callbacks: {
+                    label(context) {
+                      const metric = metrics[context.dataIndex];
+                      if (metric?.formatted) {
+                        return `${metric.label}: ${metric.formatted}`;
+                      }
+                      const value = context.parsed?.y ?? context.parsed ?? 0;
+                      return `${context.label}: ${numberFormatter.format(value)}`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: {
+                    color: '#475569',
+                    font: {
+                      size: 11
+                    }
+                  },
+                  grid: {
+                    display: false
+                  }
+                },
+                y: {
+                  ticks: {
+                    color: '#475569',
+                    font: {
+                      size: 11
+                    },
+                    callback(value) {
+                      return numberFormatter.format(value);
+                    }
+                  },
+                  grid: {
+                    color: 'rgba(148, 163, 184, 0.25)',
+                    drawBorder: false
+                  }
+                }
+              }
+            }
+          });
+          chartInstances.set(canvas, chart);
+        });
+      })
+      .catch(() => {
+        /* Chart.js 加載失敗時保留文字 legend */
+      });
+  }
+
+  function renderRowActions(row, index) {
+    const payload = (() => {
+      try {
+        return encodeURIComponent(JSON.stringify(row));
+      } catch (_) {
+        return '';
+      }
+    })();
+    const base = ` data-row-index="${index}" data-row-payload="${payload}"`;
+    return `
+      <div class="chat-row-actions">
+        <button type="button" class="chat-action-button" data-action="reminder"${base}>提醒</button>
+        <button type="button" class="chat-action-button" data-action="flag"${base}>標記</button>
+        <button type="button" class="chat-action-button" data-action="visualize"${base}>圖表</button>
+      </div>
+    `;
+  }
+
+  function renderFriendlySqlError(message, detail) {
+    const normalized = String(message || '');
+    const lower = normalized.toLowerCase();
+    let friendlyTitle = '資料庫執行有點狀況';
+    let friendlyHint = '請稍後重試，或調整條件再查詢。';
+
+    if (lower.includes('timeout')) {
+      friendlyTitle = 'Query Timeout 逾時';
+      friendlyHint = '資料量較大，建議加入日期或客戶條件再執行。';
+    } else if (lower.includes('permission')) {
+      friendlyTitle = '權限不足';
+      friendlyHint = '此資料表需要額外授權，請聯絡系統管理員。';
+    } else if (lower.includes('syntax')) {
+      friendlyTitle = 'SQL 語法需要調整';
+      friendlyHint = '讓我重新產生查詢，或請檢查欄位名稱是否正確。';
+    }
+
+    const detailText = detail ? `<br /><small>${escapeHtml(detail)}</small>` : '';
+    return `
+      <div class="chat-error-note">
+        <strong>${escapeHtml(friendlyTitle)}</strong><br />
+        ${escapeHtml(friendlyHint)}${detailText}
+      </div>
+    `;
+  }
+
+  function renderFriendlyPipelineError(error) {
+    const raw =
+      (error && typeof error === 'object' && 'message' in error && error.message) || String(error || '');
+    const message = raw.trim();
+    const normalized = message.toLowerCase();
+
+    if (normalized.includes('sql agent could not build a valid query')) {
+      return [
+        '⚠️ AI 無法產出對應的 SQL 查詢。',
+        '',
+        '請協助提供更多商業上下文：',
+        '- 描述需要分析的資料表與欄位 (e.g. orders, amount)。',
+        '- 加上時間範圍或條件 (例如：近30天、狀態為 pending)。',
+        '- 若想比對趨勢，請說明比較維度。',
+        '',
+        '👉 請再提供上述細節，我可以重新規劃查詢 (Need more concrete table/field hints for SQL)。'
+      ].join('\n');
+    }
+
+    if (!message) {
+      return '⚠️ 系統忙碌中，請稍後再試。';
+    }
+
+    return `⚠️ ${message}`;
+  }
+
+  function decodeRowPayload(payload) {
+    if (!payload) return null;
+    try {
+      return JSON.parse(decodeURIComponent(payload));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function buildRowActionResponse(action, row, index) {
+    const rowNumber = Number.isFinite(Number(index)) ? Number(index) + 1 : 1;
+    const displayPairs = () => {
+      if (!row || typeof row !== 'object') return '無法取得明細。';
+      const preferredKeys = ['dnum_auto', 'masterfn', 'party_desc', 'party_code', 'staff_desc', 'total', 'grand_total'];
+      const entries = preferredKeys
+        .filter((key) => row[key] !== undefined && row[key] !== null && row[key] !== '')
+        .map((key) => `${key}: ${row[key]}`);
+      if (!entries.length) {
+        return Object.keys(row)
+          .slice(0, 3)
+          .map((key) => `${key}: ${row[key]}`)
+          .join('， ');
+      }
+      return entries.join('， ');
+    };
+
+    const summary = displayPairs();
+    switch (action) {
+      case 'reminder':
+        return `已為第 ${rowNumber} 筆資料建立提醒 (reminder created)。重點：${summary}`;
+      case 'flag':
+        return `已標記第 ${rowNumber} 筆為注意案件 (flagged for review)。重點：${summary}`;
+      case 'visualize':
+        return `想把第 ${rowNumber} 筆相關資料轉成圖表嗎？可以輸入「請繪製圖表」讓我生成視覺化。重點：${summary}`;
+      default:
+        return `記錄第 ${rowNumber} 筆資訊：${summary}`;
+    }
   }
 
         let instanceCounter = 0;
@@ -509,6 +1098,10 @@ body.chat-fullscreen-active {
                 Paste a short-lived OpenAI API key. AI 可即時生成 PostgreSQL SQL.
               </article>
             </section>
+            <section class="chat-widget__hints" data-chat-hints>
+              <p class="chat-hints__label">Try asking / 可以問：</p>
+              <div class="chat-suggestion-bar" data-chat-suggestions></div>
+            </section>
             <footer class="chat-widget__composer">
               <label style="display: contents;">
                 <textarea
@@ -567,7 +1160,9 @@ body.chat-fullscreen-active {
             sendButton: widget.querySelector("[data-chat-send]"),
             stopButton: widget.querySelector("[data-chat-stop]"),
             status: widget.querySelector("[data-chat-status]"),
-            statusText: widget.querySelector("[data-chat-status-text]")
+            statusText: widget.querySelector("[data-chat-status-text]"),
+            suggestions: widget.querySelector("[data-chat-suggestions]"),
+            hintsSection: widget.querySelector("[data-chat-hints]")
           };
 
           const savedKey = storage.get();
@@ -592,6 +1187,34 @@ body.chat-fullscreen-active {
             });
             widget.addEventListener("chat:fullscreenchange", (event) => {
               updateFullscreenButton(Boolean(event.detail?.active));
+            });
+          }
+
+          const refreshSuggestions = () => {
+            if (!refs.suggestions) return;
+            if (refs.hintsSection) {
+              refs.hintsSection.hidden = !SUGGESTION_PRESETS.length;
+            }
+            renderSuggestionBar(refs.suggestions, (promptText) => {
+              refs.input.value = promptText;
+              refs.input.focus();
+            });
+          };
+
+          refreshSuggestions();
+
+          if (refs.messages) {
+            refs.messages.addEventListener('click', (event) => {
+              const button = event.target.closest('.chat-action-button');
+              if (!button) return;
+              const { action } = button.dataset;
+              const payload = button.getAttribute('data-row-payload');
+              const rowIndex = button.getAttribute('data-row-index');
+              const row = decodeRowPayload(payload);
+              const responseText = buildRowActionResponse(action, row, Number(rowIndex));
+              appendBubble('assistant', responseText);
+              state.messages.push({ role: 'assistant', content: responseText });
+              state.conversation.push({ role: 'assistant', content: responseText });
             });
           }
 
@@ -909,8 +1532,8 @@ body.chat-fullscreen-active {
         function renderSqlResult(payload) {
           const normalized = normalizeSqlPayload(payload);
           if (!normalized || normalized.ok === false || normalized.error) {
-            const msg = normalized?.error || normalized?.detail || "SQL execution failed.";
-            return `SQL error: ${escapeHtml(msg)}`;
+            const msg = normalized?.error || normalized?.detail || 'SQL execution failed.';
+            return renderFriendlySqlError(msg);
           }
           let columns = Array.isArray(normalized.columns) && normalized.columns.length ? normalized.columns : [];
           const rows = Array.isArray(normalized.rows) ? normalized.rows : [];
@@ -922,27 +1545,32 @@ body.chat-fullscreen-active {
           }
 
           if (!rowCount) {
-            const extra = limitApplied ? ` (limit ${limitApplied})` : "";
+            const extra = limitApplied ? ` (limit ${limitApplied})` : '';
             return `<p class="chat-sql-meta">SQL executed successfully but returned no rows${extra}.</p>`;
           }
 
-          const headerCells = columns.map((col) => `<th>${escapeHtml(col)}</th>`).join("");
+          const kpiCards = buildKpiCards(columns, rows, rowCount);
+          const headerCells = columns.map((col) => `<th>${escapeHtml(col)}</th>`).concat('<th>Actions</th>').join('');
           const bodyRows = rows
-            .map((row) => {
-              const cells = columns.map((col) => `<td>${escapeHtml(row[col])}</td>`).join("");
-              return `<tr>${cells}</tr>`;
+            .map((row, index) => {
+              const cells = columns.map((col) => `<td>${escapeHtml(row[col])}</td>`).join('');
+              const actions = `<td>${renderRowActions(row, index)}</td>`;
+              return `<tr>${cells}${actions}</tr>`;
             })
-            .join("");
+            .join('');
 
           const limitNote =
             limitApplied && rowCount >= limitApplied
               ? ` Showing first ${rows.length} rows (limit ${limitApplied}).`
-              : "";
+              : '';
 
           return [
-            `<p class="chat-sql-meta">SQL result: ${rowCount} row${rowCount === 1 ? "" : "s"}.${limitNote}</p>`,
+            kpiCards,
+            `<p class="chat-sql-meta">SQL result: ${rowCount} row${rowCount === 1 ? '' : 's'}.${limitNote}</p>`,
             `<div class="chat-sql-tablewrap"><table class="chat-sql-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`
-          ].join("");
+          ]
+            .filter(Boolean)
+            .join('');
         }
 
         function addSqlResultToState({ sql, payload }) {
@@ -1017,7 +1645,11 @@ body.chat-fullscreen-active {
 
           const tableHtml = renderSqlResult(rawPayload);
           const prefix = label ? `<p class="chat-sql-meta">${escapeHtml(label)}</p>` : "";
-          appendBubble("assistant", prefix + tableHtml, { asHtml: true, extraClass: "chat-bubble--sql" });
+          const sqlBubble = appendBubble("assistant", prefix + tableHtml, {
+            asHtml: true,
+            extraClass: "chat-bubble--sql"
+          });
+          hydrateSqlBubble(sqlBubble);
           addSqlResultToState({ sql: statement, payload: rawPayload });
           debug.log("sql:execute:success", {
             label,
@@ -1085,7 +1717,8 @@ body.chat-fullscreen-active {
               }
             }
           } catch (error) {
-            appendBubble("assistant", `SQL error: ${error.message}`);
+            const friendly = renderFriendlySqlError(error.message);
+            appendBubble("assistant", friendly, { asHtml: true, extraClass: "chat-bubble--sql" });
             debug.log("sql:error", error.message);
           } finally {
             if (trigger) {
@@ -1347,6 +1980,7 @@ body.chat-fullscreen-active {
           }
 
           refs.input.value = "";
+          refreshSuggestions();
           state.messages.push({ role: "user", content: prompt });
           state.conversation.push({ role: "user", content: prompt });
           appendBubble("user", prompt);
@@ -1462,10 +2096,11 @@ body.chat-fullscreen-active {
               state.messages.push({ role: "assistant", content: cancelMessage });
               state.conversation.push({ role: "assistant", content: cancelMessage });
             } else {
-              appendBubble("assistant", `⚠️ ${error.message}`);
-              state.messages.push({ role: "assistant", content: `⚠️ ${error.message}` });
-              state.conversation.push({ role: "assistant", content: `⚠️ ${error.message}` });
-              debug.log("pipeline:error", error.message);
+              const friendlyError = renderFriendlyPipelineError(error);
+              appendBubble("assistant", friendlyError);
+              state.messages.push({ role: "assistant", content: friendlyError });
+              state.conversation.push({ role: "assistant", content: friendlyError });
+              debug.log("pipeline:error", error?.message || error);
             }
           } finally {
             resetStreamingState();
