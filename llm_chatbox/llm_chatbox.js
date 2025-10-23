@@ -1,41 +1,27 @@
 (() => {
+  // ---------------------------------------------------------------------------
+  // Styling (kept inline so a single snippet remains self-contained)
+  // ---------------------------------------------------------------------------
+
   const STYLE_ID = 'llm-chatbox-style';
   const CSS_TEXT = `:root {
 color-scheme: light;
---bg: #f8fafc;
---panel: #ffffff;
---border: #e2e8f0;
---accent: #2563eb;
---text: #0f172a;
---muted: #64748b;
 font-family: "Inter", "Segoe UI", system-ui, sans-serif;
-}
-
-body {
-margin: 0;
-background: var(--bg);
-color: var(--text);
-min-height: 100vh;
-display: flex;
-flex-direction: column;
-align-items: stretch;
-gap: 1.5rem;
-padding: 1.5rem;
-box-sizing: border-box;
-}
-
-body.chat-fullscreen-active {
-overflow: hidden;
+--chat-bg: #f5f7fb;
+--chat-surface: #ffffff;
+--chat-border: #d0d7e2;
+--chat-accent: #2563eb;
+--chat-text: #1f2937;
+--chat-muted: #64748b;
 }
 
 .chat-fullscreen-overlay {
 position: fixed;
 inset: 0;
-background: rgba(15, 23, 42, 0.55);
-backdrop-filter: blur(2px);
+background: rgba(15, 23, 42, 0.45);
 opacity: 0;
 pointer-events: none;
-transition: opacity 180ms ease;
+transition: opacity 150ms ease;
 z-index: 9998;
 }
 
@@ -45,321 +31,331 @@ pointer-events: auto;
 }
 
 .llm_chatbox {
-position: relative;
-width: 100%;
-max-width: 720px;
 display: flex;
+justify-content: center;
+width: 100%;
+max-width: 440px;
+margin: 0 auto;
+box-sizing: border-box;
+padding: 0.5rem;
 }
 
 .chat-widget {
-flex: 1 1 auto;
+display: flex;
+flex-direction: column;
+gap: 0.75rem;
 width: 100%;
-max-width: 720px;
-height: 100%;
-background: var(--panel);
-border: 1px solid var(--border);
-border-radius: 0px;
-display: grid;
-grid-template-rows: auto 1fr auto;
-gap: 1.5rem;
-padding: clamp(1.25rem, 1vw, 1rem);
-box-shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
-min-height: 360px;
+min-height: 300px;
+background: var(--chat-surface);
+border: 1px solid var(--chat-border);
+border-radius: 12px;
+box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+padding: 0.75rem;
 box-sizing: border-box;
+color: var(--chat-text);
 }
 
 .chat-widget--fullscreen {
 position: fixed;
-inset: 0;
-width: 100vw;
-height: 100vh;
+inset: 0.75rem;
 max-width: none;
-border-radius: 0;
-padding: clamp(1.5rem, 3vw, 2.5rem);
-z-index: 9999;
-}
-
-.chat-widget--fullscreen .chat-widget__messages {
-height: auto;
 max-height: none;
-min-height: 0;
+z-index: 9999;
+margin: 0 auto;
+padding: 1rem;
 }
 
 .chat-widget__header {
 display: flex;
-flex-wrap: wrap;
-gap: 1rem;
-justify-content: space-between;
-align-items: flex-start;
+flex-direction: column;
+gap: 0.35rem;
+}
+
+.chat-widget__titles {
+display: flex;
+flex-direction: column;
+gap: 0.2rem;
 }
 
 .chat-widget__title {
 margin: 0;
-font-size: clamp(1.25rem, 2vw, 1.5rem);
+font-size: 1.05rem;
 font-weight: 600;
 }
 
 .chat-widget__subtitle {
-margin: 0.4rem 0 0;
-color: var(--muted);
-font-size: 0.95rem;
+margin: 0;
+font-size: 0.85rem;
+color: var(--chat-muted);
+}
+
+.chat-widget__toolbar {
+display: flex;
+flex-wrap: wrap;
+align-items: center;
+gap: 0.5rem;
+width: 100%;
+justify-content: space-between;
 }
 
 .chat-widget__apikey {
 display: flex;
-gap: 0.75rem;
+flex: 1 1 160px;
+min-width: 0;
+gap: 0.5rem;
 align-items: center;
-flex-wrap: wrap;
 }
 
 .chat-input {
-flex: 1 1 260px;
-padding: 0.6rem 0.8rem;
-border: 1px solid var(--border);
-border-radius: 12px;
+flex: 1 1 auto;
+min-width: 0;
+padding: 0.45rem 0.6rem;
+border: 1px solid var(--chat-border);
+border-radius: 8px;
 background: #f8fafc;
-color: var(--text);
-transition: border-color 200ms ease, box-shadow 200ms ease;
+font-size: 0.9rem;
+color: var(--chat-text);
+transition: border-color 150ms ease;
 }
 
 .chat-input:focus {
-border-color: var(--accent);
-box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 outline: none;
+border-color: var(--chat-accent);
 }
 
 .chat-toggle {
-padding: 0.55rem 0.9rem;
-border-radius: 12px;
-border: 1px solid var(--border);
-background: #eef2ff;
-color: var(--accent);
+display: inline-flex;
+align-items: center;
+justify-content: center;
+gap: 0.25rem;
+padding: 0.4rem 0.75rem;
+border-radius: 8px;
+border: 1px solid var(--chat-border);
+background: transparent;
+color: var(--chat-accent);
+font-size: 0.85rem;
 font-weight: 600;
 cursor: pointer;
-transition: background 150ms ease, transform 150ms ease;
+transition: background 120ms ease;
 }
 
 .chat-toggle:hover {
-background: #e0e7ff;
-transform: translateY(-1px);
+background: rgba(37, 99, 235, 0.08);
+}
+
+.chat-status {
+display: inline-flex;
+align-items: center;
+gap: 0.35rem;
+font-size: 0.8rem;
+color: var(--chat-muted);
+}
+
+.chat-status__dot {
+width: 6px;
+height: 6px;
+border-radius: 50%;
+background: var(--chat-border);
+}
+
+.chat-status--active .chat-status__dot {
+background: var(--chat-accent);
 }
 
 .chat-widget__messages {
-height: clamp(320px, 48vh, 520px);
+flex: 1 1 auto;
+min-height: 160px;
+max-height: 320px;
 overflow-y: auto;
-padding: 1rem;
-border-radius: 16px;
-background: #f1f5f9;
-border: 1px solid var(--border);
+padding: 0.5rem;
+border: 1px solid var(--chat-border);
+border-radius: 10px;
+background: var(--chat-bg);
 display: flex;
 flex-direction: column;
-gap: 0.9rem;
+gap: 0.5rem;
 scroll-behavior: smooth;
 }
 
 .chat-bubble {
-max-width: min(85%, 640px);
-padding: 0.75rem 1rem;
-border-radius: 16px;
-line-height: 1.5;
+max-width: 100%;
+padding: 0.55rem 0.7rem;
+border-radius: 10px;
+line-height: 1.4;
+font-size: 0.9rem;
 white-space: pre-wrap;
 word-break: break-word;
-box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
 }
 
 .chat-bubble--user {
 align-self: flex-end;
-background: linear-gradient(135deg, #2563eb, #38bdf8);
+background: var(--chat-accent);
 color: #ffffff;
 }
 
 .chat-bubble--assistant {
 align-self: flex-start;
-background: #ffffff;
-border: 1px solid var(--border);
-}
-
-.chat-bubble--sql {
-max-width: 100%;
-width: 100%;
+background: var(--chat-surface);
+border: 1px solid var(--chat-border);
 }
 
 .chat-bubble--system {
 align-self: center;
 background: transparent;
-border: 1px dashed var(--border);
-color: var(--muted);
-font-size: 0.85rem;
+border: 1px dashed var(--chat-border);
+color: var(--chat-muted);
+font-size: 0.8rem;
+}
+
+.chat-bubble--sql {
+width: 100%;
 }
 
 .chat-widget__composer {
-display: grid;
-gap: 0.75rem;
-grid-template-columns: 1fr auto;
-align-items: end;
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+border-top: 1px solid var(--chat-border);
+padding-top: 0.5rem;
 }
 
 .chat-composer__textarea {
-min-height: 70px;
+width: 100%;
+min-height: 64px;
 resize: vertical;
-border-radius: 16px;
-border: 1px solid var(--border);
-padding: 0.85rem 1rem;
-font-size: 1rem;
-background: #ffffff;
-transition: border-color 200ms ease, box-shadow 200ms ease;
+border-radius: 8px;
+border: 1px solid var(--chat-border);
+padding: 0.6rem 0.75rem;
+font-size: 0.92rem;
+transition: border-color 150ms ease;
 }
 
 .chat-composer__textarea:focus {
-border-color: var(--accent);
-box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 outline: none;
+border-color: var(--chat-accent);
+}
+
+.chat-composer__actions {
+display: flex;
+align-items: center;
+gap: 0.5rem;
+justify-content: flex-end;
+flex-wrap: wrap;
 }
 
 .chat-composer__send {
-padding: 0.8rem 1.2rem;
-border-radius: 14px;
-background: linear-gradient(135deg, #2563eb, #38bdf8);
-color: #ffffff;
+padding: 0.55rem 0.9rem;
+border-radius: 8px;
 border: none;
+background: var(--chat-accent);
+color: #ffffff;
 font-weight: 600;
 cursor: pointer;
-transition: transform 150ms ease, box-shadow 150ms ease;
+transition: opacity 120ms ease;
 }
 
 .chat-composer__send:disabled {
-opacity: 0.45;
+opacity: 0.6;
 cursor: not-allowed;
-box-shadow: none;
-transform: none;
-}
-
-.chat-composer__send:not(:disabled):hover {
-transform: translateY(-1px);
-box-shadow: 0 12px 30px rgba(37, 99, 235, 0.3);
-}
-
-.chat-status {
-display: flex;
-align-items: center;
-gap: 0.6rem;
-font-size: 0.9rem;
-color: var(--muted);
-}
-
-.chat-status__dot {
-width: 8px;
-height: 8px;
-border-radius: 50%;
-background: var(--border);
-}
-
-.chat-status--active .chat-status__dot {
-background: var(--accent);
-animation: pulse 1.2s ease-in-out infinite;
 }
 
 .chat-sql-actions {
-margin-top: 0.75rem;
+margin-top: 0.5rem;
 display: flex;
-gap: 0.5rem;
+flex-wrap: wrap;
+gap: 0.35rem;
 }
 
 .chat-sql-button {
-padding: 0.45rem 0.85rem;
-border-radius: 10px;
-border: 1px solid var(--border);
-background: #e0e7ff;
-color: var(--accent);
-font-weight: 600;
+padding: 0.4rem 0.65rem;
+border-radius: 8px;
+border: 1px solid var(--chat-border);
+background: transparent;
+font-size: 0.8rem;
+color: var(--chat-accent);
 cursor: pointer;
-transition: background 150ms ease, transform 150ms ease;
+transition: background 120ms ease;
 }
 
 .chat-sql-button:hover:not(:disabled) {
-background: #c7d2fe;
-transform: translateY(-1px);
+background: rgba(37, 99, 235, 0.08);
 }
 
 .chat-sql-button:disabled {
-opacity: 0.55;
+opacity: 0.6;
 cursor: not-allowed;
-transform: none;
 }
 
 .chat-sql-meta {
-margin: 0.25rem 0 0;
-font-size: 0.85rem;
-color: var(--muted);
+margin: 0.4rem 0 0;
+font-size: 0.78rem;
+color: var(--chat-muted);
 }
 
 .chat-sql-tablewrap {
-margin-top: 0.75rem;
-max-height: 320px;
+margin-top: 0.4rem;
+max-height: 240px;
 overflow: auto;
-border: 1px solid var(--border);
-border-radius: 12px;
+border: 1px solid var(--chat-border);
+border-radius: 8px;
 }
 
 .chat-sql-table {
 width: 100%;
 border-collapse: collapse;
-font-size: 0.92rem;
+font-size: 0.85rem;
 }
 
 .chat-sql-table th,
 .chat-sql-table td {
-padding: 0.55rem 0.65rem;
-border-bottom: 1px solid var(--border);
+padding: 0.4rem 0.5rem;
+border-bottom: 1px solid var(--chat-border);
 text-align: left;
-word-break: initial;
 }
 
 .chat-sql-table tbody tr:nth-child(even) {
-background: #f8fafc;
+background: var(--chat-bg);
 }
 
-@keyframes pulse {
-0%,
-100% {
-transform: scale(1);
-opacity: 0.7;
-}
-50% {
-transform: scale(1.35);
-opacity: 1;
-}
+@media (max-width: 540px) {
+.llm_chatbox {
+padding: 0.25rem;
 }
 
-@media (max-width: 720px) {
 .chat-widget {
-gap: 1.25rem;
+border-radius: 10px;
+padding: 0.6rem;
 }
 
-.chat-widget__composer {
-grid-template-columns: 1fr;
+.chat-composer__actions {
+justify-content: stretch;
 }
 
 .chat-composer__send {
-width: 100%;
+flex: 1 1 auto;
 }
 }`;
 
-  const injectStyles = () => {
-    if (document.getElementById(STYLE_ID)) {
-      return;
+  const styles = {
+    ensure() {
+      if (document.getElementById(STYLE_ID)) return;
+      const style = document.createElement('style');
+      style.id = STYLE_ID;
+      style.textContent = CSS_TEXT;
+      document.head.appendChild(style);
     }
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = CSS_TEXT;
-    document.head.appendChild(style);
   };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectStyles, { once: true });
+    document.addEventListener('DOMContentLoaded', () => styles.ensure(), { once: true });
   } else {
-    injectStyles();
+    styles.ensure();
   }
+
+        // ---------------------------------------------------------------------------
+        // Fullscreen helper keeps behaviour isolated from the widget logic
+        // ---------------------------------------------------------------------------
 
         let instanceCounter = 0;
         const fullscreen = (() => {
@@ -385,7 +381,6 @@ width: 100%;
             if (!body || body.dataset.chatScrollLock !== undefined) return;
             body.dataset.chatScrollLock = body.style.overflow || "";
             body.style.overflow = "hidden";
-            body.classList.add("chat-fullscreen-active");
           };
 
           const unlockScroll = () => {
@@ -393,7 +388,6 @@ width: 100%;
             if (!body || body.dataset.chatScrollLock === undefined) return;
             body.style.overflow = body.dataset.chatScrollLock;
             delete body.dataset.chatScrollLock;
-            body.classList.remove("chat-fullscreen-active");
           };
 
           const dispatchChange = (widget, active) => {
@@ -453,6 +447,10 @@ width: 100%;
           };
         })();
 
+        // ---------------------------------------------------------------------------
+        // DOM scaffold: small footprint & classnames reused by simple CSS above
+        // ---------------------------------------------------------------------------
+
         const createWidgetShell = (container) => {
           const wrapper = document.createElement("main");
           wrapper.className = "chat-widget";
@@ -475,24 +473,26 @@ width: 100%;
                   Zero-backend vanilla snippet. Bring your own OpenAI API key.
                 </p>
               </div>
-              <div class="chat-widget__apikey">
-                <input
-                  type="password"
-                  class="chat-input chat-input--apikey"
-                  placeholder="Paste OpenAI API key (sk-...)"
-                  data-chat-apikey
-                  autocomplete="off"
-                />
-                <button type="button" class="chat-toggle chat-toggle--mask" data-chat-toggle>
-                  Show
+              <div class="chat-widget__toolbar">
+                <div class="chat-widget__apikey">
+                  <input
+                    type="password"
+                    class="chat-input chat-input--apikey"
+                    placeholder="Paste OpenAI API key (sk-...)"
+                    data-chat-apikey
+                    autocomplete="off"
+                  />
+                  <button type="button" class="chat-toggle chat-toggle--mask" data-chat-toggle>
+                    Show
+                  </button>
+                </div>
+                <button type="button" class="chat-toggle chat-toggle--fullscreen" data-chat-fullscreen>
+                  Fullscreen
                 </button>
-              </div>
-              <button type="button" class="chat-toggle chat-toggle--fullscreen" data-chat-fullscreen>
-                Fullscreen
-              </button>
-              <div class="chat-status chat-status--idle" data-chat-status>
-                <span class="chat-status__dot"></span>
-                <span data-chat-status-text>Idle</span>
+                <div class="chat-status chat-status--idle" data-chat-status>
+                  <span class="chat-status__dot"></span>
+                  <span data-chat-status-text>Idle</span>
+                </div>
               </div>
             </header>
             <section class="chat-widget__messages" data-chat-messages>
@@ -509,11 +509,11 @@ width: 100%;
                   rows="3"
                 ></textarea>
               </label>
-              <div style="display: flex; gap: 0.75rem; align-items: center;">
-                <button class="chat-toggle chat-toggle--stop" data-chat-stop hidden>
+              <div class="chat-composer__actions">
+                <button type="button" class="chat-toggle chat-toggle--stop" data-chat-stop hidden>
                   Stop
                 </button>
-                <button class="chat-composer__send" data-chat-send>
+                <button type="button" class="chat-composer__send" data-chat-send>
                   Send
                 </button>
               </div>
@@ -585,6 +585,10 @@ width: 100%;
               updateFullscreenButton(Boolean(event.detail?.active));
             });
           }
+
+        // ---------------------------------------------------------------------------
+        // Prompt configuration defaults (kept nearby for quick adjustments)
+        // ---------------------------------------------------------------------------
 
         const defaultSystemPrompt = [
           "You are GPT-5-mini acting as a senior application analyst.",
@@ -663,6 +667,7 @@ width: 100%;
         const DEFAULT_SQL_AGENT_KEY = "core";
 
         /** Minimal reactive state for the widget. */
+        // Widget state keeps transient data local to each instance
         const state = {
           apiKey: savedKey,
           messages: [],
@@ -696,6 +701,7 @@ width: 100%;
           return normalized;
         };
 
+        // Runtime configuration is mutable so the widget can react to JSON config
         const config = {
           loaded: false,
           systemPrompt: defaultSystemPrompt,
@@ -711,6 +717,7 @@ width: 100%;
           }
         };
 
+        // Lightweight debug logger toggled via ?debug=1 or localStorage
         const debug = {
           enabled: false,
           init() {
