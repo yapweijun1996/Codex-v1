@@ -983,7 +983,7 @@ body.chat-fullscreen-active {
           actions.appendChild(runButton);
           bubble.appendChild(actions);
 
-          runButton.addEventListener("click", () => executeSql(sql, runButton));
+          runButton.addEventListener("click", () => executeSql(sql, runButton, { narrate: true }));
         }
 
         async function runSqlStatement(statement, label) {
@@ -1031,13 +1031,14 @@ body.chat-fullscreen-active {
           };
         }
 
-        async function executeSql(sql, button) {
+        async function executeSql(sql, button, options = {}) {
           if (!sql) return;
           const statements = splitSqlStatements(sql);
           if (!statements.length) return;
           debug.log("sql:queue", { total: statements.length });
           const aggregated = [];
           const trigger = button;
+          const { narrate = false } = options;
           if (trigger) {
             trigger.disabled = true;
             trigger.textContent = "Running…";
@@ -1065,6 +1066,9 @@ body.chat-fullscreen-active {
             setStatus("Idle", false);
             debug.log("sql:complete");
           }
+          if (narrate) {
+            await narrateSqlResultsWithNarrator(aggregated);
+          }
           return aggregated;
         }
 
@@ -1075,13 +1079,26 @@ body.chat-fullscreen-active {
           debug.log("sql:detected", { length: sql.length });
           attachSqlRunner(bubble, sql);
           if (autoRun) {
-            executeSql(sql).catch((error) => {
+            executeSql(sql, undefined, { narrate: true }).catch((error) => {
               debug.log("sql:autorun-error", error.message);
             });
           }
         }
 
         const getRecentConversation = (limit = 6) => state.conversation.slice(-limit);
+
+        const getLatestUserMessage = () => {
+          for (let i = state.conversation.length - 1; i >= 0; i -= 1) {
+            const entry = state.conversation[i];
+            if (entry && entry.role === "user" && typeof entry.content === "string") {
+              const trimmed = entry.content.trim();
+              if (trimmed) {
+                return trimmed;
+              }
+            }
+          }
+          return null;
+        };
 
         const extractJsonObject = (content) => {
           try {
@@ -1243,6 +1260,52 @@ body.chat-fullscreen-active {
           });
           debug.log("narrator:output", message);
           return message.trim();
+        }
+
+        async function narrateSqlResultsWithNarrator(results) {
+          if (!Array.isArray(results) || !results.length) {
+            return;
+          }
+          if (!state.apiKey) {
+            const warning = "⚠️ 缺少 API Key，暫時無法產出 Narrator 摘要 (Need API key for summary).";
+            const bubble = appendBubble("assistant", warning);
+            evaluateSqlOpportunity(warning, bubble, { autoRun: false });
+            state.messages.push({ role: "assistant", content: warning });
+            state.conversation.push({ role: "assistant", content: warning });
+            return;
+          }
+
+          const executedStatements = results
+            .map((entry) => (typeof entry?.statement === "string" ? entry.statement.trim() : ""))
+            .filter((text) => text);
+          const sqlText = executedStatements.join("\n\n");
+          const question = getLatestUserMessage() || "使用者最新需求 (Latest user request)";
+          const plan = ["sql", "summary"];
+
+          try {
+            setStatus("Summarizing…", true);
+            const message = await runNarrator({
+              question,
+              plan,
+              clarifyQuestion: null,
+              sqlText,
+              sqlResults: results
+            });
+            const finalText = message || "✅ 任務完成。";
+            const bubble = appendBubble("assistant", finalText);
+            evaluateSqlOpportunity(finalText, bubble, { autoRun: false });
+            state.messages.push({ role: "assistant", content: finalText });
+            state.conversation.push({ role: "assistant", content: finalText });
+          } catch (error) {
+            const fallback = `⚠️ 摘要失敗 (summary failed): ${error.message}`;
+            const bubble = appendBubble("assistant", fallback);
+            evaluateSqlOpportunity(fallback, bubble, { autoRun: false });
+            state.messages.push({ role: "assistant", content: fallback });
+            state.conversation.push({ role: "assistant", content: fallback });
+            debug.log("narrator:manual-error", error.message);
+          } finally {
+            setStatus("Idle", false);
+          }
         }
 
         const setStatus = (text, active) => {
