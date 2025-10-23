@@ -4,6 +4,7 @@
     const A4W=794, A4H=1123, HDR_H=84, FTR_H=64, PAD=28;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
     const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=0.92;
+    const MOBILE_LEFT_PADDING="20px 16px";
     const innerHFWidth = A4W - 36;
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
@@ -69,7 +70,7 @@
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
-    return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
+    return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,MOBILE_LEFT_PADDING,Style };
   })();
   function applyStyles(el, styles){ for(const k in styles){ el.style[k]=styles[k]; } }
   const StyleMirror=(function(){
@@ -1749,12 +1750,17 @@
       saveCloseBtn.addEventListener("click", function(){ ctx.saveClose(); });
       saveCloseWrap.appendChild(saveCloseBtn);
       const defaultLeftPadding = left.style.padding || "48px 36px";
-      const compactLeftPadding = "28px 18px";
+      const defaultLeftGap = left.style.gap || "28px";
+      const defaultLeftJustify = left.style.justifyItems || "center";
+      const defaultLeftAlign = left.style.alignContent || "start";
       function layout(){
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
         split.style.flexDirection = isColumn ? "column" : "row";
         rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
-        left.style.padding = isColumn ? compactLeftPadding : defaultLeftPadding;
+        left.style.padding = isColumn ? WCfg.MOBILE_LEFT_PADDING : defaultLeftPadding;
+        left.style.gap = isColumn ? "18px" : defaultLeftGap;
+        left.style.justifyItems = isColumn ? "stretch" : defaultLeftJustify;
+        left.style.alignContent = isColumn ? "stretch" : defaultLeftAlign;
       }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); modal.appendChild(saveCloseWrap); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
@@ -1780,9 +1786,11 @@
         applyStyles(stage, WCfg.Style.previewStage);
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
         if(isColumn){
-          stage.style.maxWidth="100%";
-          stage.style.gap="24px";
-          stage.style.padding="8px 0 32px";
+          stage.style.maxWidth = available>0 ? Math.min(Math.max(available, 280), Math.round(WCfg.A4W*WCfg.PREVIEW_MAX_SCALE)+32)+"px" : "100%";
+          stage.style.width="100%";
+          stage.style.gap="20px";
+          stage.style.padding="8px 0 28px";
+          stage.style.justifyItems="stretch";
         }
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
@@ -1803,11 +1811,11 @@
           wrap.style.maxWidth="100%";
           wrap.style.overflow="visible";
           const outer=document.createElement("div");
-          outer.style.width=scaledWidth+"px";
+          outer.style.width=isColumn ? "100%" : scaledWidth+"px";
           outer.style.height=scaledHeight+"px";
           outer.style.display="block";
           outer.style.position="relative";
-          outer.style.maxWidth="100%";
+          outer.style.maxWidth=isColumn && available>0 ? Math.min(Math.max(available, 280), Math.round(WCfg.A4W*WCfg.PREVIEW_MAX_SCALE)+32)+"px" : "100%";
           outer.style.margin="0 auto";
           outer.style.overflow="visible";
           wrap.appendChild(page);
@@ -1818,6 +1826,9 @@
             br.textContent="Page Break";
             applyStyles(br, WCfg.Style.pageDivider);
             br.style.maxWidth=scaledWidth+"px";
+            if(isColumn && available>0){
+              br.style.maxWidth=Math.min(Math.max(available, 280), Math.round(WCfg.A4W*WCfg.PREVIEW_MAX_SCALE)+32)+"px";
+            }
             stage.appendChild(br);
           }
         }
