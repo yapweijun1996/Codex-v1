@@ -723,7 +723,15 @@
   })();
   const HFEditor=(function(){
     function enableImageResizer(editor){
-      if(!editor || editor.__weditorImageResizer) return;
+      if(!editor) return;
+      if(editor.__weditorImageResizer){
+        const overlay=editor.__weditorImageOverlay;
+        if(overlay && !editor.contains(overlay)){
+          editor.appendChild(overlay);
+          if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
+        }
+        return;
+      }
       editor.__weditorImageResizer = true;
       if(!document.getElementById("weditor-hf-img-style")){
         const style=document.createElement("style");
@@ -773,6 +781,7 @@
       readout.style.pointerEvents="none";
       overlay.appendChild(readout);
       editor.appendChild(overlay);
+      editor.__weditorImageOverlay = overlay;
       let activeImg=null;
       let raf=null;
       function hideOverlay(){
@@ -887,7 +896,7 @@
       editor.addEventListener("focus", scheduleOverlay);
       editor.addEventListener("dragstart", function(ev){ if(resizing){ ev.preventDefault(); ev.stopPropagation(); } });
       editor.__weditorHideOverlay=hideOverlay;
-      editor.__weditorCleanup=function(){ if(raf) cancelAnimationFrame(raf); window.removeEventListener("resize", scheduleOverlay); observer.disconnect(); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); };
+      editor.__weditorCleanup=function(){ if(raf) cancelAnimationFrame(raf); window.removeEventListener("resize", scheduleOverlay); observer.disconnect(); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); editor.__weditorImageOverlay=null; editor.__weditorImageResizer=false; };
     }
     let uid=0;
     const TOKEN_OPTIONS=[
@@ -1176,6 +1185,8 @@
             if(card.disabled) return;
             if(!toggle.checked){ toggle.checked=true; sync(); }
             editor.innerHTML=Sanitizer.clean(tpl.html||"");
+            reattachImageOverlay();
+            if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
             decorateTokens(editor);
             Normalizer.fixStructure(editor);
             enforceImageSizing(editor);
@@ -1243,6 +1254,10 @@
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
       enableImageResizer(editor);
+      function reattachImageOverlay(){
+        const overlay=editor.__weditorImageOverlay;
+        if(overlay && !editor.contains(overlay)) editor.appendChild(overlay);
+      }
       function insertContent(content){
         editor.focus();
         const sel=window.getSelection();
@@ -1280,6 +1295,8 @@
         }
         Normalizer.fixStructure(editor);
         decorateTokens(editor);
+        reattachImageOverlay();
+        if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
         notifyChange();
       }
       function toAltText(name){
