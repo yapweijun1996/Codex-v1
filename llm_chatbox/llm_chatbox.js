@@ -1031,6 +1031,36 @@ body.chat-fullscreen-active {
           };
         }
 
+        const buildSqlSummaryMessage = (aggregated = []) => {
+          if (!Array.isArray(aggregated) || !aggregated.length) return null;
+
+          const lines = aggregated.map((entry, index) => {
+            const normalized = entry?.normalized ?? {};
+            const rows = Array.isArray(normalized.rows) ? normalized.rows : [];
+            const rowCount = Number(normalized.rowCount ?? rows.length ?? 0);
+            let columns = Array.isArray(normalized.columns) ? normalized.columns.slice(0, 6) : [];
+            if (!columns.length && rows.length) {
+              columns = Object.keys(rows[0]).slice(0, 6);
+            }
+            const header = entry?.label
+              ? `${entry.label}`
+              : `Query ${index + 1}`;
+            const firstRow = rows[0] || null;
+            const sample = firstRow
+              ? columns
+                  .map((col) => `${col}=${firstRow[col] ?? ""}`)
+                  .join(", ")
+              : null;
+            const columnText = columns.length ? `欄位 Columns: ${columns.join(", ")}` : "欄位 Columns: 無資料";
+            const countText = `筆數 Rows: ${rowCount}`;
+            const sampleText = sample ? `樣本 Sample: ${sample}` : "樣本 Sample: 無";
+            return `${header} → ${countText}; ${columnText}; ${sampleText}`;
+          });
+
+          lines.push("Next 建議: 若需要更深入分析, 可以詢問我進行彙總、篩選或視覺化建議。");
+          return `資料重點 Data Highlights:\n- ${lines.join("\n- ")}`;
+        };
+
         async function executeSql(sql, button) {
           if (!sql) return;
           const statements = splitSqlStatements(sql);
@@ -1064,6 +1094,14 @@ body.chat-fullscreen-active {
             }
             setStatus("Idle", false);
             debug.log("sql:complete");
+          }
+          if (aggregated.length) {
+            const summaryMessage = buildSqlSummaryMessage(aggregated);
+            if (summaryMessage) {
+              appendBubble("assistant", summaryMessage);
+              state.messages.push({ role: "assistant", content: summaryMessage });
+              state.conversation.push({ role: "assistant", content: summaryMessage });
+            }
           }
           return aggregated;
         }
