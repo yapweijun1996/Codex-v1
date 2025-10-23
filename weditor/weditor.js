@@ -2010,6 +2010,32 @@
       { label:"18", px:"18px", exec:"6" },
       { label:"24", px:"24px", exec:"7" }
     ];
+    const FONT_COLORS={
+      theme:[
+        { label:"Dark Gray", value:"#323130" },
+        { label:"Red", value:"#d13438" },
+        { label:"Orange", value:"#ff8c00" },
+        { label:"Gold", value:"#f9d948" },
+        { label:"Green", value:"#0b6a0b" },
+        { label:"Teal", value:"#00b294" },
+        { label:"Blue", value:"#0078d4" },
+        { label:"Navy", value:"#004578" },
+        { label:"Purple", value:"#8764b8" },
+        { label:"Magenta", value:"#e3008c" }
+      ],
+      standard:[
+        { label:"Black", value:"#000000" },
+        { label:"Dark Red", value:"#a4262c" },
+        { label:"Brown", value:"#7f6000" },
+        { label:"Olive", value:"#3f6212" },
+        { label:"Dark Green", value:"#0b6a0b" },
+        { label:"Dark Teal", value:"#005b70" },
+        { label:"Dark Blue", value:"#1f4e79" },
+        { label:"Indigo", value:"#32145a" },
+        { label:"Gray", value:"#7f7f7f" },
+        { label:"White", value:"#ffffff" }
+      ]
+    };
     const HIGHLIGHT_COLORS=[
       { label:"Yellow", value:"#ffff00" },
       { label:"Bright Green", value:"#00ff00" },
@@ -2120,6 +2146,64 @@
       }
       return changed;
     }
+    function fallbackApplyFontColor(target, color){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const doc=target.ownerDocument || document;
+      const span=doc.createElement("span");
+      span.style.color=color;
+      const contents=info.range.extractContents();
+      span.appendChild(contents);
+      info.range.insertNode(span);
+      info.sel.removeAllRanges();
+      const newRange=doc.createRange();
+      newRange.selectNodeContents(span);
+      info.sel.addRange(newRange);
+      return true;
+    }
+    function fallbackClearFontColor(target){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const { range }=info;
+      const doc=target.ownerDocument || document;
+      const nodes=[];
+      if(range.commonAncestorContainer && range.commonAncestorContainer.nodeType===1 && target.contains(range.commonAncestorContainer)){
+        nodes.push(range.commonAncestorContainer);
+      }
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==range.commonAncestorContainer && target.contains(current) && intersectsRange(range, current)){
+          nodes.push(current);
+        }
+        while((current=walker.nextNode())){
+          if(!target.contains(current)) continue;
+          if(!intersectsRange(range, current)) continue;
+          nodes.push(current);
+        }
+      }
+      let changed=false;
+      const unwrap=[];
+      for(let i=0;i<nodes.length;i++){
+        const el=nodes[i];
+        if(!el || el.nodeType!==1) continue;
+        let modified=false;
+        if(el.style && el.style.color){
+          el.style.color="";
+          if(el.getAttribute && el.getAttribute("style")==="") el.removeAttribute("style");
+          modified=true;
+        }
+        if(el.hasAttribute && el.hasAttribute("color")){ el.removeAttribute("color"); modified=true; }
+        if(modified) changed=true;
+        if(el.nodeName==="SPAN" && el.attributes && el.attributes.length===0){ unwrap.push(el); }
+      }
+      for(let i=0;i<unwrap.length;i++){
+        const span=unwrap[i];
+        const parent=span.parentNode;
+        if(!parent) continue;
+        while(span.firstChild){ parent.insertBefore(span.firstChild, span); }
+        parent.removeChild(span);
+      }
+      return changed;
+    }
     function execCommand(target, command, value, useCss){
       if(!target){ return false; }
       focusTarget(target);
@@ -2186,6 +2270,31 @@
       if(success && inst){ inst.highlightColor=null; }
       return success;
     }
+    function applyFontColor(inst, ctx, color){
+      if(!color){ return clearFontColor(inst, ctx); }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      try{ success=document.execCommand("foreColor", false, color); }
+      catch(err){ success=false; }
+      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      if(!success){ success=fallbackApplyFontColor(target, color); }
+      if(success && inst){ inst.fontColor=color; }
+      return success;
+    }
+    function clearFontColor(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      try{ success=document.execCommand("foreColor", false, "initial"); }
+      catch(err){ success=false; }
+      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      if(fallbackClearFontColor(target)) success=true;
+      if(success && inst){ inst.fontColor=null; }
+      return success;
+    }
     function applyUnderline(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, "underline", null, true);
@@ -2235,15 +2344,274 @@
     return {
       FONT_FAMILIES,
       FONT_SIZES,
+      FONT_COLORS,
       HIGHLIGHT_COLORS,
       applyFontFamily,
       applyFontSize,
+      applyFontColor,
+      clearFontColor,
       applyHighlight,
       clearHighlight,
       applyUnderline,
       applyDecorationStyle,
       applySimple
     };
+  })();
+  const FontColorUI=(function(){
+    const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
+    function normalizeColor(input, docRef){
+      if(!input){ return null; }
+      let value=String(input).trim();
+      if(!value){ return null; }
+      if(/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)){ value="#"+value; }
+      const tester=(docRef||document).createElement("span");
+      tester.style.color="";
+      tester.style.color=value;
+      if(!tester.style.color){ return null; }
+      return tester.style.color;
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("data-command","format.fontColor");
+      button.setAttribute("aria-label","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("title","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="44px";
+      button.style.padding="3px 12px";
+      const iconWrap=document.createElement("span");
+      iconWrap.style.display="flex";
+      iconWrap.style.flexDirection="column";
+      iconWrap.style.alignItems="center";
+      iconWrap.style.lineHeight="1";
+      const glyph=document.createElement("span");
+      glyph.textContent="A";
+      glyph.setAttribute("aria-hidden","true");
+      glyph.style.fontSize="18px";
+      glyph.style.fontWeight="600";
+      glyph.style.color=WCfg.UI.text;
+      const underline=document.createElement("span");
+      underline.style.marginTop="4px";
+      underline.style.width="18px";
+      underline.style.height="3px";
+      underline.style.borderRadius="4px";
+      underline.style.background="#d13438";
+      underline.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      iconWrap.appendChild(glyph);
+      iconWrap.appendChild(underline);
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(iconWrap);
+      button.appendChild(arrow);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      palette.style.padding="12px";
+      palette.style.zIndex="20";
+      palette.style.minWidth="220px";
+      palette.style.display="none";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const colorButtons=[];
+      let noColorBtn;
+      const colors=Formatting.FONT_COLORS || { theme:[], standard:[] };
+      const theme=Array.isArray(colors.theme) ? colors.theme : [];
+      const standard=Array.isArray(colors.standard) ? colors.standard : [];
+      let currentColor;
+      if(inst && typeof inst.fontColor!=="undefined"){ currentColor=inst.fontColor; }
+      else if(theme.length){
+        currentColor=theme[0].value;
+        if(inst) inst.fontColor=currentColor;
+      } else {
+        currentColor=null;
+      }
+      function updatePreview(color){
+        if(color){
+          underline.style.background=color;
+          underline.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+        } else {
+          underline.style.background=NO_COLOR_PATTERN;
+          underline.style.boxShadow="0 0 0 1px "+WCfg.UI.borderSubtle;
+        }
+      }
+      function updateSelectionUI(selected){
+        const compare=(selected||"").replace(/\s+/g,"").toLowerCase();
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const entryValue=(entry.value||"").replace(/\s+/g,"").toLowerCase();
+          const isActive=compare && entryValue===compare;
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+      }
+      function updateNoColorState(selected){
+        if(!noColorBtn) return;
+        const active=selected===null || typeof selected==="undefined" || selected==="";
+        noColorBtn.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        noColorBtn.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      function pickColor(value){
+        setOpen(false);
+        let changed=false;
+        if(value){
+          changed=!!Formatting.applyFontColor(inst, ctx, value);
+          if(changed){
+            const normalized=normalizeColor(value, doc);
+            currentColor=normalized || value;
+            if(inst) inst.fontColor=currentColor;
+          }
+        } else {
+          changed=!!Formatting.clearFontColor(inst, ctx);
+          if(changed){ currentColor=null; if(inst) inst.fontColor=null; }
+        }
+        if(changed){
+          updatePreview(currentColor);
+          updateSelectionUI(currentColor);
+          updateNoColorState(currentColor);
+          if(inst) OutputBinding.syncDebounced(inst);
+        }
+      }
+      function createSection(title, items){
+        if(!items || !items.length) return;
+        const sectionTitle=doc.createElement("div");
+        sectionTitle.textContent=title;
+        sectionTitle.style.font="11px/1.4 Segoe UI,system-ui";
+        sectionTitle.style.color=WCfg.UI.textDim;
+        sectionTitle.style.marginBottom="6px";
+        sectionTitle.style.textTransform="uppercase";
+        sectionTitle.style.letterSpacing=".08em";
+        palette.appendChild(sectionTitle);
+        const grid=doc.createElement("div");
+        grid.style.display="grid";
+        grid.style.gridTemplateColumns="repeat(auto-fill, minmax(26px,1fr))";
+        grid.style.gap="6px";
+        grid.style.marginBottom="10px";
+        palette.appendChild(grid);
+        for(let i=0;i<items.length;i++){
+          const normalized=normalizeColor(items[i].value, doc) || items[i].value;
+          const swatch=doc.createElement("button");
+          swatch.type="button";
+          swatch.setAttribute("role","menuitem");
+          swatch.setAttribute("data-color", items[i].value);
+          swatch.setAttribute("aria-label", items[i].label+" font color");
+          swatch.title=items[i].label;
+          swatch.style.width="26px";
+          swatch.style.height="26px";
+          swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+          swatch.style.borderRadius="4px";
+          swatch.style.background=items[i].value;
+          swatch.style.cursor="pointer";
+          swatch.style.padding="0";
+          swatch.style.display="inline-flex";
+          swatch.style.alignItems="center";
+          swatch.style.justifyContent="center";
+          swatch.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(items[i].value); });
+          swatch.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+          grid.appendChild(swatch);
+          colorButtons.push({ value:normalized, el:swatch });
+        }
+      }
+      createSection("Theme Colors", theme);
+      createSection("Standard Colors", standard);
+      const customWrap=doc.createElement("div");
+      customWrap.style.display="flex";
+      customWrap.style.flexDirection="column";
+      customWrap.style.gap="6px";
+      palette.appendChild(customWrap);
+      const moreColorsBtn=doc.createElement("button");
+      moreColorsBtn.type="button";
+      moreColorsBtn.textContent="More Colors…";
+      moreColorsBtn.setAttribute("role","menuitem");
+      moreColorsBtn.style.padding="6px 8px";
+      moreColorsBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      moreColorsBtn.style.background="#fff";
+      moreColorsBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      moreColorsBtn.style.borderRadius="4px";
+      moreColorsBtn.style.cursor="pointer";
+      moreColorsBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        const promptValue=window.prompt("Enter a custom color (hex or CSS color value)", currentColor || "#d13438");
+        if(!promptValue) return;
+        const normalized=normalizeColor(promptValue, doc);
+        if(!normalized){
+          window.alert("Invalid color value. Try formats like #ff0000 or rgb(255,0,0).");
+          return;
+        }
+        pickColor(normalized);
+      });
+      customWrap.appendChild(moreColorsBtn);
+      noColorBtn=doc.createElement("button");
+      noColorBtn.type="button";
+      noColorBtn.setAttribute("role","menuitem");
+      noColorBtn.textContent="No Color";
+      noColorBtn.setAttribute("aria-label","Remove font color");
+      noColorBtn.style.padding="6px 8px";
+      noColorBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      noColorBtn.style.background="#fff";
+      noColorBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      noColorBtn.style.borderRadius="4px";
+      noColorBtn.style.cursor="pointer";
+      noColorBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(null); });
+      noColorBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      customWrap.appendChild(noColorBtn);
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        if(state){
+          palette.style.display="block";
+          palette.setAttribute("aria-hidden","false");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            if(doc.activeElement===button){
+              const first=palette.querySelector("button");
+              if(first) first.focus();
+            }
+          },0);
+        } else {
+          palette.style.display="none";
+          palette.setAttribute("aria-hidden","true");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+        button.setAttribute("aria-expanded", state?"true":"false");
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      let open=false;
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      palette.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      const normalizedInitial=normalizeColor(currentColor, doc);
+      if(normalizedInitial){ currentColor=normalizedInitial; if(inst) inst.fontColor=currentColor; }
+      updatePreview(currentColor);
+      updateSelectionUI(currentColor);
+      updateNoColorState(currentColor);
+      container.appendChild(button);
+      container.appendChild(palette);
+      return container;
+    }
+    return { create };
   })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
@@ -2499,6 +2867,11 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.fontColor":{
+      kind:"custom",
+      ariaLabel:"Font Color (字体颜色 / 文字颜色)",
+      render:function(inst, ctx){ return FontColorUI.create(inst, ctx); }
+    },
     "format.highlight":{
       kind:"custom",
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
@@ -2546,7 +2919,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2556,7 +2929,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -2578,6 +2951,7 @@
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
+    this.fontColor = (Formatting && Formatting.FONT_COLORS && Formatting.FONT_COLORS.theme && Formatting.FONT_COLORS.theme.length ? Formatting.FONT_COLORS.theme[0].value : null);
     this._mount();
     OutputBinding.syncDebounced(this);
   }
