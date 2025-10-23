@@ -401,9 +401,60 @@
       }else{
         targetEl.appendChild(comment);
       }
-      const p=document.createElement("p"); p.innerHTML="<br>";
-      if(comment.nextSibling) targetEl.insertBefore(p, comment.nextSibling); else targetEl.appendChild(p);
-      WDom.placeCaretAtEnd(p);
+      function nextContentSibling(node){
+        let current=node.nextSibling;
+        while(current){
+          if(current.nodeType===8 && String(current.nodeValue).trim().toLowerCase()==="page:break"){
+            current=current.nextSibling;
+            continue;
+          }
+          if(current.nodeType===3 && !current.nodeValue.trim()){
+            const removable=current;
+            current=current.nextSibling;
+            removable.parentNode && removable.parentNode.removeChild(removable);
+            continue;
+          }
+          return current;
+        }
+        return null;
+      }
+      function firstCaretPosition(node){
+        if(!node) return null;
+        if(node.nodeType===3){
+          return { node, offset:0 };
+        }
+        if(node.nodeType===1){
+          if(node.childNodes && node.childNodes.length){
+            for(let i=0;i<node.childNodes.length;i++){
+              const child=node.childNodes[i];
+              const found=firstCaretPosition(child);
+              if(found) return found;
+            }
+          }
+          return { node, offset:0 };
+        }
+        return null;
+      }
+      function placeCaret(position){
+        if(!position) return;
+        const selection=window.getSelection ? window.getSelection() : null;
+        if(!selection || !document.createRange) return;
+        const range=document.createRange();
+        range.setStart(position.node, position.offset);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      let caretTarget=nextContentSibling(comment);
+      if(!caretTarget){
+        const placeholder=document.createElement("p");
+        const text=document.createTextNode("");
+        placeholder.appendChild(text);
+        targetEl.appendChild(placeholder);
+        caretTarget=text;
+      }
+      if(targetEl && typeof targetEl.focus==="function") targetEl.focus();
+      placeCaret(firstCaretPosition(caretTarget));
     }
     function remove(targetEl){
       const sel=window.getSelection ? window.getSelection() : null; let node=(sel && sel.rangeCount) ? sel.anchorNode : null;
