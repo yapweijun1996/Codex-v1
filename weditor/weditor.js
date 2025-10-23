@@ -2011,12 +2011,21 @@
       { label:"24", px:"24px", exec:"7" }
     ];
     const HIGHLIGHT_COLORS=[
-      { label:"Yellow", value:"#fff59d" },
-      { label:"Green", value:"#c8facc" },
-      { label:"Pink", value:"#ffd6f2" },
-      { label:"Blue", value:"#bae6ff" },
-      { label:"Orange", value:"#ffe7c2" },
-      { label:"Purple", value:"#e3d3ff" }
+      { label:"Yellow", value:"#ffff00" },
+      { label:"Bright Green", value:"#00ff00" },
+      { label:"Turquoise", value:"#00ffff" },
+      { label:"Pink", value:"#ff00ff" },
+      { label:"Blue", value:"#0000ff" },
+      { label:"Red", value:"#ff0000" },
+      { label:"Dark Blue", value:"#000080" },
+      { label:"Teal", value:"#008080" },
+      { label:"Green", value:"#008000" },
+      { label:"Purple", value:"#800080" },
+      { label:"Violet", value:"#8000ff" },
+      { label:"Dark Red", value:"#800000" },
+      { label:"Dark Yellow", value:"#808000" },
+      { label:"Gray", value:"#808080" },
+      { label:"Black", value:"#000000" }
     ];
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function focusTarget(target){ if(target && typeof target.focus==="function"){ try{ target.focus({ preventScroll:true }); } catch(e){ target.focus(); } } }
