@@ -914,6 +914,19 @@ body.chat-fullscreen-active {
     `;
   }
 
+  function renderSqlAgentNoQuery(question) {
+    const trimmedQuestion = String(question || '').trim();
+    const detail = trimmedQuestion
+      ? `<br /><small>原始提問：${escapeHtml(trimmedQuestion)}</small>`
+      : '';
+    return `
+      <div class="chat-error-note">
+        <strong>我暫時想不到安全的 SQL</strong><br />
+        請提供更具體的條件 (e.g. 日期範圍、客戶名稱) 讓我可以生成決策用查詢。${detail}
+      </div>
+    `;
+  }
+
   function decodeRowPayload(payload) {
     if (!payload) return null;
     try {
@@ -1883,7 +1896,13 @@ body.chat-fullscreen-active {
           });
           const trimmed = sql.trim();
           if (!trimmed || trimmed.toUpperCase() === "NO_VALID_QUERY") {
-            throw new Error("SQL agent could not build a valid query.");
+            const error = new Error("SQL agent could not build a valid query.");
+            error.code = "SQL_AGENT_NO_QUERY";
+            error.detail = {
+              agent: resolvedAgentKey,
+              plan
+            };
+            throw error;
           }
           debug.log("sql-agent:output", { agent: resolvedAgentKey, text: trimmed });
           return trimmed;
@@ -2089,6 +2108,15 @@ body.chat-fullscreen-active {
               appendBubble("assistant", cancelMessage);
               state.messages.push({ role: "assistant", content: cancelMessage });
               state.conversation.push({ role: "assistant", content: cancelMessage });
+            } else if (error.code === "SQL_AGENT_NO_QUERY") {
+              const friendlyHtml = renderSqlAgentNoQuery(prompt);
+              const friendlyText =
+                "SQL agent 需要更多條件才能產生查詢，請補充日期、客戶或文件編號等線索。";
+              appendBubble("assistant", friendlyHtml, { asHtml: true });
+              state.messages.push({ role: "assistant", content: friendlyText });
+              state.conversation.push({ role: "assistant", content: friendlyText });
+              finalResponse = friendlyText;
+              debug.log("pipeline:error", error.message, error.detail);
             } else {
               appendBubble("assistant", `⚠️ ${error.message}`);
               state.messages.push({ role: "assistant", content: `⚠️ ${error.message}` });
