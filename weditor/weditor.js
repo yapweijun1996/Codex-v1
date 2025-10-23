@@ -3,7 +3,7 @@
   const WCfg=(function(){
     const A4W=794, A4H=1123, HDR_H=84, FTR_H=64, PAD=28;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
-    const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=0.92;
+    const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=0.92, NARROW_FULLSCREEN_BP=1160;
     const innerHFWidth = A4W - 36;
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
@@ -69,7 +69,7 @@
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
-    return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
+    return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,NARROW_FULLSCREEN_BP,Style };
   })();
   function applyStyles(el, styles){ for(const k in styles){ el.style[k]=styles[k]; } }
   const StyleMirror=(function(){
@@ -1748,10 +1748,36 @@
       saveCloseBtn.setAttribute("aria-label","Save changes and close fullscreen editor");
       saveCloseBtn.addEventListener("click", function(){ ctx.saveClose(); });
       saveCloseWrap.appendChild(saveCloseBtn);
+      const defaultLeftPadding = left.style.padding || "48px 36px";
+      const mediumLeftPadding = "36px 24px";
+      const compactLeftPadding = "28px 18px";
+      const defaultRightWidth = rightWrap.style.width || "min(46vw, 720px)";
+      const defaultRightMinWidth = rightWrap.style.minWidth || "360px";
+      const defaultRightMaxWidth = rightWrap.style.maxWidth || "720px";
+      const tightRightWidth = "min(44vw, 640px)";
+      const tightRightMinWidth = "320px";
       function layout(){
-        const isColumn = window.innerWidth < WCfg.MOBILE_BP;
+        const viewport = window.innerWidth;
+        const isColumn = viewport < WCfg.MOBILE_BP;
+        const isTightRow = !isColumn && viewport < WCfg.NARROW_FULLSCREEN_BP;
         split.style.flexDirection = isColumn ? "column" : "row";
-        rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
+        if(isColumn){
+          rightWrap.style.width = "100%";
+          rightWrap.style.minWidth = "0";
+          rightWrap.style.maxWidth = defaultRightMaxWidth;
+          left.style.padding = compactLeftPadding;
+        }else{
+          rightWrap.style.maxWidth = defaultRightMaxWidth;
+          if(isTightRow){
+            rightWrap.style.width = tightRightWidth;
+            rightWrap.style.minWidth = tightRightMinWidth;
+            left.style.padding = mediumLeftPadding;
+          }else{
+            rightWrap.style.width = defaultRightWidth;
+            rightWrap.style.minWidth = defaultRightMinWidth;
+            left.style.padding = defaultLeftPadding;
+          }
+        }
       }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); modal.appendChild(saveCloseWrap); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
@@ -1775,6 +1801,17 @@
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
+        const viewport = window.innerWidth;
+        const isColumn = viewport < WCfg.MOBILE_BP;
+        const isTightRow = !isColumn && viewport < WCfg.NARROW_FULLSCREEN_BP;
+        if(isColumn){
+          stage.style.maxWidth="100%";
+          stage.style.gap="24px";
+          stage.style.padding="8px 0 32px";
+        }else if(isTightRow){
+          stage.style.gap="28px";
+          stage.style.padding="16px 0 40px";
+        }
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
           page.style.margin="0";
