@@ -2567,7 +2567,21 @@
       moreBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); customInput.click(); });
       customInput.addEventListener("input", function(e){
         const val=e.target && e.target.value;
+        if(!val) return;
+        updatePreview(val);
+        updateSelectionUI(val);
+        updateAutomaticState(val);
+      });
+      customInput.addEventListener("change", function(e){
+        const val=e.target && e.target.value;
         if(val){ pickColor(val); }
+      });
+      customInput.addEventListener("cancel", function(){
+        const fallback=currentColor && /^#/.test(currentColor) ? currentColor : Formatting.FONT_COLOR_DEFAULT || "#d13438";
+        customInput.value=fallback;
+        updatePreview(currentColor);
+        updateSelectionUI(currentColor);
+        updateAutomaticState(currentColor);
       });
       customRow.appendChild(moreBtn);
       customRow.appendChild(customPreview);
