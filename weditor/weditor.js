@@ -970,60 +970,91 @@
     const TEMPLATE_LIBRARY={
       header:[
         {
-          id:"letterhead",
-          label:"🏢 Company Letterhead",
-          preview:'<strong>Acme Corp</strong><span>123 Market St · {{date}}</span>',
-          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'+
-            '<div style="display:flex;align-items:center;gap:12px;">'+
-              '<img src="https://picsum.photos/seed/weditor-letterhead/48/48" alt="Company logo" style="width:48px;height:48px;border-radius:8px;object-fit:cover;">'+
-              '<div>'+
-                '<div style="font-size:16px;font-weight:600;">Acme Corporation</div>'+
-                '<div style="font-size:12px;color:#666;">123 Market Street · San Francisco, CA</div>'+
+          id:"corporate-banner",
+          label:"🏢 Corporate Letterhead",
+          preview:'<span>Acme Corporation</span><span>{{date}} · Page {{page}}/{{total}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:12px;width:100%;padding:6px 0;">'+
+            '<div style="width:100%;height:240px;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.12);">'+
+              '<img src="https://picsum.photos/seed/weditor-banner/1200/320" alt="Corporate banner" style="width:100%;height:100%;object-fit:cover;display:block;">'+
+            '</div>'+
+            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;width:100%;">'+
+              '<div style="display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:1.5;color:#323130;">'+
+                '<div style="font-size:20px;font-weight:600;color:#201f1e;">Acme Corporation</div>'+
+                '<div>123 Market Street · San Francisco, CA 94103</div>'+
+                '<div>hello@acme.com · +1 (555) 010-2000</div>'+
+              '</div>'+
+              '<div style="text-align:right;font-size:12px;line-height:1.5;color:#605e5c;">'+
+                '<div>{{date}}</div>'+
+                '<div>Page {{page}} / {{total}}</div>'+
               '</div>'+
             '</div>'+
-            '<div style="text-align:right;font-size:12px;line-height:1.5;color:#666;">'+
-              '<div>{{date}}</div>'+
-              '<div>+1 (555) 010-2000</div>'+
-              '<div>hello@acme.com</div>'+
-            '</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;width:100%;"></div>'+
           '</div>',
           align:"left"
         },
         {
-          id:"report",
-          label:"📊 Company Report",
-          preview:'<span>Q4 Business Review</span><span>Confidential · {{date}}</span>',
-          html:'<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;">'+
-            '<div style="font-size:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;">Q4 Business Review</div>'+
-            '<div style="font-size:12px;color:#666;">Confidential · {{date}}</div>'+
+          id:"business-review",
+          label:"📊 Business Report",
+          preview:'<span>Q4 Business Review Report</span><span>Confidential · {{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:10px;width:100%;padding:10px 0;">'+
+            '<div style="width:100%;height:200px;border-radius:14px;background:linear-gradient(135deg,#243a73,#1b6ca8);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;">'+
+              '<div style="font-size:18px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;">Q4 Business Review Report</div>'+
+              '<div style="margin-top:6px;font-size:12px;opacity:.86;">Confidential · {{date}}</div>'+
+            '</div>'+
+            '<div style="display:flex;justify-content:center;text-align:center;font-size:12px;color:#605e5c;">Page {{page}} / {{total}}</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;width:100%;"></div>'+
           '</div>',
           align:"center"
         },
         {
-          id:"project",
-          label:"🗂️ Project Brief",
-          preview:'<span>Project Phoenix</span><span>Version {{page}} · {{date}}</span>',
-          html:'<div style="display:flex;flex-direction:column;gap:4px;width:100%;">'+
-            '<div style="font-size:15px;font-weight:600;">Project Phoenix</div>'+
-            '<div style="font-size:12px;color:#666;">Sprint Summary · Version {{page}} · {{date}}</div>'+
+          id:"invoice-quotation",
+          label:"🧾 Invoice / Quotation",
+          preview:'<span>Acme Finance</span><span>Invoice · {{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:12px;width:100%;padding:6px 0;">'+
+            '<div style="display:flex;align-items:center;gap:16px;width:100%;">'+
+              '<img src="https://picsum.photos/seed/weditor-invoice/180/140" alt="Company logo" style="width:160px;height:auto;object-fit:contain;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.12);">'+
+              '<div style="display:flex;flex-direction:column;gap:4px;">'+
+                '<div style="font-size:18px;font-weight:600;color:#201f1e;">Acme Finance</div>'+
+                '<div style="font-size:13px;color:#323130;">Invoice / Quotation</div>'+
+                '<div style="font-size:12px;color:#605e5c;">accounts@acmefinance.com · +65 6100 1234</div>'+
+              '</div>'+
+              '<div style="margin-left:auto;text-align:right;font-size:12px;line-height:1.5;color:#605e5c;">'+
+                '<div>Date · {{date}}</div>'+
+                '<div>Page {{page}} of {{total}}</div>'+
+              '</div>'+
+            '</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;width:100%;"></div>'+
           '</div>',
           align:"left"
         },
         {
-          id:"minutes",
-          label:"📝 Meeting Minutes",
-          preview:'<span>Weekly Sync</span><span>{{date}} · 10:00 AM</span>',
-          html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">'+
-            '<div>'+
-              '<div style="font-size:15px;font-weight:600;">Weekly Sync</div>'+
-              '<div style="font-size:12px;color:#666;">Prepared by Operations</div>'+
+          id:"formal-letter",
+          label:"🖋️ Formal Letter / Memo",
+          preview:'<span>Letterhead Banner</span><span>{{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:10px;width:100%;padding:8px 0;">'+
+            '<div style="width:100%;height:220px;border-radius:14px;overflow:hidden;background:#f3f2f1;display:flex;align-items:center;justify-content:center;">'+
+              '<img src="https://picsum.photos/seed/weditor-letter/1200/320" alt="Letter banner" style="width:100%;height:100%;object-fit:cover;display:block;">'+
             '</div>'+
-            '<div style="text-align:right;font-size:12px;color:#666;">'+
-              '<div>{{date}}</div>'+
-              '<div>10:00 AM · Zoom</div>'+
-            '</div>'+
+            '<div style="display:flex;justify-content:flex-end;font-size:12px;color:#605e5c;">{{date}}</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;width:100%;"></div>'+
           '</div>',
           align:"left"
+        },
+        {
+          id:"certificate",
+          label:"🪪 Certificate / Award",
+          preview:'<span>Certificate of Excellence</span><span>{{date}}</span>',
+          html:'<div style="display:flex;flex-direction:column;gap:12px;width:100%;padding:10px 0;">'+
+            '<div style="width:100%;height:200px;border-radius:16px;border:2px solid #d0d7e3;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#fdfcfb,#e2ebf0);">'+
+              '<div style="text-align:center;">'+
+                '<div style="font-size:20px;font-weight:600;color:#243a73;">Certificate of Excellence</div>'+
+                '<div style="margin-top:6px;font-size:12px;color:#243a73;">Presented on {{date}}</div>'+
+              '</div>'+
+            '</div>'+
+            '<div style="display:flex;justify-content:flex-end;font-size:12px;color:#605e5c;">Page {{page}} / {{total}}</div>'+
+            '<div style="border-bottom:1px solid #e1dfdd;width:100%;"></div>'+
+          '</div>',
+          align:"center"
         }
       ],
       footer:[
@@ -1099,14 +1130,49 @@
       editor.innerHTML = Sanitizer.clean(html || "");
       decorateTokens(editor);
       let alignValue=HFAlign.normalize(align);
+      function autoLayoutImage(img){
+        if(!img || img.tagName!="IMG") return;
+        function applyBanner(){
+          img.setAttribute("data-weditor-image-mode","banner");
+          if(!img.style.width || img.style.width==="auto") img.style.width="100%";
+          img.style.maxWidth="100%";
+          if(!img.style.height || img.style.height==="auto") img.style.height="auto";
+          if(!img.style.maxHeight) img.style.maxHeight="280px";
+          img.style.objectFit="cover";
+          img.style.display="block";
+          if(!img.style.borderRadius) img.style.borderRadius="14px";
+        }
+        function applyLogo(){
+          img.setAttribute("data-weditor-image-mode","logo");
+          if(!img.style.maxWidth || img.style.maxWidth==="100%") img.style.maxWidth="220px";
+          if(!img.style.width || img.style.width==="100%") img.style.width="auto";
+          img.style.height="auto";
+          if(!img.style.objectFit || img.style.objectFit==="cover") img.style.objectFit="contain";
+          img.style.display="block";
+          if(!img.style.borderRadius) img.style.borderRadius="12px";
+        }
+        function evaluate(){
+          if(!img.isConnected) return;
+          const naturalWidth=img.naturalWidth||0;
+          const naturalHeight=img.naturalHeight||0;
+          if(!naturalWidth || !naturalHeight) return;
+          const ratio=naturalWidth / naturalHeight;
+          if(ratio >= 3){ applyBanner(); }
+          else { applyLogo(); }
+        }
+        if(!img.dataset.weditorImageSmartBound){
+          img.dataset.weditorImageSmartBound="1";
+          img.addEventListener("load", evaluate);
+          img.addEventListener("error", function(){ img.removeAttribute("data-weditor-image-mode"); });
+        }
+        if(!img.style.maxWidth) img.style.maxWidth="100%";
+        if(!img.style.height) img.style.height="auto";
+        if(!img.style.objectFit) img.style.objectFit="contain";
+        if(img.complete){ evaluate(); }
+      }
       function enforceImageSizing(target){
         const imgs=target.querySelectorAll ? target.querySelectorAll("img") : [];
-        for(let i=0;i<imgs.length;i++){
-          const img=imgs[i];
-          if(!img.style.maxWidth) img.style.maxWidth="100%";
-          if(!img.style.height || img.style.height==="auto") img.style.height="auto";
-          if(!img.style.objectFit) img.style.objectFit="contain";
-        }
+        for(let i=0;i<imgs.length;i++) autoLayoutImage(imgs[i]);
       }
       enforceImageSizing(editor);
       editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); decorateTokens(editor); notifyChange(); }, 0); });
@@ -1250,7 +1316,7 @@
       fileInput.accept="image/png,image/jpeg";
       fileInput.style.display="none";
       const tip=document.createElement("div");
-      tip.textContent="Upload .png / .jpg 會自動插入 <img>，可直接在上方編輯區拖曳調整";
+      tip.textContent="建議 2100×300px (約 7:1) 橫幅，Upload .png / .jpg 後會自動偵測橫幅或 Logo 並調整版面，可直接拖曳微調";
       tip.style.font="12px/1.4 Segoe UI,system-ui";
       tip.style.color=WCfg.UI.textDim;
       uploaderRow.appendChild(uploadBtn);
