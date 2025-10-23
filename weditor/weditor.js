@@ -31,6 +31,7 @@
       left:{ flex:"1", minWidth:"0", padding:"48px 36px", display:"grid", gridTemplateColumns:"minmax(0,1fr)", gap:"28px", justifyItems:"center", alignContent:"start", background:"linear-gradient(180deg,#f6f4f3 0%,#ecebea 100%)", overflowX:"hidden", overflowY:"auto", boxSizing:"border-box" },
       previewStage:{ display:"grid", justifyItems:"center", gap:"32px", width:"100%", maxWidth:"min(100%, "+Math.round(A4W*PREVIEW_MAX_SCALE+120)+"px)", margin:"0 auto", padding:"12px 0 48px", boxSizing:"border-box" },
       pageDivider:{ width:"100%", textAlign:"center", color:UI.textDim, font:"12px/1.4 Segoe UI,system-ui", borderTop:"1px dashed "+UI.borderSubtle, padding:"14px 0 0", opacity:"0.75" },
+      breakMarker:{ display:"flex", alignItems:"center", justifyContent:"center", gap:"12px", margin:"18px 0", padding:"10px 12px", border:"1px dashed "+UI.borderSubtle, borderRadius:"6px", background:"#f8fbff", color:UI.brand, font:"12px/1.3 Segoe UI,system-ui", letterSpacing:".08em", textTransform:"uppercase", userSelect:"none", cursor:"default" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
@@ -368,6 +369,60 @@
     return { apply };
   })();
   const Breaks=(function(){
+    const PLACEHOLDER_ATTR="data-weditor-break-placeholder";
+    function isBreakComment(node){ return node && node.nodeType===8 && String(node.nodeValue).trim().toLowerCase()==="page:break"; }
+    function isWhitespace(node){ return node && node.nodeType===3 && !node.nodeValue.trim(); }
+    function isPlaceholder(node){ return node && node.nodeType===1 && node.getAttribute && node.getAttribute(PLACEHOLDER_ATTR); }
+    function createPlaceholder(){
+      const marker=document.createElement("div");
+      marker.setAttribute(PLACEHOLDER_ATTR,"1");
+      marker.setAttribute("contenteditable","false");
+      marker.setAttribute("role","separator");
+      marker.setAttribute("aria-label","Page break");
+      marker.setAttribute("tabindex","0");
+      applyStyles(marker, WCfg.Style.breakMarker);
+      const label=document.createElement("span");
+      label.textContent="Page Break 分頁線";
+      marker.appendChild(label);
+      return marker;
+    }
+    function attachPlaceholder(comment){
+      if(!isBreakComment(comment) || !comment.parentNode) return null;
+      let next=comment.nextSibling;
+      while(isWhitespace(next)) next=next.nextSibling;
+      if(isPlaceholder(next)) return next;
+      const marker=createPlaceholder();
+      if(comment.nextSibling){ comment.parentNode.insertBefore(marker, comment.nextSibling); }
+      else { comment.parentNode.appendChild(marker); }
+      return marker;
+    }
+    function removePlaceholderFor(comment){
+      if(!comment || !comment.parentNode) return;
+      let next=comment.nextSibling;
+      while(isWhitespace(next)) next=next.nextSibling;
+      if(isPlaceholder(next)){ next.parentNode && next.parentNode.removeChild(next); return; }
+      let prev=comment.previousSibling;
+      while(isWhitespace(prev)) prev=prev.previousSibling;
+      if(isPlaceholder(prev)){ prev.parentNode && prev.parentNode.removeChild(prev); }
+    }
+    function ensurePlaceholders(root){
+      if(!root || !document.createTreeWalker) return;
+      const walker=document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, false); let node;
+      while((node=walker.nextNode())){ if(isBreakComment(node)) attachPlaceholder(node); }
+    }
+    function stripPlaceholders(root){
+      if(!root || !root.querySelectorAll) return;
+      const nodes=root.querySelectorAll("["+PLACEHOLDER_ATTR+"]");
+      for(let i=0;i<nodes.length;i++){ const n=nodes[i]; if(n && n.parentNode) n.parentNode.removeChild(n); }
+    }
+    function serialize(root){
+      if(!root) return "";
+      if(typeof root==="string") return root;
+      const clone=root.cloneNode(true);
+      if(clone.nodeType===11){ const wrap=document.createElement("div"); wrap.appendChild(clone); stripPlaceholders(wrap); return wrap.innerHTML; }
+      stripPlaceholders(clone);
+      return clone.innerHTML;
+    }
     function insert(targetEl){
       function liftNodeToTarget(node){
         while(node.parentNode && node.parentNode!==targetEl){
@@ -403,10 +458,15 @@
       }else{
         targetEl.appendChild(comment);
       }
+      attachPlaceholder(comment);
       function nextContentSibling(node){
         let current=node.nextSibling;
         while(current){
-          if(current.nodeType===8 && String(current.nodeValue).trim().toLowerCase()==="page:break"){
+          if(isBreakComment(current)){
+            current=current.nextSibling;
+            continue;
+          }
+          if(isPlaceholder(current)){
             current=current.nextSibling;
             continue;
           }
@@ -461,16 +521,15 @@
     function remove(targetEl){
       const sel=window.getSelection ? window.getSelection() : null; let node=(sel && sel.rangeCount) ? sel.anchorNode : null;
       if(!node || !targetEl.contains(node)){
-        for(let i=targetEl.childNodes.length-1;i>=0;i--){ const n=targetEl.childNodes[i]; if(n.nodeType===8 && String(n.nodeValue).trim().toLowerCase()==="page:break"){ n.remove(); return true; } }
+        for(let i=targetEl.childNodes.length-1;i>=0;i--){ const n=targetEl.childNodes[i]; if(isBreakComment(n)){ removePlaceholderFor(n); n.remove(); return true; } }
         alert("No page break found near cursor."); return false;
       }
       while(node && node.parentNode!==targetEl){ node=node.parentNode; }
-      function isWS(n){ return n && n.nodeType===3 && !n.nodeValue.trim(); }
-      let f=node.nextSibling; while(isWS(f)) f=f.nextSibling; if(f && f.nodeType===8 && String(f.nodeValue).trim().toLowerCase()==="page:break"){ f.remove(); return true; }
-      let b=node.previousSibling; while(isWS(b)) b=b.previousSibling; if(b && b.nodeType===8 && String(b.nodeValue).trim().toLowerCase()==="page:break"){ b.remove(); return true; }
+      let f=node.nextSibling; while(isWhitespace(f)) f=f.nextSibling; if(isBreakComment(f)){ removePlaceholderFor(f); f.remove(); return true; }
+      let b=node.previousSibling; while(isWhitespace(b)) b=b.previousSibling; if(isBreakComment(b)){ removePlaceholderFor(b); b.remove(); return true; }
       alert("No page break found next to the cursor."); return false;
     }
-    return { insert, remove };
+    return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize };
   })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -685,7 +744,7 @@
       measWrap.parentNode.removeChild(measWrap);
       return { pages: pages.map(function(p){ return p.page; }), pagesHTML };
     }
-    function pagesHTML(inst){ return paginate(inst.el.innerHTML, inst).pagesHTML; }
+    function pagesHTML(inst){ return paginate(Breaks.serialize(inst.el), inst).pagesHTML; }
     return { paginate, pagesHTML };
   })();
   const ExportUI=(function(){
@@ -1611,7 +1670,7 @@
     function sync(inst){
       if(!inst.outputEl) return;
       if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
-      else { inst.outputEl.value = inst.el.innerHTML; }
+      else { inst.outputEl.value = Breaks.serialize(inst.el); }
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
@@ -1807,11 +1866,25 @@
       const left=document.createElement("div"); applyStyles(left, WCfg.Style.left);
       const rightWrap=document.createElement("div"); applyStyles(rightWrap, WCfg.Style.rightWrap);
       rightWrap.appendChild(WDom.title("Editor"));
-      const area=document.createElement("div"); area.contentEditable="true"; applyStyles(area, WCfg.Style.area); area.innerHTML=inst.el.innerHTML; rightWrap.appendChild(area);
+      const area=document.createElement("div");
+      area.contentEditable="true";
+      applyStyles(area, WCfg.Style.area);
+      area.innerHTML=Breaks.serialize(inst.el);
+      Breaks.ensurePlaceholders(area);
+      rightWrap.appendChild(area);
       const ctx={
         area,
         refreshPreview:render,
-        writeBack:function(){ inst.el.innerHTML = Sanitizer.clean(area.innerHTML); OutputBinding.sync(inst); return true; },
+        writeBack:function(){
+          const html=Breaks.serialize(area);
+          const clean=Sanitizer.clean(html);
+          inst.el.innerHTML = clean;
+          Breaks.ensurePlaceholders(inst.el);
+          area.innerHTML = clean;
+          Breaks.ensurePlaceholders(area);
+          OutputBinding.sync(inst);
+          return true;
+        },
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
@@ -1830,12 +1903,13 @@
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
       window.setTimeout(function(){ area.focus(); },0);
       layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
-      area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); }, 0); });
-      let t=null; area.addEventListener("input", function(){ if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
+      area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensurePlaceholders(area); }, 0); });
+      let t=null; area.addEventListener("input", function(){ Breaks.ensurePlaceholders(area); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
       render();
       function render(attempt){
         attempt = attempt || 0;
-        const out=Paginator.paginate(area.innerHTML, inst);
+        const sourceHTML=Breaks.serialize(area);
+        const out=Paginator.paginate(sourceHTML, inst);
         const computed=window.getComputedStyle(left);
         const paddingLeft=parseFloat(computed.paddingLeft||"0")||0;
         const paddingRight=parseFloat(computed.paddingRight||"0")||0;
@@ -2125,7 +2199,7 @@
       run:function(inst){ inst.footerEnabled = !inst.footerEnabled; OutputBinding.syncDebounced(inst); } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
-    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(inst.el.innerHTML)); } },
+    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
@@ -2172,10 +2246,11 @@
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
-    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); },0); }; }(this));
+    Breaks.ensurePlaceholders(this.el);
+    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
-    this.el.addEventListener("input", (function(self){ return function(){ OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("input", (function(self){ return function(){ Breaks.ensurePlaceholders(self.el); OutputBinding.syncDebounced(self); }; })(this));
     this.el.__winst = this;
   };
   const WEditor=(function(){
