@@ -69,7 +69,7 @@ body.chat-fullscreen-active {
   grid-template-rows: auto 1fr auto;
   gap: 0.75rem;
   padding: 1rem;
-  min-height: 280px;
+  min-height: 320px;
   box-sizing: border-box;
 }
 
@@ -203,6 +203,31 @@ body.chat-fullscreen-active {
   gap: 0.5rem;
   grid-template-columns: 1fr auto;
   align-items: end;
+  position: relative;
+}
+
+.chat-suggestion-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: -0.15rem;
+}
+
+.chat-suggestion {
+  border: 1px solid var(--border);
+  background: #eef2ff;
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.chat-suggestion:hover {
+  background: #e0e7ff;
+  transform: translateY(-1px);
 }
 
 .chat-composer__textarea {
@@ -305,6 +330,42 @@ body.chat-fullscreen-active {
   border-radius: 8px;
 }
 
+.chat-sql-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+  margin: 0.25rem 0 0.65rem;
+}
+
+.chat-kpi-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+  background: #ffffff;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chat-kpi-card__label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chat-kpi-card__value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chat-kpi-card__hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .chat-sql-table {
   width: 100%;
   border-collapse: collapse;
@@ -321,6 +382,48 @@ body.chat-fullscreen-active {
 
 .chat-sql-table tbody tr:nth-child(even) {
   background: #f8fafc;
+}
+
+.chat-row-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.chat-action-button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+  background: #f1f5f9;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.chat-action-button:hover {
+  background: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+.chat-error {
+  border: 1px solid #fcd4d4;
+  background: #fff5f5;
+  color: #b42318;
+  padding: 0.75rem;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+
+.chat-error__title {
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+}
+
+.chat-error__hint {
+  font-size: 0.75rem;
+  color: #d92d20;
+  margin: 0.25rem 0 0;
 }
 
 @keyframes pulse {
@@ -510,6 +613,7 @@ body.chat-fullscreen-active {
               </article>
             </section>
             <footer class="chat-widget__composer">
+              <div class="chat-suggestion-bar" data-chat-suggestions></div>
               <label style="display: contents;">
                 <textarea
                   class="chat-composer__textarea"
@@ -567,8 +671,33 @@ body.chat-fullscreen-active {
             sendButton: widget.querySelector("[data-chat-send]"),
             stopButton: widget.querySelector("[data-chat-stop]"),
             status: widget.querySelector("[data-chat-status]"),
-            statusText: widget.querySelector("[data-chat-status-text]")
+            statusText: widget.querySelector("[data-chat-status-text]"),
+            suggestions: widget.querySelector("[data-chat-suggestions]")
           };
+
+          const suggestionPresets = [
+            {
+              id: "weekly-kpi",
+              label: "本週銷售 KPI",
+              prompt:
+                "請用 SQL 找出本週銷售訂單的總數量、總金額，以及與上週的差異，並提供中文解讀。"
+            },
+            {
+              id: "aging-alert",
+              label: "逾期提醒",
+              prompt: "找出逾期 7 天以上的銷售單據，並標示負責業務。"
+            },
+            {
+              id: "top-customers",
+              label: "Top 客戶",
+              prompt: "列出近 30 天銷售額最高的 5 個客戶，提供成交金額與聯絡窗口。"
+            },
+            {
+              id: "workflow-status",
+              label: "流程瓶頸",
+              prompt: "分析目前在審核中的單據筆數，評估是否需要加速決策。"
+            }
+          ];
 
           const savedKey = storage.get();
           if (savedKey) {
@@ -594,6 +723,104 @@ body.chat-fullscreen-active {
               updateFullscreenButton(Boolean(event.detail?.active));
             });
           }
+
+          const renderSuggestions = () => {
+            if (!refs.suggestions) return;
+            refs.suggestions.innerHTML = suggestionPresets
+              .map(
+                (item) =>
+                  `<button type="button" class="chat-suggestion" data-suggestion-id="${item.id}">${escapeHtml(
+                    item.label
+                  )}</button>`
+              )
+              .join("");
+          };
+
+          const handleSuggestionClick = (event) => {
+            const button = event.target.closest(".chat-suggestion");
+            if (!button) return;
+            const preset = suggestionPresets.find((item) => item.id === button.dataset.suggestionId);
+            if (!preset) return;
+            refs.input.value = preset.prompt;
+            refs.input.focus();
+          };
+
+          const describeRowForPrompt = (row) => {
+            if (!row || typeof row !== "object") return "";
+            const doc =
+              row.dnum_auto ||
+              row.uniquenum_pri ||
+              row.document_no ||
+              row.document ||
+              row.doc_no ||
+              row.id ||
+              row.code ||
+              "";
+            const customer =
+              row.party_desc || row.customer || row.client || row.party_name || row.partner || row.supplier || "";
+            const status = row.wflow_status || row.status || row.stage || "";
+            const amountKey = Object.keys(row || {}).find((key) => /amount|total|grand|amt/i.test(key));
+            const amountValue = amountKey ? row[amountKey] : "";
+            const fragments = [];
+            if (doc) fragments.push(`單號 ${doc}`);
+            if (customer) fragments.push(`客戶 ${customer}`);
+            if (status) fragments.push(`狀態 ${status}`);
+            if (amountValue !== null && amountValue !== undefined && amountValue !== "") {
+              fragments.push(`金額 ${amountValue}`);
+            }
+            return fragments.join("，");
+          };
+
+          const buildActionPromptFromRow = (action, row) => {
+            const descriptor = describeRowForPrompt(row) || "這筆資料";
+            let rowJson = "{}";
+            try {
+              rowJson = JSON.stringify(row, null, 2);
+            } catch (_) {
+              rowJson = JSON.stringify(row ?? {}, null, 2);
+            }
+            switch (action) {
+              case "remind":
+                return [
+                  "請根據下列資料設定 ERP 追蹤提醒，提醒條件包含流程狀態與負責人。",
+                  `重點: ${descriptor}`,
+                  "資料 JSON:",
+                  rowJson
+                ].join("\n");
+              case "report":
+                return [
+                  "利用下列資料為起點，幫我生成更完整的營運報表 SQL，需包含 KPI、趨勢、以及需要關注的異常。",
+                  `重點: ${descriptor}`,
+                  "資料 JSON:",
+                  rowJson
+                ].join("\n");
+              case "insight":
+                return [
+                  "請扮演決策顧問，針對下列資料列出 3 個行動建議與風險提示，並說明下一步應該查詢的 KPI。",
+                  `重點: ${descriptor}`,
+                  "資料 JSON:",
+                  rowJson
+                ].join("\n");
+              default:
+                return "";
+            }
+          };
+
+          const handleSqlActionClick = (event) => {
+            const button = event.target.closest(".chat-action-button");
+            if (!button) return;
+            let rowData = {};
+            try {
+              rowData = JSON.parse(button.dataset.row || "{}");
+            } catch (_) {
+              rowData = {};
+            }
+            const prompt = buildActionPromptFromRow(button.dataset.action, rowData);
+            if (!prompt) return;
+            refs.input.value = prompt;
+            refs.input.focus();
+            setStatus("已載入行動提示，按下 Send 立即分析。", false);
+          };
 
         const defaultSystemPrompt = [
           "You are GPT-5-mini acting as a senior application analyst.",
@@ -843,6 +1070,160 @@ body.chat-fullscreen-active {
             .replace(/'/g, "&#39;");
         }
 
+        const numberFormatter = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+
+        const compactFormatter = new Intl.NumberFormat("en-US", {
+          notation: "compact",
+          maximumFractionDigits: 1
+        });
+
+        function isNumericValue(value) {
+          if (value === null || value === undefined || value === "") return false;
+          const numeric = Number(value);
+          return Number.isFinite(numeric);
+        }
+
+        function isDateLike(value) {
+          if (!value || typeof value !== "string") return false;
+          const timestamp = Date.parse(value);
+          return Number.isFinite(timestamp);
+        }
+
+        function formatNumber(value, { compact = false } = {}) {
+          if (!isNumericValue(value)) {
+            return String(value ?? "—");
+          }
+          const formatter = compact ? compactFormatter : numberFormatter;
+          return formatter.format(Number(value));
+        }
+
+        function deriveKpis(columns = [], rows = []) {
+          if (!Array.isArray(columns) || !Array.isArray(rows) || !rows.length) return [];
+
+          const kpis = [];
+          const rowCount = rows.length;
+          kpis.push({ label: "筆數 Rows", value: formatNumber(rowCount, { compact: true }), hint: "資料列總數" });
+
+          const numericColumns = columns.filter((col) => rows.some((row) => isNumericValue(row[col])));
+          const pickByPattern = (pattern) => numericColumns.find((col) => pattern.test(col)) || null;
+
+          const totalColumn = pickByPattern(/amount|total|grand|sum|amt|value/i) || numericColumns[0] || null;
+          if (totalColumn) {
+            const total = rows.reduce((acc, row) => {
+              const value = Number(row[totalColumn]);
+              return Number.isFinite(value) ? acc + value : acc;
+            }, 0);
+            kpis.push({
+              label: `${totalColumn} 合計`,
+              value: formatNumber(total),
+              hint: "總和 (含篩選條件)"
+            });
+          }
+
+          const qtyColumn = pickByPattern(/qty|quantity|count/i);
+          if (qtyColumn && qtyColumn !== totalColumn) {
+            const qtyTotal = rows.reduce((acc, row) => {
+              const value = Number(row[qtyColumn]);
+              return Number.isFinite(value) ? acc + value : acc;
+            }, 0);
+            kpis.push({ label: `${qtyColumn} 合計`, value: formatNumber(qtyTotal), hint: "計量累計" });
+          }
+
+          const dateColumn = columns.find((col) => rows.some((row) => isDateLike(row[col])));
+          if (dateColumn) {
+            const latest = rows
+              .map((row) => row[dateColumn])
+              .filter(isDateLike)
+              .sort((a, b) => Date.parse(b) - Date.parse(a))[0];
+            if (latest) {
+              const formatted = new Date(latest).toLocaleString("zh-TW", {
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit"
+              });
+              kpis.push({ label: "最新日期", value: formatted, hint: dateColumn });
+            }
+          }
+
+          return kpis.slice(0, 4);
+        }
+
+        function renderKpiCards(kpis = []) {
+          if (!Array.isArray(kpis) || !kpis.length) return "";
+          const cards = kpis
+            .map(
+              (kpi) => `
+                <article class="chat-kpi-card">
+                  <p class="chat-kpi-card__label">${escapeHtml(kpi.label)}</p>
+                  <p class="chat-kpi-card__value">${escapeHtml(kpi.value)}</p>
+                  <p class="chat-kpi-card__hint">${escapeHtml(kpi.hint)}</p>
+                </article>
+              `
+            )
+            .join("");
+          return `<section class="chat-sql-kpis">${cards}</section>`;
+        }
+
+        const FRIENDLY_SQL_ERRORS = [
+          {
+            match: /timeout|timed out/i,
+            message: "查詢逾時 Timeout，請縮小範圍或加上條件再試一次。"
+          },
+          {
+            match: /permission|denied/i,
+            message: "看起來沒有權限讀取這份資料，請確認帳號權限或改用其他資料表。"
+          },
+          {
+            match: /syntax|parse/i,
+            message: "SQL 語法有點小錯誤，讓我重新生成更精準的語句給你。"
+          },
+          {
+            match: /connection|network/i,
+            message: "連線不穩定，稍後再試或檢查網路狀態。"
+          }
+        ];
+
+        function buildFriendlyError(rawMessage) {
+          const original = rawMessage ? String(rawMessage) : "";
+          const match = FRIENDLY_SQL_ERRORS.find((item) => item.match.test(original));
+          const body = match?.message || "伺服器暫時無法完成查詢，稍後再試看看。";
+          const detail = original && !match ? original : "";
+          return {
+            title: "Oops! 查詢沒有成功",
+            body,
+            detail
+          };
+        }
+
+        function renderFriendlyError(rawMessage) {
+          const { title, body, detail } = buildFriendlyError(rawMessage);
+          const detailHtml = detail
+            ? `<p class="chat-error__hint">技術訊息 Technical note: ${escapeHtml(detail)}</p>`
+            : "";
+          return `<div class="chat-error"><p class="chat-error__title">${escapeHtml(title)}</p><p>${escapeHtml(
+            body
+          )}</p>${detailHtml}</div>`;
+        }
+
+        function buildRowActions(row) {
+          let serialized = "";
+          try {
+            serialized = JSON.stringify(row);
+          } catch (_) {
+            serialized = "";
+          }
+          const payload = escapeHtml(serialized);
+          return `
+            <div class="chat-row-actions">
+              <button type="button" class="chat-action-button" data-action="remind" data-row='${payload}'>建立提醒</button>
+              <button type="button" class="chat-action-button" data-action="report" data-row='${payload}'>生成報表</button>
+              <button type="button" class="chat-action-button" data-action="insight" data-row='${payload}'>行動建議</button>
+            </div>
+          `;
+        }
+
         function extractSqlFromMessage(message) {
           if (!message) return "";
           const codeMatch = message.match(/```sql\s*([\s\S]+?)```/i);
@@ -910,7 +1291,7 @@ body.chat-fullscreen-active {
           const normalized = normalizeSqlPayload(payload);
           if (!normalized || normalized.ok === false || normalized.error) {
             const msg = normalized?.error || normalized?.detail || "SQL execution failed.";
-            return `SQL error: ${escapeHtml(msg)}`;
+            return renderFriendlyError(msg);
           }
           let columns = Array.isArray(normalized.columns) && normalized.columns.length ? normalized.columns : [];
           const rows = Array.isArray(normalized.rows) ? normalized.rows : [];
@@ -923,14 +1304,15 @@ body.chat-fullscreen-active {
 
           if (!rowCount) {
             const extra = limitApplied ? ` (limit ${limitApplied})` : "";
-            return `<p class="chat-sql-meta">SQL executed successfully but returned no rows${extra}.</p>`;
+            return `<div class="chat-error"><p class="chat-error__title">沒有查到資料</p><p>SQL 執行成功，但沒有符合條件的資料${extra}。建議放寬日期或調整篩選條件。</p></div>`;
           }
 
-          const headerCells = columns.map((col) => `<th>${escapeHtml(col)}</th>`).join("");
+          const headerCells = columns.map((col) => `<th>${escapeHtml(col)}</th>`).join("") + `<th>Actions</th>`;
           const bodyRows = rows
             .map((row) => {
               const cells = columns.map((col) => `<td>${escapeHtml(row[col])}</td>`).join("");
-              return `<tr>${cells}</tr>`;
+              const actions = `<td>${buildRowActions(row)}</td>`;
+              return `<tr>${cells}${actions}</tr>`;
             })
             .join("");
 
@@ -939,8 +1321,13 @@ body.chat-fullscreen-active {
               ? ` Showing first ${rows.length} rows (limit ${limitApplied}).`
               : "";
 
+          const kpiCards = renderKpiCards(deriveKpis(columns, rows));
+          const metaText = `SQL result: ${rowCount} row${rowCount === 1 ? "" : "s"}.${limitNote}`;
+          const bilingualMeta = `共 ${rowCount} 筆資料 | ${metaText}`;
+
           return [
-            `<p class="chat-sql-meta">SQL result: ${rowCount} row${rowCount === 1 ? "" : "s"}.${limitNote}</p>`,
+            `<p class="chat-sql-meta">${escapeHtml(bilingualMeta)}</p>`,
+            kpiCards,
             `<div class="chat-sql-tablewrap"><table class="chat-sql-table"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`
           ].join("");
         }
@@ -1085,7 +1472,14 @@ body.chat-fullscreen-active {
               }
             }
           } catch (error) {
-            appendBubble("assistant", `SQL error: ${error.message}`);
+            const friendly = buildFriendlyError(error.message);
+            appendBubble("assistant", renderFriendlyError(error.message), {
+              asHtml: true,
+              extraClass: "chat-bubble--sql"
+            });
+            const combined = `${friendly.title} - ${friendly.body}`;
+            state.messages.push({ role: "assistant", content: combined });
+            state.conversation.push({ role: "assistant", content: combined });
             debug.log("sql:error", error.message);
           } finally {
             if (trigger) {
@@ -1480,11 +1874,16 @@ body.chat-fullscreen-active {
             handleSend();
           }
         });
+        refs.messages.addEventListener("click", handleSqlActionClick);
         refs.apiKeyInput.addEventListener("input", guardApiKey);
         refs.toggleMaskButton.addEventListener("click", handleToggleMask);
         refs.stopButton.addEventListener("click", () => {
           abortStreaming();
         });
+        if (refs.suggestions) {
+          renderSuggestions();
+          refs.suggestions.addEventListener("click", handleSuggestionClick);
+        }
 
         window.addEventListener("beforeunload", abortStreaming);
 
