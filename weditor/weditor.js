@@ -1714,6 +1714,176 @@
         wrap.appendChild(select);
         return wrap;
       }
+      if(meta.kind==="colorMenu"){
+        const wrap=document.createElement("div");
+        wrap.style.position="relative";
+        wrap.style.display="inline-flex";
+        wrap.style.alignItems="stretch";
+        wrap.style.verticalAlign="middle";
+        const btn=WDom.btn(meta.label||"", !!meta.primary, meta.title||"");
+        btn.setAttribute("data-command", id);
+        btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
+        btn.setAttribute("aria-haspopup","true");
+        btn.setAttribute("aria-expanded","false");
+        btn.style.display="inline-flex";
+        btn.style.alignItems="center";
+        btn.style.justifyContent="center";
+        btn.style.gap="6px";
+        btn.style.minWidth="48px";
+        const iconWrap=document.createElement("span");
+        iconWrap.style.display="inline-flex";
+        iconWrap.style.flexDirection="column";
+        iconWrap.style.alignItems="center";
+        iconWrap.style.lineHeight="1";
+        const icon=document.createElement("span");
+        icon.textContent="🖊️";
+        icon.setAttribute("aria-hidden","true");
+        const underline=document.createElement("span");
+        underline.style.display="block";
+        underline.style.width="20px";
+        underline.style.height="3px";
+        underline.style.borderRadius="3px";
+        underline.style.background = (typeof meta.getCurrent==="function" ? meta.getCurrent(inst) : (Formatting.HIGHLIGHT_COLORS[0] ? Formatting.HIGHLIGHT_COLORS[0].value : "#fce96a"));
+        underline.setAttribute("aria-hidden","true");
+        iconWrap.appendChild(icon);
+        iconWrap.appendChild(underline);
+        const arrow=document.createElement("span");
+        arrow.textContent="▼";
+        arrow.style.fontSize="10px";
+        arrow.style.color=WCfg.UI.textDim;
+        btn.textContent="";
+        btn.appendChild(iconWrap);
+        btn.appendChild(arrow);
+        const menu=document.createElement("div");
+        menu.setAttribute("role","menu");
+        menu.style.position="absolute";
+        menu.style.top="calc(100% + 6px)";
+        menu.style.left="0";
+        menu.style.zIndex="30";
+        menu.style.background="#fff";
+        menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+        menu.style.boxShadow="0 12px 28px rgba(0,0,0,.16)";
+        menu.style.borderRadius="10px";
+        menu.style.padding="10px";
+        menu.style.display="none";
+        menu.style.minWidth="156px";
+        menu.style.boxSizing="border-box";
+        const palette=document.createElement("div");
+        palette.style.display="grid";
+        palette.style.gridTemplateColumns="repeat(4, 28px)";
+        palette.style.gap="8px";
+        const colors=meta.palette || [];
+        const targetNode=(ctx && ctx.area) ? ctx.area : (inst ? inst.el : null);
+        function cloneStored(range){
+          if(!range) return null;
+          try{ return range.cloneRange(); } catch(err){ return null; }
+        }
+        function rememberSelection(){
+          if(window.getSelection){
+            const sel=window.getSelection();
+            if(sel && sel.rangeCount>0){
+              try{
+                const range=sel.getRangeAt(0);
+                if(!targetNode || targetNode.contains(range.commonAncestorContainer)){
+                  return range.cloneRange();
+                }
+              } catch(err){}
+            }
+          }
+          if(ctx && ctx._lastSelectionRange){ return cloneStored(ctx._lastSelectionRange); }
+          if(inst && inst._lastSelectionRange){ return cloneStored(inst._lastSelectionRange); }
+          return null;
+        }
+        let storedRange=null;
+        function storeRange(){ storedRange = rememberSelection(); }
+        function restoreStoredRange(){
+          if(!storedRange) return;
+          const sel=window.getSelection && window.getSelection();
+          if(!sel) return;
+          try{
+            sel.removeAllRanges();
+            sel.addRange(storedRange);
+          } catch(err){}
+          if(targetNode && typeof targetNode.focus==="function"){
+            try{ targetNode.focus({ preventScroll:true }); } catch(err){ targetNode.focus(); }
+          }
+          storedRange=null;
+        }
+        function closeMenu(){
+          menu.style.display="none";
+          btn.setAttribute("aria-expanded","false");
+          document.removeEventListener("mousedown", onDocDown, true);
+          document.removeEventListener("keydown", onKeyDown, true);
+        }
+        function openMenu(){
+          storeRange();
+          menu.style.display="block";
+          btn.setAttribute("aria-expanded","true");
+          document.addEventListener("mousedown", onDocDown, true);
+          document.addEventListener("keydown", onKeyDown, true);
+        }
+        function onDocDown(e){ if(!wrap.contains(e.target)){ closeMenu(); } }
+        function onKeyDown(e){ if(e.key==="Escape"){ e.preventDefault(); closeMenu(); btn.focus(); } }
+        btn.addEventListener("mousedown", function(e){ e.preventDefault(); storeRange(); });
+        btn.addEventListener("click", function(e){ e.preventDefault(); if(menu.style.display==="block"){ closeMenu(); } else { openMenu(); } });
+        for(let i=0;i<colors.length;i++){
+          const color=colors[i];
+          const colorBtn=document.createElement("button");
+          colorBtn.type="button";
+          colorBtn.setAttribute("role","menuitemradio");
+          colorBtn.setAttribute("aria-label", (color.label||"Color")+" highlight");
+          colorBtn.title = (color.label||"Color")+" highlight";
+          colorBtn.style.width="28px";
+          colorBtn.style.height="28px";
+          colorBtn.style.borderRadius="6px";
+          colorBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+          colorBtn.style.background=color.value;
+          colorBtn.style.cursor="pointer";
+          colorBtn.style.padding="0";
+          colorBtn.addEventListener("mousedown", function(e){ e.preventDefault(); });
+          colorBtn.addEventListener("mouseenter", function(){ colorBtn.style.borderColor=WCfg.UI.brand; });
+          colorBtn.addEventListener("mouseleave", function(){ colorBtn.style.borderColor=WCfg.UI.borderSubtle; });
+          colorBtn.addEventListener("click", function(e){
+            e.preventDefault();
+            closeMenu();
+            restoreStoredRange();
+            if(meta.run) meta.run(inst, { ctx, color:color.value });
+            underline.style.background=color.value;
+            btn.focus();
+          });
+          palette.appendChild(colorBtn);
+        }
+        menu.appendChild(palette);
+        const clearBtn=document.createElement("button");
+        clearBtn.type="button";
+        clearBtn.textContent="No Color";
+        clearBtn.title="Remove highlight";
+        clearBtn.setAttribute("role","menuitem");
+        clearBtn.style.marginTop="10px";
+        clearBtn.style.width="100%";
+        clearBtn.style.padding="6px 10px";
+        clearBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+        clearBtn.style.borderRadius="6px";
+        clearBtn.style.background="#f9f9f9";
+        clearBtn.style.cursor="pointer";
+        clearBtn.style.font="12px/1.2 Segoe UI,system-ui";
+        clearBtn.style.color=WCfg.UI.text;
+        clearBtn.addEventListener("mousedown", function(e){ e.preventDefault(); });
+        clearBtn.addEventListener("mouseenter", function(){ clearBtn.style.background="#f3f2f1"; });
+        clearBtn.addEventListener("mouseleave", function(){ clearBtn.style.background="#f9f9f9"; });
+        clearBtn.addEventListener("click", function(e){
+          e.preventDefault();
+          closeMenu();
+          restoreStoredRange();
+          if(meta.run) meta.run(inst, { ctx, color:null });
+          if(typeof meta.getCurrent==="function"){ underline.style.background = meta.getCurrent(inst); }
+          btn.focus();
+        });
+        menu.appendChild(clearBtn);
+        wrap.appendChild(btn);
+        wrap.appendChild(menu);
+        return wrap;
+      }
       const isToggle = meta.kind==="toggle";
       const btn = isToggle ? WDom.toggle(meta.label, !!meta.getActive(inst)) : WDom.btn(meta.label, !!meta.primary, meta.title||"");
       btn.setAttribute("data-command", id);
@@ -1895,6 +2065,7 @@
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
+      ctx._lastSelectionRange = null;
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
       const saveCloseWrap=document.createElement("div"); applyStyles(saveCloseWrap, WCfg.Style.fsSaveCloseWrap);
       const saveCloseBtn=WDom.btn("Close", true, "Save changes and close fullscreen");
@@ -1912,6 +2083,21 @@
       layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensurePlaceholders(area); }, 0); });
       let t=null; area.addEventListener("input", function(){ Breaks.ensurePlaceholders(area); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
+      const captureAreaSelection=function(){
+        if(!window.getSelection) return;
+        const sel=window.getSelection();
+        if(!sel || sel.rangeCount===0) return;
+        try{
+          const range=sel.getRangeAt(0);
+          if(area.contains(range.commonAncestorContainer)){
+            ctx._lastSelectionRange = range.cloneRange();
+          }
+        } catch(err){}
+      };
+      area.addEventListener("mouseup", captureAreaSelection);
+      area.addEventListener("keyup", captureAreaSelection);
+      area.addEventListener("mouseleave", captureAreaSelection);
+      area.addEventListener("blur", function(){ ctx._lastSelectionRange=null; });
       render();
       function render(attempt){
         attempt = attempt || 0;
@@ -2009,6 +2195,16 @@
       { label:"18", px:"18px", exec:"6" },
       { label:"24", px:"24px", exec:"7" }
     ];
+    const HIGHLIGHT_COLORS=[
+      { label:"Yellow", value:"#fce96a" },
+      { label:"Green", value:"#a3f7b5" },
+      { label:"Pink", value:"#ffb4e6" },
+      { label:"Blue", value:"#9fd7ff" },
+      { label:"Orange", value:"#ffd59f" },
+      { label:"Lavender", value:"#d7c7ff" },
+      { label:"Mint", value:"#c4f1e0" },
+      { label:"Gray", value:"#e4e4e4" }
+    ];
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function focusTarget(target){ if(target && typeof target.focus==="function"){ try{ target.focus({ preventScroll:true }); } catch(e){ target.focus(); } } }
     function execCommand(target, command, value, useCss){
@@ -2090,14 +2286,151 @@
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, command, null, true);
     }
+    function highlightCommand(){
+      if(document.queryCommandSupported){
+        if(document.queryCommandSupported("hiliteColor")) return "hiliteColor";
+        if(document.queryCommandSupported("backColor")) return "backColor";
+      }
+      return null;
+    }
+    function cloneRange(range){
+      if(!range){ return null; }
+      try{ return range.cloneRange(); } catch(err){ return null; }
+    }
+    function restoreRange(range){
+      if(!range){ return; }
+      const sel=window.getSelection && window.getSelection();
+      if(!sel) return;
+      try{
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch(err){}
+    }
+    function markHighlightedNodes(target){
+      if(!window.getSelection) return;
+      const sel=window.getSelection();
+      if(!sel || sel.rangeCount===0) return;
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.commonAncestorContainer)) return;
+      const doc=target.ownerDocument || document;
+      let root=range.commonAncestorContainer;
+      if(root && root.nodeType!==1){ root=root.parentNode; }
+      if(!root) return;
+      const walker=doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+        acceptNode:function(node){
+          if(!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
+          if(node.style && node.style.backgroundColor && node.style.backgroundColor!=="" && node.style.backgroundColor!="transparent"){
+            return NodeFilter.FILTER_ACCEPT;
+          }
+          return NodeFilter.FILTER_SKIP;
+        }
+      });
+      let node;
+      while((node=walker.nextNode())){
+        node.setAttribute("data-weditor-highlight","1");
+      }
+    }
+    function unwrapIfEmptySpan(el){
+      if(!el || el.tagName!=="SPAN") return;
+      if(el.attributes.length>0) return;
+      const parent=el.parentNode; if(!parent) return;
+      while(el.firstChild){ parent.insertBefore(el.firstChild, el); }
+      parent.removeChild(el);
+    }
+    function manualHighlight(target, color){
+      if(!window.getSelection) return false;
+      const sel=window.getSelection();
+      if(!sel || sel.rangeCount===0) return false;
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.commonAncestorContainer) || range.collapsed) return false;
+      const doc=target.ownerDocument || document;
+      const span=doc.createElement("span");
+      span.style.backgroundColor=color;
+      span.setAttribute("data-weditor-highlight","1");
+      let success=true;
+      try{
+        range.surroundContents(span);
+      } catch(err){
+        success=false;
+      }
+      if(!success){
+        try{
+          const contents=range.extractContents();
+          span.appendChild(contents);
+          range.insertNode(span);
+          const newRange=doc.createRange();
+          newRange.selectNodeContents(span);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+          success=true;
+        } catch(err2){
+          success=false;
+        }
+      }
+      if(success){
+        return true;
+      }
+      return false;
+    }
+    function clearHighlight(inst, ctx){
+      if(!window.getSelection) return;
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      focusTarget(target);
+      const sel=window.getSelection();
+      if(!sel || sel.rangeCount===0) return;
+      const range=cloneRange(sel.getRangeAt(0));
+      if(!range) return;
+      if(!target.contains(range.commonAncestorContainer) || range.collapsed) return;
+      const doc=target.ownerDocument || document;
+      let root=range.commonAncestorContainer;
+      if(root && root.nodeType!==1){ root=root.parentNode; }
+      if(!root) return;
+      const walker=doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, {
+        acceptNode:function(node){
+          if(!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
+          if(node.getAttribute && node.getAttribute("data-weditor-highlight") === "1") return NodeFilter.FILTER_ACCEPT;
+          return NodeFilter.FILTER_SKIP;
+        }
+      });
+      const toClean=[]; let node;
+      while((node=walker.nextNode())){ toClean.push(node); }
+      for(let i=0;i<toClean.length;i++){
+        const el=toClean[i];
+        el.style.backgroundColor="";
+        el.removeAttribute("data-weditor-highlight");
+        if(el.getAttribute && el.getAttribute("style")==="") el.removeAttribute("style");
+        unwrapIfEmptySpan(el);
+      }
+      restoreRange(range);
+    }
+    function applyHighlight(inst, ctx, color){
+      const target=resolveTarget(inst, ctx); if(!target) return;
+      if(!color){
+        clearHighlight(inst, ctx);
+        return;
+      }
+      focusTarget(target);
+      const command=highlightCommand();
+      let success=false;
+      if(command){
+        success=execCommand(target, command, color, true);
+      }
+      if(!success){
+        success=manualHighlight(target, color);
+      }
+      markHighlightedNodes(target);
+    }
     return {
       FONT_FAMILIES,
       FONT_SIZES,
+      HIGHLIGHT_COLORS,
       applyFontFamily,
       applyFontSize,
       applyUnderline,
       applyDecorationStyle,
-      applySimple
+      applySimple,
+      applyHighlight,
+      clearHighlight
     };
   })();
   const Commands={
@@ -2150,6 +2483,31 @@
       title:"Underline (Ctrl+U)",
       decorate:function(btn){ btn.style.textDecoration="underline"; },
       run:function(inst, arg){ Formatting.applyUnderline(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
+    },
+    "format.highlight":{
+      label:"Highlight",
+      kind:"colorMenu",
+      ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
+      title:"Text Highlight Color (文字底色 / 文本荧光笔)",
+      palette:Formatting.HIGHLIGHT_COLORS,
+      getCurrent:function(inst){
+        if(inst && inst.highlightColor){ return inst.highlightColor; }
+        return Formatting.HIGHLIGHT_COLORS[0] ? Formatting.HIGHLIGHT_COLORS[0].value : "#fce96a";
+      },
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        const hasColor = arg && Object.prototype.hasOwnProperty.call(arg, "color");
+        if(!inst.highlightColor && Formatting.HIGHLIGHT_COLORS[0]){
+          inst.highlightColor = Formatting.HIGHLIGHT_COLORS[0].value;
+        }
+        if(hasColor && arg.color){
+          inst.highlightColor = arg.color;
+          Formatting.applyHighlight(inst, ctx, arg.color);
+        } else if(hasColor){
+          Formatting.clearHighlight(inst, ctx);
+        }
+        OutputBinding.syncDebounced(inst);
+      }
     },
     "format.underlineStyle":{
       label:"Style",
@@ -2213,7 +2571,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.highlight","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2223,7 +2581,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.highlight","format.underlineStyle","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -2244,6 +2602,8 @@
     this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
+    this.highlightColor = Formatting.HIGHLIGHT_COLORS[0] ? Formatting.HIGHLIGHT_COLORS[0].value : "#fce96a";
+    this._lastSelectionRange = null;
     this._mount();
     OutputBinding.syncDebounced(this);
   }
@@ -2258,6 +2618,23 @@
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
     this.el.addEventListener("input", (function(self){ return function(){ Breaks.ensurePlaceholders(self.el); OutputBinding.syncDebounced(self); }; })(this));
+    const captureSelection=(function(self){
+      return function(){
+        if(!window.getSelection) return;
+        const sel=window.getSelection();
+        if(!sel || sel.rangeCount===0) return;
+        try{
+          const range=sel.getRangeAt(0);
+          if(self.el.contains(range.commonAncestorContainer)){
+            self._lastSelectionRange = range.cloneRange();
+          }
+        } catch(err){}
+      };
+    })(this);
+    this.el.addEventListener("mouseup", captureSelection);
+    this.el.addEventListener("keyup", captureSelection);
+    this.el.addEventListener("mouseleave", captureSelection);
+    this.el.addEventListener("blur", function(){ this._lastSelectionRange=null; }.bind(this));
     this.el.__winst = this;
   };
   const WEditor=(function(){
