@@ -604,6 +604,7 @@ body.chat-fullscreen-active {
           "If multiple result sets help, emit separate SELECT statements separated by semicolons inside the code fence (omit inline comments).",
           "When querying scm_sal_main, include `tag_deleted_yn = 'n'` unless the user clearly requests deleted rows.",
           "Helpful column hints: dnum_auto=document number, date_trans=timestamp, staff_code/staff_desc=owner, wflow_status=workflow stage, tag_table_usage=record type (e.g., sal_inv).",
+          "When selecting, alias key fields with clear english snake_case names (e.g., dnum_auto AS document_number).",
           "Prefer deterministic ordering (e.g., ORDER BY date_trans DESC) when returning document-level rows.",
           "Wrap every SQL answer in a ```sql code fence so the UI can detect and execute it, then add a short explanation after the fence.",
           "Return only SQL that is valid for PostgreSQL in this environment."
@@ -627,6 +628,7 @@ body.chat-fullscreen-active {
               "Return SQL only (no comments, no fences). READ ONLY.",
               "Include tag_deleted_yn = 'n' for scm_sal_main unless told otherwise.",
               "Upper trim dnum_auto comparisons.",
+              "Add friendly aliases for important columns (e.g., dnum_auto AS document_number).",
               "Reply NO_VALID_QUERY when impossible."
             ].join(" "),
             examples: []
@@ -1031,6 +1033,60 @@ body.chat-fullscreen-active {
           };
         }
 
+        const SQL_COLUMN_ALIASES = {
+          dnum_auto: "document number",
+          party_desc: "customer name",
+          date_trans: "transaction datetime",
+          wflow_status: "workflow status",
+          staff_desc: "owner",
+          staff_code: "owner code",
+          staff_unique: "owner id",
+          party_code: "customer code",
+          party_unique: "customer id",
+          tag_table_usage: "record type",
+          notes_memo: "notes"
+        };
+
+        const formatSqlColumn = (column) => {
+          if (!column) return "";
+          const key = String(column).toLowerCase();
+          const hint = SQL_COLUMN_ALIASES[key];
+          return hint ? `${column} (${hint})` : column;
+        };
+
+        const buildSqlSummaryMessage = (aggregated = []) => {
+          if (!Array.isArray(aggregated) || !aggregated.length) return null;
+
+          const lines = aggregated.map((entry, index) => {
+            const normalized = entry?.normalized ?? {};
+            const rows = Array.isArray(normalized.rows) ? normalized.rows : [];
+            const rowCount = Number(normalized.rowCount ?? rows.length ?? 0);
+            let columns = Array.isArray(normalized.columns) ? normalized.columns.slice(0, 6) : [];
+            if (!columns.length && rows.length) {
+              columns = Object.keys(rows[0]).slice(0, 6);
+            }
+            const header = entry?.label
+              ? `${entry.label}`
+              : `Query ${index + 1}`;
+            const firstRow = rows[0] || null;
+            const sample = firstRow
+              ? columns
+                  .map((col) => `${formatSqlColumn(col)}=${firstRow[col] ?? ""}`)
+                  .join(", ")
+              : null;
+            const formattedColumns = columns.map((col) => formatSqlColumn(col));
+            const columnText = formattedColumns.length
+              ? `欄位 Columns: ${formattedColumns.join(", ")}`
+              : "欄位 Columns: 無資料";
+            const countText = `筆數 Rows: ${rowCount}`;
+            const sampleText = sample ? `樣本 Sample: ${sample}` : "樣本 Sample: 無";
+            return `${header} → ${countText}; ${columnText}; ${sampleText}`;
+          });
+
+          lines.push("Next 建議: 若需要更深入分析, 可以詢問我進行彙總、篩選或視覺化建議。");
+          return `資料重點 Data Highlights:\n- ${lines.join("\n- ")}`;
+        };
+
         async function executeSql(sql, button) {
           if (!sql) return;
           const statements = splitSqlStatements(sql);
@@ -1064,6 +1120,14 @@ body.chat-fullscreen-active {
             }
             setStatus("Idle", false);
             debug.log("sql:complete");
+          }
+          if (aggregated.length) {
+            const summaryMessage = buildSqlSummaryMessage(aggregated);
+            if (summaryMessage) {
+              appendBubble("assistant", summaryMessage);
+              state.messages.push({ role: "assistant", content: summaryMessage });
+              state.conversation.push({ role: "assistant", content: summaryMessage });
+            }
           }
           return aggregated;
         }
