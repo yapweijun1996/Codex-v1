@@ -1,103 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WEditor Playground</title>
-    <style>
-      :root {
-        color-scheme: light;
-        font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
-        background: #f3f2f1;
-        color: #323130;
-      }
-
-      body {
-        margin: 0;
-        background: #f3f2f1;
-      }
-
-      header {
-        padding: 24px 28px 12px;
-      }
-
-      header h1 {
-        margin: 0 0 6px;
-        font-size: 24px;
-        font-weight: 600;
-      }
-
-      header p {
-        margin: 0;
-        color: #605e5c;
-        line-height: 1.5;
-      }
-
-      main {
-        display: grid;
-        gap: 20px;
-        padding: 0 24px 48px;
-        align-items: start;
-      }
-
-      .weditor_output {
-        width: 100%;
-        min-height: 160px;
-        margin-top: 8px;
-        padding: 10px 12px;
-        border: 1px solid #e1dfdd;
-        border-radius: 6px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size: 13px;
-        background: #fff;
-        box-sizing: border-box;
-      }
-
-      footer {
-        padding: 24px 28px 36px;
-        color: #8a8886;
-        font-size: 13px;
-      }
-    </style>
-    <script src="weditor.js" defer></script>
-  </head>
-  <body>
-    <header>
-      <h1>WEditor — Multi-Instance Demo</h1>
-      <p>
-        Paste complex Word/Docs content, insert page breaks, toggle header/footer, and export paged HTML.
-        The same script powers multiple editors on one page.
-      </p>
-    </header>
-    <main>
-      <section>
-        <h2>Editor A (Paged Output)</h2>
-        <div class="weditor weditor--paged">
-          <h2>Editor A (Paged Output)</h2>
-          <p>
-            Try pasting complex Word/Docs content, place the caret, then click
-            <em>Insert Break</em>. The break will land where your caret is
-            (between top-level blocks), not at the end.
-          </p>
-        </div>
-        <textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
-      </section>
-
-      <section>
-        <h2>Editor B (Raw Output)</h2>
-        <div class="weditor weditor--no-header">
-          <h2>Editor B (Raw Output)</h2>
-          <p>Raw HTML mirrored below.</p>
-        </div>
-        <textarea class="weditor_output" aria-label="Editor B raw HTML"></textarea>
-      </section>
-    </main>
-    <footer>
-      Built for the Codex vanilla frontend toolkit. Duplicate any
-      <code>&lt;div class="weditor"&gt;</code> and
-      <code>&lt;textarea class="weditor_output"&gt;</code> pair to spin up more instances automatically.
-      Add the helper classes <code>weditor--paged</code> to sync paged HTML, and
-      <code>weditor--no-header</code> / <code>weditor--no-footer</code> to hide those regions by default.
-    </footer>
-  </body>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>WEditor Playground</title>
+		<style>
+			
+		</style>
+		<script src="weditor.js" defer></script>
+	</head>
+	<body>
+		<div style="overflow: auto; height: 500px; width: 600px;">
+			<div class="weditor weditor--paged">
+				<h2>Editor A (Paged Output)</h2>
+				<p>
+					Try pasting complex Word/Docs content, place the caret, then click
+					<em>Insert Break</em>. The break will land where your caret is
+					(between top-level blocks), not at the end.
+				</p>
+			</div>
+			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
+		</div>
+		<div style="overflow: auto; height: 300px; width: 400px;">
+			<div class="weditor weditor--paged">
+				<h2>Editor B (Raw Output)</h2>
+				<p>Raw HTML mirrored below.</p>
+			</div>
+			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
+		</div>
+	</body>
 </html>
