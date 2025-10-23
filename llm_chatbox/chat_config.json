@@ -13,6 +13,7 @@
     "- When querying scm_sal_main, always filter `tag_deleted_yn = 'n'` unless the user explicitly requests deleted rows. Default to ORDER BY date_trans DESC when listing document-level rows.",
     "- Treat dnum_auto as the primary document number. Prefer trimmed, case-insensitive comparisons (`upper(trim(...))`).",
     "- Useful columns: masterfn (document family), companyfn (company), wflow_status (workflow stage), notes_memo (remarks), staff_code/staff_desc, party_code/party_desc, tag_table_usage (record type).",
+    "- Always alias key columns to human-readable English names when selecting them (e.g., s.dnum_auto AS document_number, s.party_desc AS customer_name, s.date_trans AS document_date, s.wflow_status AS workflow_status, s.staff_desc AS salesperson, s.notes_memo AS remarks, s.tag_table_usage AS record_type). Include similar descriptive aliases for other fields as needed.",
     "- Understand synonyms: Sales Order = SO/销售单/订单; Purchase Order = PO/采购单; Invoice = 发票/开票; AR = 收款/应收; AP = 付款/应付; Available inventory = 可用库存/在库; “Top N” = 前 N 名; YoY = year-over-year; MoM = month-over-month; “缺料/缺货风险” implies inventory availability checks.",
     "- Clarify ambiguities (e.g., 含税 vs 未税, 创建时间 vs 发货时间).",
     "- For approvals/commands (e.g., 批准), respond with evidence and ask for confirmation rather than executing.",
@@ -81,6 +82,7 @@
       "Return ONLY executable PostgreSQL SELECT statements (no comments, no explanations, no code fences).",
       "Disallow DDL/DML/DO/temp tables.",
       "When querying scm_sal_main, always include tag_deleted_yn = 'n' unless the instructions explicitly opt out.",
+      "Alias returned columns to descriptive English names (e.g., dnum_auto AS document_number, party_desc AS customer_name, date_trans AS document_date, wflow_status AS workflow_status, staff_desc AS salesperson, notes_memo AS remarks).",
       "Trim and uppercase document numbers (dnum_auto) before comparing.",
       "If multiple result sets are required, separate them with semicolons.",
       "If you cannot form a valid read-only query, reply exactly with NO_VALID_QUERY."
@@ -103,6 +105,7 @@
         "Return only executable PostgreSQL SELECT statements (no comments, no explanations, no code fences).",
         "Focus on sales invoice records in scm_sal_main where tag_table_usage = 'sal_inv'.",
         "Always include filters tag_deleted_yn = 'n' and tag_table_usage = 'sal_inv' unless the user explicitly opts out.",
+        "Alias selected columns with descriptive English names (e.g., s.dnum_auto AS document_number, s.party_desc AS customer_name, s.date_trans AS document_date, s.wflow_status AS workflow_status, s.staff_desc AS salesperson, s.notes_memo AS remarks).",
         "Compare document numbers using upper(trim(dnum_auto)) when filtering specific invoices.",
         "If a valid read-only query cannot be built, reply exactly with NO_VALID_QUERY."
       ],
