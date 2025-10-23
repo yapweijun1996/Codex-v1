@@ -229,38 +229,98 @@ body.chat-fullscreen-active {
   width: 100%;
 }
 
-.chat-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 0.65rem;
+.chat-kpi-visual {
+  background: linear-gradient(150deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.02));
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  border-radius: 14px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   margin-bottom: 0.75rem;
 }
 
-.chat-kpi-card {
-  border: 1px solid rgba(37, 99, 235, 0.15);
-  border-radius: 10px;
-  padding: 0.6rem 0.75rem;
-  background: linear-gradient(160deg, rgba(37, 99, 235, 0.08), rgba(255, 255, 255, 0.95));
+.chat-kpi-visual__header {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
 }
 
-.chat-kpi-card__label {
+.chat-kpi-visual__title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.chat-kpi-visual__subtitle {
   font-size: 0.78rem;
   color: var(--muted);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 
-.chat-kpi-card__value {
-  font-size: 1.25rem;
-  font-weight: 700;
+.chat-kpi-visual__body {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.chat-kpi-visual__chart {
+  position: relative;
+  flex: 1 1 220px;
+  min-height: 200px;
+}
+
+.chat-kpi-visual__chart canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.chat-kpi-visual__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex: 1 1 160px;
+}
+
+.chat-kpi-visual__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
+}
+
+.chat-kpi-visual__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.chat-kpi-visual__metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.chat-kpi-visual__metric-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.chat-kpi-visual__metric-value {
+  font-size: 1rem;
+  font-weight: 600;
   color: var(--text);
 }
 
-.chat-kpi-card__hint {
-  font-size: 0.78rem;
+.chat-kpi-visual__metric-hint {
+  font-size: 0.72rem;
   color: var(--muted);
 }
 
@@ -460,6 +520,10 @@ body.chat-fullscreen-active {
   .chat-composer__send {
     width: 100%;
   }
+
+  .chat-kpi-visual__body {
+    flex-direction: column;
+  }
 }`;
 
   const injectStyles = () => {
@@ -504,6 +568,11 @@ body.chat-fullscreen-active {
   const numberFormatter = new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 2
   });
+
+  const KPI_CHART_COLORS = ['#2563eb', '#10b981', '#f97316', '#8b5cf6', '#ef4444'];
+  const CHART_JS_CDN = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';
+  let chartJsPromise = null;
+  const kpiChartRegistry = new WeakMap();
 
   function pickSuggestions(size = 4) {
     if (!SUGGESTION_PRESETS.length) return [];
@@ -559,7 +628,8 @@ body.chat-fullscreen-active {
     metrics.push({
       label: 'Row Count',
       value: numberFormatter.format(rowCount),
-      hint: '資料筆數'
+      hint: '資料筆數',
+      rawValue: Number(rowCount) || 0
     });
 
     const sumKeywords = ['amount', 'total', 'grand', 'revenue', 'net', 'value'];
@@ -579,7 +649,8 @@ body.chat-fullscreen-active {
             metrics.push({
               label: `${toTitleCase(column)} Unique`,
               value: numberFormatter.format(uniqueCount),
-              hint: '不同客戶數'
+              hint: '不同客戶數',
+              rawValue: uniqueCount
             });
           }
         }
@@ -591,38 +662,67 @@ body.chat-fullscreen-active {
         metrics.push({
           label: toTitleCase(column),
           value: numberFormatter.format(total),
-          hint: '加總金額'
+          hint: '加總金額',
+          rawValue: total
         });
       } else if (keywordMatch(column, qtyKeywords)) {
         metrics.push({
           label: toTitleCase(column),
           value: numberFormatter.format(total),
-          hint: '累計數量'
+          hint: '累計數量',
+          rawValue: total
         });
       } else if (isNumericLike(sample)) {
         const average = total / values.length;
         metrics.push({
           label: `${toTitleCase(column)} Avg`,
           value: numberFormatter.format(average),
-          hint: '平均值'
+          hint: '平均值',
+          rawValue: average
         });
       }
     });
 
     const trimmed = metrics.slice(0, 4);
     if (!trimmed.length) return '';
-    const cards = trimmed
-      .map(
-        (metric) => `
-        <article class="chat-kpi-card">
-          <span class="chat-kpi-card__label">${escapeHtml(metric.label)}</span>
-          <strong class="chat-kpi-card__value">${escapeHtml(metric.value)}</strong>
-          <span class="chat-kpi-card__hint">${escapeHtml(metric.hint)}</span>
-        </article>
-      `
-      )
+    const palette = trimmed.map((_, index) => KPI_CHART_COLORS[index % KPI_CHART_COLORS.length]);
+    const dataset = {
+      labels: trimmed.map((metric) => metric.label),
+      values: trimmed.map((metric) => Number(metric.rawValue) || 0),
+      hints: trimmed.map((metric) => metric.hint),
+      colors: palette
+    };
+
+    const legend = trimmed
+      .map((metric, index) => {
+        const color = palette[index];
+        return `
+          <li class="chat-kpi-visual__item">
+            <span class="chat-kpi-visual__swatch" style="background:${color}"></span>
+            <div class="chat-kpi-visual__metric">
+              <span class="chat-kpi-visual__metric-label">${escapeHtml(metric.label)}</span>
+              <span class="chat-kpi-visual__metric-value">${escapeHtml(metric.value)}</span>
+              <span class="chat-kpi-visual__metric-hint">${escapeHtml(metric.hint)}</span>
+            </div>
+          </li>
+        `;
+      })
       .join('');
-    return `<div class="chat-kpi-grid">${cards}</div>`;
+
+    return `
+      <section class="chat-kpi-visual" data-kpi-chart='${escapeHtml(JSON.stringify(dataset))}'>
+        <header class="chat-kpi-visual__header">
+          <span class="chat-kpi-visual__title">即時 KPI 圖表</span>
+          <span class="chat-kpi-visual__subtitle">自動解析 SQL 指標</span>
+        </header>
+        <div class="chat-kpi-visual__body">
+          <div class="chat-kpi-visual__chart">
+            <canvas></canvas>
+          </div>
+          <ul class="chat-kpi-visual__legend">${legend}</ul>
+        </div>
+      </section>
+    `;
   }
 
   function renderRowActions(row, index) {
@@ -1128,6 +1228,156 @@ body.chat-fullscreen-active {
         };
         debug.init();
 
+        function ensureChartJs() {
+          if (window.Chart) {
+            return Promise.resolve(window.Chart);
+          }
+          if (chartJsPromise) {
+            return chartJsPromise;
+          }
+          chartJsPromise = new Promise((resolve, reject) => {
+            const finalize = () => {
+              if (window.Chart) {
+                resolve(window.Chart);
+              } else {
+                reject(new Error('Chart.js loaded but Chart global missing.'));
+              }
+            };
+            const handleError = () => reject(new Error('Failed to load Chart.js'));
+            const existing = document.querySelector(`script[src="${CHART_JS_CDN}"]`);
+            if (existing) {
+              existing.addEventListener('load', finalize, { once: true });
+              existing.addEventListener('error', handleError, { once: true });
+            } else {
+              const script = document.createElement('script');
+              script.src = CHART_JS_CDN;
+              script.async = true;
+              script.addEventListener('load', () => {
+                script.dataset.loaded = '1';
+                finalize();
+              }, { once: true });
+              script.addEventListener('error', handleError, { once: true });
+              document.head.appendChild(script);
+            }
+          }).catch((error) => {
+            chartJsPromise = null;
+            debug.log('chart:load:error', error.message);
+            throw error;
+          });
+          return chartJsPromise;
+        }
+
+        function activateKpiCharts(scope) {
+          if (!scope) return;
+          const nodes = [];
+          if (typeof scope.matches === 'function' && scope.matches('.chat-kpi-visual[data-kpi-chart]')) {
+            nodes.push(scope);
+          }
+          if (typeof scope.querySelectorAll === 'function') {
+            scope.querySelectorAll('.chat-kpi-visual[data-kpi-chart]').forEach((node) => {
+              if (nodes.indexOf(node) === -1) {
+                nodes.push(node);
+              }
+            });
+          }
+          if (!nodes.length) return;
+
+          ensureChartJs()
+            .then((Chart) => {
+              nodes.forEach((node) => {
+                if (!node || node.dataset.chartBound === '1' || kpiChartRegistry.has(node)) return;
+                const payload = node.getAttribute('data-kpi-chart');
+                if (!payload) return;
+                let parsed;
+                try {
+                  parsed = JSON.parse(payload);
+                } catch (error) {
+                  debug.log('chart:parse:error', error.message);
+                  return;
+                }
+                const labels = Array.isArray(parsed.labels) ? parsed.labels : [];
+                const values = Array.isArray(parsed.values)
+                  ? parsed.values.map((value) => Number(value) || 0)
+                  : [];
+                if (!labels.length || !values.length) return;
+                const colors = Array.isArray(parsed.colors) && parsed.colors.length
+                  ? parsed.colors
+                  : labels.map((_, index) => KPI_CHART_COLORS[index % KPI_CHART_COLORS.length]);
+                const hints = Array.isArray(parsed.hints) ? parsed.hints : [];
+                const canvas = node.querySelector('canvas');
+                if (!canvas) return;
+
+                try {
+                  const chart = new Chart(canvas, {
+                    type: 'bar',
+                    data: {
+                      labels,
+                      datasets: [
+                        {
+                          data: values,
+                          backgroundColor: colors,
+                          borderRadius: 8,
+                          maxBarThickness: 34
+                        }
+                      ]
+                    },
+                    options: {
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                          backgroundColor: '#0f172a',
+                          borderColor: 'rgba(148, 163, 184, 0.3)',
+                          borderWidth: 1,
+                          callbacks: {
+                            label(context) {
+                              const value = context?.parsed?.y ?? context?.parsed ?? 0;
+                              const formatted = numberFormatter.format(value);
+                              const hint = hints[context.dataIndex] || '';
+                              return hint ? `${context.label}: ${formatted} · ${hint}` : `${context.label}: ${formatted}`;
+                            }
+                          }
+                        }
+                      },
+                      scales: {
+                        x: {
+                          ticks: {
+                            color: '#1f2937',
+                            font: { size: 11 }
+                          },
+                          grid: { display: false }
+                        },
+                        y: {
+                          beginAtZero: true,
+                          ticks: {
+                            color: '#1f2937',
+                            font: { size: 11 },
+                            callback(value) {
+                              return numberFormatter.format(value);
+                            }
+                          },
+                          grid: {
+                            color: 'rgba(148, 163, 184, 0.25)',
+                            drawBorder: false
+                          }
+                        }
+                      }
+                    }
+                  });
+
+                  node.dataset.chartBound = '1';
+                  kpiChartRegistry.set(node, chart);
+                } catch (error) {
+                  debug.log('chart:init:error', error.message);
+                }
+              });
+            })
+            .catch((error) => {
+              console.warn('Chart visualization unavailable:', error.message);
+            });
+        }
+
         const toAgentKey = (value) => {
           if (!value) return "";
           return String(value)
@@ -1394,7 +1644,11 @@ body.chat-fullscreen-active {
 
           const tableHtml = renderSqlResult(rawPayload);
           const prefix = label ? `<p class="chat-sql-meta">${escapeHtml(label)}</p>` : "";
-          appendBubble("assistant", prefix + tableHtml, { asHtml: true, extraClass: "chat-bubble--sql" });
+          const sqlBubble = appendBubble("assistant", prefix + tableHtml, {
+            asHtml: true,
+            extraClass: "chat-bubble--sql"
+          });
+          activateKpiCharts(sqlBubble);
           addSqlResultToState({ sql: statement, payload: rawPayload });
           debug.log("sql:execute:success", {
             label,
