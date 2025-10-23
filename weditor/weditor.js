@@ -341,7 +341,7 @@
     return { fixStructure };
   })();
   const HFAlign=(function(){
-    const allowed={ left:"left", center:"center", right:"right" };
+    const allowed={ left:"left", center:"center", right:"right", justify:"justify" };
     function normalize(value){
       const key=(value==null?"":String(value)).toLowerCase();
       return allowed[key] || "left";
@@ -349,6 +349,7 @@
     function flexJustify(norm){
       if(norm==="center") return "center";
       if(norm==="right") return "flex-end";
+      if(norm==="justify") return "flex-start";
       return "flex-start";
     }
     function applyHeader(node, align){
@@ -1215,7 +1216,8 @@
       const alignOptions=[
         { value:"left", label:"Left", title:"Align left / 靠左" },
         { value:"center", label:"Center", title:"Align center / 置中" },
-        { value:"right", label:"Right", title:"Align right / 靠右" }
+        { value:"right", label:"Right", title:"Align right / 靠右" },
+        { value:"justify", label:"Justify", title:"Align justify / 左右對齊" }
       ];
       for(let i=0;i<alignOptions.length;i++){
         const opt=alignOptions[i];
