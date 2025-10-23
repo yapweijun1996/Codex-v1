@@ -30,6 +30,20 @@
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
+      previewWrap:{ margin:"0 12px 16px", border:"1px solid "+UI.border, borderRadius:"10px", background:"#faf9f8", display:"flex", flexDirection:"column", overflow:"hidden", boxShadow:"inset 0 1px 0 rgba(255,255,255,.7)" },
+      previewHeaderRow:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap", padding:"14px 18px", background:"#fff", borderBottom:"1px solid "+UI.border },
+      previewTitle:{ font:"13px/1.5 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      previewControls:{ display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap", marginLeft:"auto" },
+      previewZoomLabel:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      previewSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", background:"#fff", color:UI.text, font:"12px/1.3 Segoe UI,system-ui", cursor:"pointer" },
+      previewCanvas:{ background:"linear-gradient(180deg,#f3f2f1 0%,#e4e2df 100%)", padding:"32px", boxSizing:"border-box", overflow:"auto" },
+      previewStage:{ display:"flex", flexDirection:"column", alignItems:"center", gap:"28px", minHeight:"120px", margin:"0 auto", width:"100%", maxWidth:"min(100%, 960px)" },
+      previewEmpty:{ font:"12px/1.6 Segoe UI,system-ui", color:UI.textDim, textAlign:"center", padding:"48px 0", width:"100%" },
+      previewDivider:{ width:"min(90%, 420px)", borderTop:"1px dashed "+UI.borderSubtle, textAlign:"center", font:"10px/1.4 Segoe UI,system-ui", color:UI.textDim, letterSpacing:".12em", textTransform:"uppercase", padding:"6px 0 0" },
+      previewPageBlock:{ display:"flex", flexDirection:"column", alignItems:"center", gap:"10px", width:"100%" },
+      previewPageOuter:{ position:"relative", display:"flex", alignItems:"flex-start", justifyContent:"center", width:A4W+"px", height:A4H+"px", flex:"0 0 auto", transition:"width .18s ease,height .18s ease" },
+      previewPageInner:{ position:"absolute", left:"0", top:"0", width:A4W+"px", height:A4H+"px", transformOrigin:"top left", display:"flex", alignItems:"flex-start", justifyContent:"flex-start" },
+      previewCaption:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, textTransform:"uppercase", letterSpacing:".08em" },
       hfModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
       hfHead:{ padding:"18px 22px", borderBottom:"1px solid "+UI.border, display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
@@ -1533,9 +1547,14 @@
       return null;
     }
     function sync(inst){
-      if(!inst.outputEl) return;
-      if(inst.outputMode==="paged"){ inst.outputEl.value = Paginator.pagesHTML(inst); }
-      else { inst.outputEl.value = inst.el.innerHTML; }
+      if(!inst) return;
+      if(inst.outputMode==="paged"){
+        const result=Paginator.paginate(inst.el.innerHTML, inst);
+        if(inst.outputEl) inst.outputEl.value = result.pagesHTML;
+        if(typeof inst._updatePreview==="function") inst._updatePreview(result);
+      } else {
+        if(inst.outputEl) inst.outputEl.value = inst.el.innerHTML;
+      }
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
@@ -2081,7 +2100,7 @@
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
     this._mount();
-    OutputBinding.syncDebounced(this);
+    OutputBinding.sync(this);
   }
   WEditorInstance.prototype._mount=function(){
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
@@ -2092,8 +2111,156 @@
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
+    if(this.outputMode==="paged"){ this._setupPagedPreview(shell); }
     this.el.addEventListener("input", (function(self){ return function(){ OutputBinding.syncDebounced(self); }; })(this));
     this.el.__winst = this;
+  };
+  WEditorInstance.prototype._setupPagedPreview=function(shell){
+    const previewWrap=document.createElement("div"); applyStyles(previewWrap, WCfg.Style.previewWrap);
+    const header=document.createElement("div"); applyStyles(header, WCfg.Style.previewHeaderRow);
+    const title=document.createElement("div"); applyStyles(title, WCfg.Style.previewTitle); title.textContent="Paged Preview";
+    header.appendChild(title);
+    const controls=document.createElement("div"); applyStyles(controls, WCfg.Style.previewControls);
+    const zoomLabel=document.createElement("span"); applyStyles(zoomLabel, WCfg.Style.previewZoomLabel); zoomLabel.textContent="Zoom";
+    const zoomSelect=document.createElement("select"); applyStyles(zoomSelect, WCfg.Style.previewSelect);
+    zoomSelect.setAttribute("aria-label","Preview zoom");
+    const zoomOptions=[
+      { value:"fit", label:"Fit to width" },
+      { value:"100", label:"100%" },
+      { value:"90", label:"90%" },
+      { value:"75", label:"75%" },
+      { value:"50", label:"50%" }
+    ];
+    for(let i=0;i<zoomOptions.length;i++){
+      const opt=document.createElement("option");
+      opt.value=zoomOptions[i].value;
+      opt.textContent=zoomOptions[i].label;
+      zoomSelect.appendChild(opt);
+    }
+    zoomSelect.value="fit";
+    const zoomValue=document.createElement("span"); applyStyles(zoomValue, WCfg.Style.previewZoomLabel);
+    zoomValue.setAttribute("aria-live","polite");
+    controls.appendChild(zoomLabel);
+    controls.appendChild(zoomSelect);
+    controls.appendChild(zoomValue);
+    header.appendChild(controls);
+    previewWrap.appendChild(header);
+    const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.previewCanvas);
+    const stage=document.createElement("div"); applyStyles(stage, WCfg.Style.previewStage);
+    canvas.appendChild(stage);
+    previewWrap.appendChild(canvas);
+    shell.appendChild(previewWrap);
+    const previewState={
+      wrap:previewWrap,
+      canvas,
+      stage,
+      zoom:"fit",
+      zoomSelect,
+      scaleValue:zoomValue,
+      pageWrappers:[],
+      canvasPaddingX:0
+    };
+    this._preview = previewState;
+    zoomSelect.addEventListener("change", (function(self){
+      return function(){
+        previewState.zoom = zoomSelect.value || "fit";
+        self._applyPreviewScale();
+      };
+    })(this));
+    if(typeof window!=="undefined" && window.getComputedStyle){
+      const computed=window.getComputedStyle(canvas);
+      const padLeft=parseFloat(computed.paddingLeft||"0")||0;
+      const padRight=parseFloat(computed.paddingRight||"0")||0;
+      previewState.canvasPaddingX = padLeft + padRight;
+    }
+    if(typeof ResizeObserver!=="undefined"){
+      try{
+        const ro=new ResizeObserver((function(self){ return function(){ self._applyPreviewScale(); }; })(this));
+        ro.observe(canvas);
+        previewState.resizeObserver=ro;
+      }catch(e){}
+    }
+    if(typeof window!=="undefined" && typeof window.addEventListener==="function"){
+      previewState.resizeHandler=(function(self){ return function(){ self._applyPreviewScale(); }; })(this);
+      window.addEventListener("resize", previewState.resizeHandler);
+    }
+    this._renderPreviewPlaceholder();
+  };
+  WEditorInstance.prototype._renderPreviewPlaceholder=function(){
+    const preview=this._preview;
+    if(!preview || !preview.stage) return;
+    preview.stage.innerHTML="";
+    preview.pageWrappers=[];
+    const empty=document.createElement("div"); applyStyles(empty, WCfg.Style.previewEmpty);
+    empty.textContent="Type in the editor to build a paged preview.";
+    preview.stage.appendChild(empty);
+    if(preview.scaleValue){
+      preview.scaleValue.textContent = preview.zoom==="fit" ? "Fit" : preview.zoom+"%";
+    }
+  };
+  WEditorInstance.prototype._applyPreviewScale=function(){
+    const preview=this._preview;
+    if(!preview) return;
+    if(!preview.pageWrappers || !preview.pageWrappers.length){
+      if(preview.scaleValue){ preview.scaleValue.textContent = preview.zoom==="fit" ? "Fit" : preview.zoom+"%"; }
+      return;
+    }
+    let scale=1;
+    if(preview.zoom==="fit"){
+      const canvasWidth=preview.canvas ? preview.canvas.clientWidth : 0;
+      const available=Math.max(1, canvasWidth - (preview.canvasPaddingX||0));
+      scale = available>0 ? Math.min(1, available / WCfg.A4W) : 1;
+    } else {
+      const pct=parseFloat(preview.zoom);
+      if(isFinite(pct) && pct>0){ scale=pct/100; }
+    }
+    if(!isFinite(scale) || scale<=0) scale=1;
+    const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
+    const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
+    for(let i=0;i<preview.pageWrappers.length;i++){
+      const wrap=preview.pageWrappers[i];
+      wrap.outer.style.width=scaledWidth+"px";
+      wrap.outer.style.height=scaledHeight+"px";
+      wrap.inner.style.transform="scale("+scale+")";
+    }
+    if(preview.scaleValue){ preview.scaleValue.textContent = Math.round(scale*100)+"%"; }
+  };
+  WEditorInstance.prototype._updatePreview=function(pagination){
+    const preview=this._preview;
+    if(!preview || !preview.stage){ return; }
+    preview.stage.innerHTML="";
+    preview.pageWrappers=[];
+    const pages=(pagination && pagination.pages) ? pagination.pages.slice() : [];
+    if(!pages.length){
+      this._renderPreviewPlaceholder();
+      return;
+    }
+    const total=pages.length;
+    for(let i=0;i<pages.length;i++){
+      const page=pages[i];
+      if(page && page.style){
+        page.style.margin="0";
+        page.style.transform="";
+        page.style.transformOrigin="";
+      }
+      const block=document.createElement("div"); applyStyles(block, WCfg.Style.previewPageBlock);
+      const outer=document.createElement("div"); applyStyles(outer, WCfg.Style.previewPageOuter);
+      const inner=document.createElement("div"); applyStyles(inner, WCfg.Style.previewPageInner);
+      inner.appendChild(page);
+      outer.appendChild(inner);
+      block.appendChild(outer);
+      const caption=document.createElement("div"); applyStyles(caption, WCfg.Style.previewCaption);
+      caption.textContent="Page "+(i+1)+" / "+total;
+      block.appendChild(caption);
+      preview.stage.appendChild(block);
+      preview.pageWrappers.push({ outer, inner });
+      if(i<pages.length-1){
+        const divider=document.createElement("div"); applyStyles(divider, WCfg.Style.previewDivider);
+        divider.textContent="Page Break";
+        preview.stage.appendChild(divider);
+      }
+    }
+    this._applyPreviewScale();
   };
   const WEditor=(function(){
     function initAll(selectors){ selectors = selectors || [".weditor", ".w-editor"]; const nodes=[];
