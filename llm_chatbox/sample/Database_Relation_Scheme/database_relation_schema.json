@@ -1,0 +1,271 @@
+{
+	"transaction_types": {
+		"entp_pbill": "Progress Claim (AR) - PCAR",
+		"entp_pbilp": "Progress Claim (AP) - PCAP",
+		"entp_pbud": "Project Budget",
+		"entp_pcap": "Certified Claim (AP) - CCAP",
+		"entp_pcar": "Certified Claim (AR) - CCAR (not PCAR)",
+		"sal_cn": "Sales Credit Note - CN",
+		"sal_dn": "Sales Debit Note - DN",
+		"sal_fma": "Proforma Invoice",
+		"sal_inv": "Sales Invoice - SI",
+		"sal_quo": "Sales Quotation - SQ",
+		"sal_soc": "Sales Order Confirmation - SOC",
+		"sal_soe": "Sales Order - SO",
+		"srvcntrct": "Service Contract",
+		"srvord": "Service Order",
+		"srvrec": "Service Record",
+		"stk_do": "Delivery Order - DO",
+		"stk_doc": "Delivery Order Confirmation - DOC",
+		"pur_pr": "Purchase Request",
+		"pur_po": "Purchase Order",
+		"pur_poc": "Purchase Order Confirmation",
+		"pur_pi": "Purchase Invoice",
+		"stk_grn": "Goods Received Note",
+		"stk_gvn": "Goods Returned Voucher"
+	},
+	
+	"common_rules": {
+		"date_trans": "to_char(date_trans, 'DD/MM/YYYY') AS transaction_date",
+		"timestamp_standard": "to_char(%s, 'YYYY-MM-DD HH24:MI:SS') AS %s",
+		"currency_format": "to_char(%s, 'FM999,999,999.00') AS %s",
+		"percentage_format": "to_char(%s * 100, 'FM999.00') || '%' AS %s",
+		"default_alias": "%s AS %s",
+		"The transaction PCAR CCAR PCAP CCAP, ORDER BY logic is": "date_trans(Date Transaction), recur_dateend(Work Done Period End), dnum_auto(Document Number)"
+	},
+	
+	"tables": [
+		{
+			"name": "scm_sal_main",
+			"description": "Main sales and transaction table supporting multiple transaction types",
+			"fields": [
+				{"name": "uniquenum_pri", "type": "string", "description": "Primary key, unique transaction ID"},
+				{"name": "entprojfn", "type": "string", "description": "Project unique identifier"},
+				{"name": "entprojfn_code", "type": "string", "description": "Project code"},
+				{"name": "wflow_status", "type": "string", "description": "Workflow status of the transaction"},
+				{"name": "notes_memo", "type": "string", "description": "Remarks or notes"},
+				{"name": "date_trans", "type": "datetime", "description": "Transaction date"},
+				{"name": "staff_code", "type": "string", "description": "Staff code"},
+				{"name": "staff_unique", "type": "string", "description": "Unique staff identifier"},
+				{"name": "staff_desc", "type": "string", "description": "Staff description"},
+				{"name": "party_desc", "type": "string", "description": "Party/customer name"},
+				{"name": "party_code", "type": "string", "description": "Party/customer code"},
+				{"name": "party_unique", "type": "string", "description": "Unique party/customer identifier"},
+				{"name": "dnum_auto", "type": "string", "description": "Document number"},
+				{"name": "dnum_reference", "type": "string", "description": "Reference number"},
+				{"name": "dnum_master", "type": "string", "description": "Master document number"},
+				{"name": "curr_short_forex", "type": "string", "description": "Transaction currency code"},
+				{"name": "subtot_forex", "type": "decimal", "description": "Subtotal amount"},
+				{"name": "subtot_freight_forex", "type": "decimal", "description": "Subtotal freight amount"},
+				{"name": "amt_discount_forex", "type": "decimal", "description": "Discount amount"},
+				{"name": "grosstot_forex", "type": "decimal", "description": "Gross total amount"},
+				{"name": "salestaxpct", "type": "decimal", "description": "GST percentage"},
+				{"name": "tag_table_usage", "type": "string", "description": "Transaction type (e.g. sal_inv, sal_quo)"},
+				{"name": "tag_deleted_yn", "type": "string", "description": "Deleted flag"},
+				{"name": "tag_void_yn", "type": "string", "description": "Void flag"}
+			],
+			"filters": [
+				{"field": "tag_deleted_yn", "value": "n"},
+				{"field": "tag_void_yn", "value": "n"},
+				{
+					"field": "tag_table_usage",
+					"value": [
+						"entp_pbill", "entp_pbilp", "entp_pbud", "entp_pcap", "entp_pcar",
+						"sal_cn", "sal_dn", "sal_fma", "sal_inv", "sal_quo", "sal_soc",
+						"sal_soe", "srvcntrct", "srvord", "srvrec", "stk_do", "stk_doc"
+					]
+				}
+			],
+			"common_queries": [
+				{
+					"purpose": "Top 10 Sales Invoices by Gross Total",
+					"sql": "SELECT dnum_auto AS document_number, to_char(date_trans, 'DD/MM/YYYY') AS transaction_date, staff_desc AS salesperson, party_desc AS customer_name, curr_short_forex AS currency, grosstot_forex AS gross_total, amt_discount_forex AS discount_amount, subtot_freight_forex AS freight_amount FROM scm_sal_main WHERE tag_table_usage = 'sal_inv' AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY grosstot_forex DESC LIMIT 10;"
+				},
+				{
+					"purpose": "Approved Delivery Orders for a Specific Customer",
+					"sql": "SELECT dnum_auto AS document_number, to_char(date_trans, 'DD/MM/YYYY') AS transaction_date, staff_desc AS salesperson, party_desc AS customer_name, curr_short_forex AS currency, grosstot_forex AS gross_total, amt_discount_forex AS discount_amount, subtot_freight_forex AS freight_amount FROM scm_sal_main WHERE tag_table_usage = 'stk_do' AND wflow_status = 'approved' AND party_unique = ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n';"
+				},
+				{
+					"purpose": "Retrieve all Certified Claims (AR) for a Customer",
+					"sql": "SELECT dnum_auto AS document_number, to_char(date_trans, 'DD/MM/YYYY') AS transaction_date, staff_desc AS salesperson, party_desc AS customer_name, curr_short_forex AS currency, grosstot_forex AS gross_total, amt_discount_forex AS discount_amount, subtot_freight_forex AS freight_amount FROM scm_sal_main WHERE tag_table_usage = 'entp_pcar' AND party_unique = ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n';"
+				},
+				{
+					"purpose": "Find Specific Sales Quotation by Document Number",
+					"sql": "SELECT m.uniquenum_pri AS transaction_uniq, m.entprojfn AS project_uniq, m.entprojfn_code AS project_code, m.wflow_status AS transaction_status, m.notes_memo AS remark, to_char(m.date_trans, 'DD/MM/YYYY') AS transaction_date, m.staff_code, m.staff_unique AS staff_uniq, m.staff_desc, m.party_desc AS party_name, m.party_code, m.party_unique AS party_uniq, m.dnum_auto AS document_no, m.dnum_reference AS references_no, m.dnum_master AS master_no, m.curr_short_forex AS transaction_currency, m.subtot_forex AS subtot_transaction_currency, m.subtot_freight_forex AS subtot_freight_transaction_currency, m.amt_discount_forex AS discount_amount_transaction_currency, m.grosstot_forex AS gross_total_transaction_currency, m.salestaxpct AS gst_percentage, m.tag_table_usage AS transaction_type_code, m.tag_deleted_yn AS deleted_status, m.tag_void_yn AS void_status, d.stkcode_code AS stock_code, d.stkcode_desc AS stock_desc, d.qnty_total AS qty, d.price_unitlist_forex AS unit_price_before_adjust_transaction_currency, d.discount_pct AS discount_percentage, d.price_unitrate_forex AS unit_price_after_adjust_transaction_currency, d.extnamt_orig_forex AS exact_amount_transaction_currency, d.tag_table_usage AS detail_transaction_type_code, d.tag_deleted_yn AS detail_deleted_status, d.tag_void_yn AS detail_void_status, d.row_item_num AS row_item_no FROM scm_sal_main m LEFT JOIN scm_sal_data d ON m.uniquenum_pri = d.uniquenum_pri AND d.tag_deleted_yn = m.tag_deleted_yn AND d.tag_void_yn = m.tag_void_yn AND d.tag_table_usage = m.tag_table_usage WHERE m.dnum_auto = ? AND m.tag_deleted_yn = 'n' AND m.tag_void_yn = 'n' AND m.tag_table_usage = 'sal_quo' ORDER BY d.row_item_num;"
+				},
+				{
+					"purpose": "List latest 10 PCAR transactions for Keong Hong Construction Pte Ltd",
+					"sql": "SELECT m.dnum_auto AS document_number, m.dnum_master AS master_number, to_char(m.date_trans, 'DD/MM/YYYY') AS transaction_date, to_char(m.recur_dateend, 'DD/MM/YYYY') AS work_done_period_end, m.staff_desc AS salesperson, m.party_desc AS customer_name, m.curr_short_forex AS currency, m.grosstot_forex AS gross_total, m.amt_discount_forex AS discount_amount, m.subtot_freight_forex AS freight_amount FROM scm_sal_main m WHERE m.tag_table_usage = 'entp_pbill' AND m.party_desc = 'Keong Hong Construction Pte Ltd' AND m.tag_deleted_yn = 'n' AND m.tag_void_yn = 'n' ORDER BY m.date_trans, m.recur_dateend, m.dnum_auto DESC LIMIT 10;"
+				}
+			]
+		},
+		{
+			"name": "scm_sal_data",
+			"description": "Transaction detail table supporting multiple transaction types",
+			"fields": [
+				{"name": "uniquenum_pri", "type": "string", "description": "Foreign key referencing main transaction"},
+				{"name": "stkcode_code", "type": "string", "description": "Stock code"},
+				{"name": "stkcode_desc", "type": "string", "description": "Stock description"},
+				{"name": "qnty_total", "type": "decimal", "description": "Quantity"},
+				{"name": "price_unitlist_forex", "type": "decimal", "description": "Unit price before adjustment"},
+				{"name": "discount_pct", "type": "decimal", "description": "Discount percentage"},
+				{"name": "price_unitrate_forex", "type": "decimal", "description": "Unit price after adjustment"},
+				{"name": "extnamt_orig_forex", "type": "decimal", "description": "Exact amount"},
+				{"name": "tag_table_usage", "type": "string", "description": "Transaction type (e.g. sal_inv, sal_quo)"},
+				{"name": "tag_deleted_yn", "type": "string", "description": "Deleted flag"},
+				{"name": "tag_void_yn", "type": "string", "description": "Void flag"},
+				{"name": "row_item_num", "type": "integer", "description": "Line item number"}
+			],
+			"filters": [
+				{"field": "tag_deleted_yn", "value": "n"},
+				{"field": "tag_void_yn", "value": "n"},
+				{
+					"field": "tag_table_usage",
+					"value": [
+						"entp_pbill", "entp_pbilp", "entp_pbud", "entp_pcap", "entp_pcar",
+						"sal_cn", "sal_dn", "sal_fma", "sal_inv", "sal_quo", "sal_soc",
+						"sal_soe", "srvcntrct", "srvord", "srvrec", "stk_do", "stk_doc"
+					]
+				}
+			],
+			"common_queries": [
+				{
+					"purpose": "Retrieve all detail lines for a given sales transaction",
+					"sql": "SELECT stkcode_code AS stock_code, stkcode_desc AS stock_desc, qnty_total AS quantity, price_unitlist_forex AS unit_price_before_adjustment, discount_pct AS discount_percentage, price_unitrate_forex AS unit_price_after_adjustment, extnamt_orig_forex AS amount, row_item_num AS line_number FROM scm_sal_data WHERE uniquenum_pri = ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY row_item_num;"
+				},
+				{
+					"purpose": "Retrieve all sales detail lines for a specific stock code",
+					"sql": "SELECT uniquenum_pri AS transaction_id, stkcode_code AS stock_code, stkcode_desc AS stock_desc, qnty_total AS quantity, price_unitlist_forex AS unit_price_before_adjustment, discount_pct AS discount_percentage, price_unitrate_forex AS unit_price_after_adjustment, extnamt_orig_forex AS amount, row_item_num AS line_number FROM scm_sal_data WHERE stkcode_code = ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY uniquenum_pri, row_item_num;"
+				},
+				{
+					"purpose": "Find detail lines with discount greater than specified percentage",
+					"sql": "SELECT uniquenum_pri AS transaction_id, stkcode_code AS stock_code, discount_pct AS discount_percentage, extnamt_orig_forex AS amount FROM scm_sal_data WHERE discount_pct > ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY discount_pct DESC;"
+				}
+			]
+		},
+		{
+			"name": "scm_pur_main",
+			"description": "Main purchase transaction table supporting multiple purchase document types",
+			"fields": [
+				{"name": "uniquenum_pri", "type": "string", "description": "Primary key, unique purchase transaction ID"},
+				{"name": "entprojfn", "type": "string", "description": "Project unique identifier"},
+				{"name": "entprojfn_code", "type": "string", "description": "Project code"},
+				{"name": "wflow_status", "type": "string", "description": "Workflow status"},
+				{"name": "notes_memo", "type": "string", "description": "Remarks or notes"},
+				{"name": "date_trans", "type": "datetime", "description": "Transaction date"},
+				{"name": "staff_code", "type": "string", "description": "Staff code"},
+				{"name": "staff_unique", "type": "string", "description": "Unique staff identifier"},
+				{"name": "staff_desc", "type": "string", "description": "Staff description"},
+				{"name": "party_desc", "type": "string", "description": "Party/supplier name"},
+				{"name": "party_code", "type": "string", "description": "Party/supplier code"},
+				{"name": "party_unique", "type": "string", "description": "Unique party identifier"},
+				{"name": "dnum_auto", "type": "string", "description": "Document number"},
+				{"name": "dnum_reference", "type": "string", "description": "Reference number"},
+				{"name": "dnum_master", "type": "string", "description": "Master document number"},
+				{"name": "curr_short_forex", "type": "string", "description": "Currency code"},
+				{"name": "subtot_forex", "type": "decimal", "description": "Subtotal amount"},
+				{"name": "subtot_freight_forex", "type": "decimal", "description": "Subtotal freight amount"},
+				{"name": "amt_discount_forex", "type": "decimal", "description": "Discount amount"},
+				{"name": "grosstot_forex", "type": "decimal", "description": "Gross total amount"},
+				{"name": "salestaxpct", "type": "decimal", "description": "GST percentage"},
+				{"name": "tag_table_usage", "type": "string", "description": "Transaction type (purchase document type)"},
+				{"name": "tag_deleted_yn", "type": "string", "description": "Deleted flag"},
+				{"name": "tag_void_yn", "type": "string", "description": "Void flag"}
+			],
+			"filters": [
+				{"field": "tag_deleted_yn", "value": "n"},
+				{"field": "tag_void_yn", "value": "n"},
+				{
+					"field": "tag_table_usage",
+					"value": [
+						"pur_pr", "pur_po", "pur_poc", "pur_pi", "stk_grn", "stk_gvn"
+					]
+				}
+			],
+			"common_queries": [
+				{
+					"purpose": "Top 10 Purchase Orders by Gross Total",
+					"sql": "SELECT dnum_auto AS document_number, to_char(date_trans, 'DD/MM/YYYY') AS transaction_date, staff_desc AS purchaser, party_desc AS supplier_name, curr_short_forex AS currency, grosstot_forex AS gross_total, amt_discount_forex AS discount_amount, subtot_freight_forex AS freight_amount FROM scm_pur_main WHERE tag_table_usage = 'pur_po' AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY grosstot_forex DESC LIMIT 10;"
+				},
+				{
+					"purpose": "Approved Purchase Orders for a Specific Supplier",
+					"sql": "SELECT dnum_auto AS document_number, to_char(date_trans, 'DD/MM/YYYY') AS transaction_date, staff_desc AS purchaser, party_desc AS supplier_name, curr_short_forex AS currency, grosstot_forex AS gross_total, amt_discount_forex AS discount_amount, subtot_freight_forex AS freight_amount FROM scm_pur_main WHERE tag_table_usage = 'pur_po' AND wflow_status = 'approved' AND party_unique = ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n';"
+				},
+				{
+					"purpose": "Find Specific Purchase Invoice by Document Number",
+					"sql": "SELECT m.uniquenum_pri AS transaction_uniq, m.entprojfn AS project_uniq, m.entprojfn_code AS project_code, m.wflow_status AS transaction_status, m.notes_memo AS remark, to_char(m.date_trans, 'DD/MM/YYYY') AS transaction_date, m.staff_code, m.staff_unique AS staff_uniq, m.staff_desc, m.party_desc AS supplier_name, m.party_code, m.party_unique AS party_uniq, m.dnum_auto AS document_no, m.dnum_reference AS references_no, m.dnum_master AS master_no, m.curr_short_forex AS transaction_currency, m.subtot_forex AS subtot_transaction_currency, m.subtot_freight_forex AS subtot_freight_transaction_currency, m.amt_discount_forex AS discount_amount_transaction_currency, m.grosstot_forex AS gross_total_transaction_currency, m.salestaxpct AS gst_percentage, m.tag_table_usage AS transaction_type_code, m.tag_deleted_yn AS deleted_status, m.tag_void_yn AS void_status, d.stkcode_code AS stock_code, d.stkcode_desc AS stock_desc, d.qnty_total AS qty, d.price_unitlist_forex AS unit_price_before_adjust_transaction_currency, d.discount_pct AS discount_percentage, d.price_unitrate_forex AS unit_price_after_adjust_transaction_currency, d.extnamt_orig_forex AS exact_amount_transaction_currency, d.tag_table_usage AS detail_transaction_type_code, d.tag_deleted_yn AS detail_deleted_status, d.tag_void_yn AS detail_void_status, d.row_item_num AS row_item_no FROM scm_pur_main m LEFT JOIN scm_pur_data d ON m.uniquenum_pri = d.uniquenum_pri AND d.tag_deleted_yn = m.tag_deleted_yn AND d.tag_void_yn = m.tag_void_yn AND d.tag_table_usage = m.tag_table_usage WHERE m.dnum_auto = ? AND m.tag_deleted_yn = 'n' AND m.tag_void_yn = 'n' AND m.tag_table_usage = 'pur_pi' ORDER BY d.row_item_num;"
+				}
+			]
+		},
+		{
+			"name": "scm_pur_data",
+			"description": "Purchase transaction detail table supporting multiple purchase document types",
+			"fields": [
+				{"name": "uniquenum_pri", "type": "string", "description": "Foreign key referencing purchase main"},
+				{"name": "stkcode_code", "type": "string", "description": "Stock code"},
+				{"name": "stkcode_desc", "type": "string", "description": "Stock description"},
+				{"name": "qnty_total", "type": "decimal", "description": "Quantity"},
+				{"name": "price_unitlist_forex", "type": "decimal", "description": "Unit price before adjustment"},
+				{"name": "discount_pct", "type": "decimal", "description": "Discount percentage"},
+				{"name": "price_unitrate_forex", "type": "decimal", "description": "Unit price after adjustment"},
+				{"name": "extnamt_orig_forex", "type": "decimal", "description": "Exact amount"},
+				{"name": "tag_table_usage", "type": "string", "description": "Transaction type (purchase document type)"},
+				{"name": "tag_deleted_yn", "type": "string", "description": "Deleted flag"},
+				{"name": "tag_void_yn", "type": "string", "description": "Void flag"},
+				{"name": "row_item_num", "type": "integer", "description": "Line item number"}
+			],
+			"filters": [
+				{"field": "tag_deleted_yn", "value": "n"},
+				{"field": "tag_void_yn", "value": "n"},
+				{
+					"field": "tag_table_usage",
+					"value": [
+						"pur_pr", "pur_po", "pur_poc", "pur_pi", "stk_grn", "stk_gvn"
+					]
+				}
+			],
+			"common_queries": [
+				{
+					"purpose": "Retrieve all detail lines for a given purchase transaction",
+					"sql": "SELECT stkcode_code AS stock_code, stkcode_desc AS stock_desc, qnty_total AS quantity, price_unitlist_forex AS unit_price_before_adjustment, discount_pct AS discount_percentage, price_unitrate_forex AS unit_price_after_adjustment, extnamt_orig_forex AS amount, row_item_num AS line_number FROM scm_pur_data WHERE uniquenum_pri = ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY row_item_num;"
+				},
+				{
+					"purpose": "Retrieve all purchase detail lines for a specific stock code",
+					"sql": "SELECT uniquenum_pri AS transaction_id, stkcode_code AS stock_code, stkcode_desc AS stock_desc, qnty_total AS quantity, price_unitlist_forex AS unit_price_before_adjustment, discount_pct AS discount_percentage, price_unitrate_forex AS unit_price_after_adjustment, extnamt_orig_forex AS amount, row_item_num AS line_number FROM scm_pur_data WHERE stkcode_code = ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY uniquenum_pri, row_item_num;"
+				},
+				{
+					"purpose": "Find purchase detail lines with discount greater than specified percentage",
+					"sql": "SELECT uniquenum_pri AS transaction_id, stkcode_code AS stock_code, discount_pct AS discount_percentage, extnamt_orig_forex AS amount FROM scm_pur_data WHERE discount_pct > ? AND tag_deleted_yn = 'n' AND tag_void_yn = 'n' ORDER BY discount_pct DESC;"
+				}
+			]
+			
+		}
+	],
+	
+	"relations": [
+		{
+			"type": "one-to-many",
+			"from_table": "scm_sal_main",
+			"from_field": "uniquenum_pri",
+			"to_table": "scm_sal_data",
+			"to_field": "uniquenum_pri",
+			"description": "One main sales transaction record (any supported sales type) has many detail line items",
+			"supported_transaction_types": [
+				"entp_pbill", "entp_pbilp", "entp_pbud", "entp_pcap", "entp_pcar",
+				"sal_cn", "sal_dn", "sal_fma", "sal_inv", "sal_quo", "sal_soc",
+				"sal_soe", "srvcntrct", "srvord", "srvrec", "stk_do", "stk_doc"
+			]
+		},
+		{
+			"type": "one-to-many",
+			"from_table": "scm_pur_main",
+			"from_field": "uniquenum_pri",
+			"to_table": "scm_pur_data",
+			"to_field": "uniquenum_pri",
+			"description": "One main purchase transaction record (any purchase document type) has many detail line items",
+			"supported_transaction_types": [
+				"pur_pr", "pur_po", "pur_poc", "pur_pi", "stk_grn", "stk_gvn"
+			]
+		}
+	]
+}

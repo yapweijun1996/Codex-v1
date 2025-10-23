@@ -1,0 +1,82 @@
+SELECT   
+
+uniquenum_pri as transaction_uniq,
+entprojfn as project_uniq,  entprojfn_code as project_code, 
+wflow_status as transaction_status,
+notes_memo as remark,
+date_trans as transaction_date,
+staff_code as staff_code,
+staff_unique as staff_uniq,
+staff_desc as staff_desc,
+party_desc as party_name,
+party_code as party_code,
+party_unique as party_uniq,
+dnum_auto as document_no,
+dnum_reference as references_no,
+dnum_master as master_no,
+curr_short_forex as transaction_currency,
+subtot_forex as subtot_transaction_currency,
+subtot_freight_forex as subtot_freight_transaction_currency,
+amt_discount_forex as discount_amount_transaction_currency,
+grosstot_forex as gross_total_transaction_currency,
+salestaxpct as gst_percentage,
+tag_table_usage as transaction_type_code,
+tag_deleted_yn as deleted_status,
+tag_void_yn as void_status
+
+FROM        scm_sal_main
+
+WHERE       uniquenum_pri = 'p241119144010120131729'
+AND         tag_deleted_yn = 'n'
+AND         tag_void_yn = 'n'
+AND         tag_table_usage = 'sal_inv'
+
+LIMIT       100
+
+
+
+
+
+SELECT 
+    
+stkcode_code as stock_code, 
+stkcode_desc as stock_desc, 
+qnty_total as qty, 
+price_unitlist_forex as unit_price_before_adjust_transaction_currency, 
+discount_pct as discount_percentage, 
+price_unitrate_forex as unit_price_after_adjust_transaction_currency, 
+extnamt_orig_forex as exact_amount_transaction_currency, 
+tag_table_usage as transaction_type_code,
+tag_deleted_yn as deleted_status,
+tag_void_yn as void_status,
+row_item_num as row_item_no
+
+FROM        scm_sal_data
+
+WHERE       uniquenum_pri = 'p241119144010120131729'
+AND         tag_deleted_yn = 'n'
+AND         tag_void_yn = 'n'
+AND         tag_table_usage = 'sal_inv'
+
+LIMIT       100
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

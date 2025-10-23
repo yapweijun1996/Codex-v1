@@ -1,0 +1,47 @@
+I will provide one or more SQL SELECT queries that involve one or more tables within a database schema.  
+
+Please analyze these queries carefully and generate a well-structured JSON object that describes the following:
+
+1. **Tables involved:** For each table, include the table name and any alias used in the queries.  
+2. **Key fields:** List the selected columns for each table, including:  
+   - The original column name in the database,  
+   - The alias used in the SELECT clause (if any),  
+   - The inferred data type (e.g., string, number, datetime, boolean).  
+3. **Filters:** Identify all filter conditions applied per table from the WHERE clauses, specifying the field and the filter value or condition.  
+4. **Relationships:** Describe join relationships between tables, including:  
+   - The type of relationship (e.g., one-to-many, many-to-one, one-to-one),  
+   - The source (from) table and field,  
+   - The target (to) table and field,  
+   - A brief description of the relationship’s meaning.  
+5. **Table descriptions:** Provide a concise description of each table’s role or purpose if it can be reasonably inferred from the query or naming conventions (e.g., "sales transaction header", "order line items").
+
+Please format the output as a JSON object with two main keys:
+
+- `"tables"`: an array of objects, each with properties:  
+  - `name`: string,  
+  - `alias`: string or null,  
+  - `description`: string,  
+  - `fields`: array of objects with `{ name, alias, type }`,  
+  - `filters`: array of objects with `{ field, value }`.
+
+- `"relations"`: an array of objects describing relationships with properties:  
+  - `type`: string,  
+  - `from_table`: string,  
+  - `from_field`: string,  
+  - `to_table`: string,  
+  - `to_field`: string,  
+  - `description`: string.
+
+Please analyze these and produce the described JSON schema that represents the database structure and relations implied by the queries:
+
+
+
+
+
+
+
+
+
+
+
+
