@@ -688,14 +688,25 @@ body.chat-fullscreen-active {
     if (chartJsPromise) {
       return chartJsPromise;
     }
+
     chartJsPromise = new Promise((resolve, reject) => {
-      const handleLoad = () => {
+      let scriptNode = document.querySelector('script[data-chat-chartjs]');
+
+      const resolveWithChart = () => {
         if (window.Chart) {
+          if (scriptNode) {
+            scriptNode.setAttribute('data-chat-chartjs-loaded', '1');
+          }
           resolve(window.Chart);
-        } else {
-          chartJsPromise = null;
-          reject(new Error('Chart.js failed to initialize'));
+          return true;
         }
+        return false;
+      };
+
+      const handleLoad = () => {
+        if (resolveWithChart()) return;
+        chartJsPromise = null;
+        reject(new Error('Chart.js failed to initialize'));
       };
 
       const handleError = () => {
@@ -703,18 +714,26 @@ body.chat-fullscreen-active {
         reject(new Error('Chart.js failed to load'));
       };
 
-      const existing = document.querySelector('script[data-chat-chartjs]');
-      if (existing) {
-        existing.addEventListener('load', handleLoad, { once: true });
-        existing.addEventListener('error', handleError, { once: true });
+      if (scriptNode) {
+        scriptNode.addEventListener('load', handleLoad, { once: true });
+        scriptNode.addEventListener('error', handleError, { once: true });
+        const readyState = scriptNode.readyState;
+        if (scriptNode.getAttribute('data-chat-chartjs-loaded') === '1' || readyState === 'complete' || readyState === 'loaded') {
+          setTimeout(handleLoad, 0);
+        }
         return;
       }
 
       const script = document.createElement('script');
+      scriptNode = script;
       script.src = CHART_JS_URL;
       script.async = true;
+      script.crossOrigin = 'anonymous';
       script.dataset.chatChartjs = '1';
-      script.addEventListener('load', handleLoad, { once: true });
+      script.addEventListener('load', () => {
+        script.setAttribute('data-chat-chartjs-loaded', '1');
+        handleLoad();
+      }, { once: true });
       script.addEventListener('error', handleError, { once: true });
       document.head.appendChild(script);
     }).catch((error) => {
@@ -723,6 +742,7 @@ body.chat-fullscreen-active {
       }
       throw error;
     });
+
     return chartJsPromise;
   }
 
