@@ -3,7 +3,7 @@
   const WCfg=(function(){
     const A4W=794, A4H=1123, HDR_H=84, FTR_H=64, PAD=28;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
-    const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=0.92;
+    const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=0.92, FS_STACK_BP=1200;
     const innerHFWidth = A4W - 36;
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
@@ -69,7 +69,7 @@
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
-    return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
+    return { UI,A4W,A4H,HDR_H,FTR_H,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,FS_STACK_BP,Style };
   })();
   function applyStyles(el, styles){ for(const k in styles){ el.style[k]=styles[k]; } }
   const StyleMirror=(function(){
@@ -1748,10 +1748,29 @@
       saveCloseBtn.setAttribute("aria-label","Save changes and close fullscreen editor");
       saveCloseBtn.addEventListener("click", function(){ ctx.saveClose(); });
       saveCloseWrap.appendChild(saveCloseBtn);
+      const defaultLeftPadding = left.style.padding || "48px 36px";
+      const defaultLeftGap = left.style.gap || WCfg.Style.left.gap || "28px";
+      const defaultLeftJustify = left.style.justifyItems || WCfg.Style.left.justifyItems || "center";
+      const compactLeftPadding = "20px 12px";
+      const compactLeftGap = "20px";
+      const defaultRightWidth = rightWrap.style.width || WCfg.Style.rightWrap.width || "min(46vw, 720px)";
+      const defaultRightMaxWidth = rightWrap.style.maxWidth || WCfg.Style.rightWrap.maxWidth || "720px";
+      const defaultRightMinWidth = rightWrap.style.minWidth || WCfg.Style.rightWrap.minWidth || "360px";
+      const defaultRightMargin = rightWrap.style.margin || "";
+      let stacked=false;
       function layout(){
-        const isColumn = window.innerWidth < WCfg.MOBILE_BP;
-        split.style.flexDirection = isColumn ? "column" : "row";
-        rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
+        const viewportWidth = split.clientWidth || window.innerWidth;
+        const shouldStack = viewportWidth < WCfg.FS_STACK_BP;
+        stacked = shouldStack;
+        split.style.flexDirection = shouldStack ? "column" : "row";
+        split.style.alignItems = shouldStack ? "stretch" : "";
+        rightWrap.style.width = shouldStack ? "100%" : defaultRightWidth;
+        rightWrap.style.maxWidth = shouldStack ? "100%" : defaultRightMaxWidth;
+        rightWrap.style.minWidth = shouldStack ? "0" : defaultRightMinWidth;
+        rightWrap.style.margin = shouldStack ? "0 auto" : defaultRightMargin;
+        left.style.padding = shouldStack ? compactLeftPadding : defaultLeftPadding;
+        left.style.gap = shouldStack ? compactLeftGap : defaultLeftGap;
+        left.style.justifyItems = shouldStack ? "stretch" : defaultLeftJustify;
       }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); modal.appendChild(saveCloseWrap); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
@@ -1769,12 +1788,19 @@
         const available=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
         const fitScale=available>0 ? Math.min(1, available / WCfg.A4W) : 1;
         let scale=fitScale;
-        if(WCfg.PREVIEW_MAX_SCALE && scale>WCfg.PREVIEW_MAX_SCALE){ scale=WCfg.PREVIEW_MAX_SCALE; }
+        const maxScale = (stacked ? 1 : WCfg.PREVIEW_MAX_SCALE) || 1;
+        if(maxScale && scale>maxScale){ scale=maxScale; }
         if(!isFinite(scale) || scale<=0){ scale=1; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
+        const isColumn = stacked;
+        if(isColumn){
+          stage.style.maxWidth="100%";
+          stage.style.gap="24px";
+          stage.style.padding="8px 0 32px";
+        }
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
           page.style.margin="0";
