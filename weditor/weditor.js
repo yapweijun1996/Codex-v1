@@ -341,7 +341,7 @@
     return { fixStructure };
   })();
   const HFAlign=(function(){
-    const allowed={ left:"left", center:"center", right:"right" };
+    const allowed={ left:"left", center:"center", right:"right", justify:"justify" };
     function normalize(value){
       const key=(value==null?"":String(value)).toLowerCase();
       return allowed[key] || "left";
@@ -349,6 +349,7 @@
     function flexJustify(norm){
       if(norm==="center") return "center";
       if(norm==="right") return "flex-end";
+      if(norm==="justify") return "space-between";
       return "flex-start";
     }
     function applyHeader(node, align){
@@ -359,11 +360,17 @@
     }
     function applyEditor(node, align){
       if(!node || !node.style) return;
-      node.style.textAlign=normalize(align);
+      const norm=normalize(align);
+      node.style.textAlign=norm;
+      node.style.textAlignLast = (norm==="justify") ? "justify" : "";
     }
     function applyFooter(node, align){
       if(!node || !node.style) return;
-      node.style.textAlign=normalize(align);
+      const norm=normalize(align);
+      node.style.textAlign=norm;
+      if(node.style.display && node.style.display.indexOf("flex")>-1){
+        node.style.justifyContent=flexJustify(norm);
+      }
     }
     return { normalize, applyHeader, applyEditor, applyFooter };
   })();
@@ -1215,7 +1222,8 @@
       const alignOptions=[
         { value:"left", label:"Left", title:"Align left / 靠左" },
         { value:"center", label:"Center", title:"Align center / 置中" },
-        { value:"right", label:"Right", title:"Align right / 靠右" }
+        { value:"right", label:"Right", title:"Align right / 靠右" },
+        { value:"justify", label:"Justify", title:"Justify text / 左右對齊" }
       ];
       for(let i=0;i<alignOptions.length;i++){
         const opt=alignOptions[i];
