@@ -2851,7 +2851,7 @@
     btn.style.alignItems="center";
     btn.style.justifyContent="center";
     btn.style.minWidth="36px";
-    btn.style.padding="6px 10px";
+    btn.style.padding="8px 10px";
     const icon=document.createElement("span");
     icon.setAttribute("aria-hidden","true");
     icon.style.display="grid";
