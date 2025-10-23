@@ -193,10 +193,160 @@ font-size: 0.85rem;
 }
 
 .chat-widget__composer {
-display: grid;
-gap: 0.75rem;
-grid-template-columns: 1fr auto;
-align-items: end;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+
+.chat-composer__toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.chat-color-picker {
+  position: relative;
+}
+
+.chat-color-picker__toggle {
+  --chat-font-color: var(--accent);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.chat-color-picker__toggle::after {
+  content: "";
+  position: absolute;
+  left: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.4rem;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--chat-font-color);
+  pointer-events: none;
+}
+
+.chat-color-picker__toggle:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.12);
+  transform: translateY(-1px);
+}
+
+.chat-color-picker__icon {
+  font-size: 1.1rem;
+}
+
+.chat-color-picker__chevron {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.chat-color-picker__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--chat-font-color);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+.chat-color-picker__menu {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  min-width: 220px;
+  padding: 0.75rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+  z-index: 20;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.chat-color-picker__section {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.chat-color-picker__section-title {
+  margin: 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.chat-color-swatch-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.35rem;
+}
+
+.chat-color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: var(--swatch-color);
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.chat-color-swatch:focus-visible,
+.chat-color-swatch:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.18);
+  border-color: rgba(15, 23, 42, 0.25);
+  outline: none;
+}
+
+.chat-color-swatch.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.3);
+}
+
+.chat-color-picker__custom {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.chat-color-picker__custom-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.chat-color-picker__custom-input {
+  width: 40px;
+  height: 24px;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.chat-color-picker__custom-value {
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 0.8rem;
+  color: var(--muted);
 }
 
 .chat-composer__textarea {
@@ -501,6 +651,45 @@ width: 100%;
               </article>
             </section>
             <footer class="chat-widget__composer">
+              <div class="chat-composer__toolbar" data-chat-toolbar>
+                <div class="chat-color-picker" data-chat-font-color>
+                  <button
+                    type="button"
+                    class="chat-color-picker__toggle"
+                    data-chat-font-color-toggle
+                    aria-haspopup="true"
+                    aria-expanded="false"
+                    title="Font Color (字体颜色 / 文字颜色)"
+                  >
+                    <span class="chat-color-picker__icon" aria-hidden="true">🅰️</span>
+                    <span class="chat-color-picker__label">Font Color</span>
+                    <span class="chat-color-picker__chevron" aria-hidden="true">▼</span>
+                    <span class="chat-color-picker__swatch" aria-hidden="true" data-chat-font-color-swatch></span>
+                  </button>
+                  <div class="chat-color-picker__menu" data-chat-font-color-menu hidden>
+                    <div class="chat-color-picker__section" data-chat-font-color-theme>
+                      <p class="chat-color-picker__section-title">Theme Colors</p>
+                      <div class="chat-color-swatch-grid" data-chat-font-color-theme-grid></div>
+                    </div>
+                    <div class="chat-color-picker__section" data-chat-font-color-standard>
+                      <p class="chat-color-picker__section-title">Standard Colors</p>
+                      <div class="chat-color-swatch-grid" data-chat-font-color-standard-grid></div>
+                    </div>
+                    <div class="chat-color-picker__custom">
+                      <label class="chat-color-picker__custom-label">
+                        More Colors
+                        <input
+                          type="color"
+                          class="chat-color-picker__custom-input"
+                          data-chat-font-color-custom
+                          aria-label="Choose custom font color"
+                        />
+                      </label>
+                      <span class="chat-color-picker__custom-value" data-chat-font-color-custom-value>#000000</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
               <label style="display: contents;">
                 <textarea
                   class="chat-composer__textarea"
@@ -558,7 +747,14 @@ width: 100%;
             sendButton: widget.querySelector("[data-chat-send]"),
             stopButton: widget.querySelector("[data-chat-stop]"),
             status: widget.querySelector("[data-chat-status]"),
-            statusText: widget.querySelector("[data-chat-status-text]")
+            statusText: widget.querySelector("[data-chat-status-text]"),
+            fontColorToggle: widget.querySelector("[data-chat-font-color-toggle]"),
+            fontColorMenu: widget.querySelector("[data-chat-font-color-menu]"),
+            fontColorSwatch: widget.querySelector("[data-chat-font-color-swatch]"),
+            fontColorThemeGrid: widget.querySelector("[data-chat-font-color-theme-grid]"),
+            fontColorStandardGrid: widget.querySelector("[data-chat-font-color-standard-grid]"),
+            fontColorCustomInput: widget.querySelector("[data-chat-font-color-custom]"),
+            fontColorCustomValue: widget.querySelector("[data-chat-font-color-custom-value]")
           };
 
           const savedKey = storage.get();
@@ -669,12 +865,223 @@ width: 100%;
           conversation: [],
           streaming: false,
           abortController: null,
-          sqlAgentKey: DEFAULT_SQL_AGENT_KEY
+          sqlAgentKey: DEFAULT_SQL_AGENT_KEY,
+          fontColor: ""
         };
 
         const SQL_ENDPOINT = "sql_runner.cfm";
         const CONFIG_ENDPOINT = "chat_config.json";
         const DEBUG_STORAGE_KEY = "gpt5mini.debug";
+
+        const normalizeColorValue = (value) => {
+          if (value === null || value === undefined) return "";
+          const trimmed = String(value).trim();
+          if (!trimmed) return "";
+          if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(trimmed)) {
+            if (trimmed.length === 4) {
+              return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toLowerCase();
+            }
+            return trimmed.toLowerCase();
+          }
+          const rgbMatch = trimmed.match(/rgba?\((\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/i);
+          if (rgbMatch) {
+            const toHex = (component) => {
+              const num = Math.max(0, Math.min(255, Number(component)));
+              const hex = num.toString(16).padStart(2, "0");
+              return hex;
+            };
+            return `#${toHex(rgbMatch[1])}${toHex(rgbMatch[2])}${toHex(rgbMatch[3])}`.toLowerCase();
+          }
+          return trimmed.toLowerCase();
+        };
+
+        const setupFontColorControl = () => {
+          const toggle = refs.fontColorToggle;
+          const menu = refs.fontColorMenu;
+          if (!toggle || !menu || !refs.input) {
+            return null;
+          }
+
+          const swatchButtons = new Map();
+          const themeColors = [
+            { label: "Text 默认", value: "#0f172a" },
+            { label: "Accent 强調", value: "#2563eb" },
+            { label: "Sky", value: "#38bdf8" },
+            { label: "Success", value: "#10b981" },
+            { label: "Warning", value: "#f97316" },
+            { label: "Danger", value: "#ef4444" },
+            { label: "Plum", value: "#7c3aed" },
+            { label: "Magenta", value: "#ec4899" },
+            { label: "Slate", value: "#334155" },
+            { label: "Pure White", value: "#ffffff" }
+          ];
+
+          const standardColors = [
+            { label: "Black", value: "#000000" },
+            { label: "Dim Gray", value: "#4b5563" },
+            { label: "Gray", value: "#6b7280" },
+            { label: "Silver", value: "#9ca3af" },
+            { label: "Maroon", value: "#7f1d1d" },
+            { label: "Red", value: "#dc2626" },
+            { label: "Olive", value: "#4d7c0f" },
+            { label: "Green", value: "#16a34a" },
+            { label: "Navy", value: "#1d4ed8" },
+            { label: "Purple", value: "#6d28d9" }
+          ];
+
+          const updateToggleColor = (color) => {
+            const normalized = normalizeColorValue(color) || "#0f172a";
+            toggle.style.setProperty("--chat-font-color", normalized);
+            toggle.setAttribute("data-color", normalized);
+            if (refs.fontColorSwatch) {
+              refs.fontColorSwatch.style.background = normalized;
+              refs.fontColorSwatch.style.setProperty("--chat-font-color", normalized);
+            }
+          };
+
+          const syncCustomValue = (color) => {
+            const normalized = normalizeColorValue(color);
+            if (refs.fontColorCustomInput && normalized.startsWith("#")) {
+              refs.fontColorCustomInput.value = normalized;
+            }
+            if (refs.fontColorCustomValue) {
+              refs.fontColorCustomValue.textContent = normalized ? normalized.toUpperCase() : "";
+            }
+          };
+
+          const updateSelection = (activeColor) => {
+            const normalized = normalizeColorValue(activeColor);
+            swatchButtons.forEach((button, key) => {
+              button.classList.toggle("is-selected", key === normalized && normalized.startsWith("#"));
+            });
+          };
+
+          const applyColor = (color, { updateCustom = true } = {}) => {
+            const normalized = normalizeColorValue(color);
+            if (!normalized) return;
+            state.fontColor = normalized;
+            refs.input.style.color = normalized;
+            updateToggleColor(normalized);
+            updateSelection(normalized);
+            if (updateCustom) {
+              syncCustomValue(normalized);
+            }
+          };
+
+          const createSwatch = (entry) => {
+            const normalized = normalizeColorValue(entry.value);
+            if (!normalized) return null;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "chat-color-swatch";
+            button.style.setProperty("--swatch-color", normalized);
+            button.dataset.color = normalized;
+            const bilingualLabel = `${entry.label} (${normalized.toUpperCase()})`;
+            button.setAttribute("aria-label", bilingualLabel);
+            button.title = bilingualLabel;
+            button.addEventListener("click", () => {
+              applyColor(normalized);
+              hideMenu();
+              refs.input.focus();
+            });
+            swatchButtons.set(normalized, button);
+            return button;
+          };
+
+          const populateGrid = (grid, items) => {
+            if (!grid) return;
+            grid.innerHTML = "";
+            items.forEach((item) => {
+              const swatch = createSwatch(item);
+              if (swatch) {
+                grid.appendChild(swatch);
+              }
+            });
+          };
+
+          populateGrid(refs.fontColorThemeGrid, themeColors);
+          populateGrid(refs.fontColorStandardGrid, standardColors);
+
+          let isMenuOpen = false;
+
+          const hideMenu = () => {
+            if (!isMenuOpen) return;
+            isMenuOpen = false;
+            menu.hidden = true;
+            toggle.setAttribute("aria-expanded", "false");
+            document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+            document.removeEventListener("keydown", handleDocumentKeydown);
+          };
+
+          const showMenu = () => {
+            if (isMenuOpen) return;
+            isMenuOpen = true;
+            menu.hidden = false;
+            toggle.setAttribute("aria-expanded", "true");
+            document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+            document.addEventListener("keydown", handleDocumentKeydown);
+          };
+
+          function handleDocumentPointerDown(event) {
+            if (!menu.contains(event.target) && !toggle.contains(event.target)) {
+              hideMenu();
+            }
+          }
+
+          function handleDocumentKeydown(event) {
+            if (event.key === "Escape") {
+              hideMenu();
+              toggle.focus();
+            }
+          }
+
+          toggle.addEventListener("click", (event) => {
+            event.preventDefault();
+            if (isMenuOpen) {
+              hideMenu();
+            } else {
+              showMenu();
+            }
+          });
+
+          toggle.addEventListener("keydown", (event) => {
+            if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              if (!isMenuOpen) {
+                showMenu();
+              }
+              const firstSwatch = menu.querySelector(".chat-color-swatch");
+              if (firstSwatch) {
+                firstSwatch.focus();
+              }
+            }
+          });
+
+          menu.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              hideMenu();
+              toggle.focus();
+            }
+          });
+
+          if (refs.fontColorCustomInput) {
+            refs.fontColorCustomInput.addEventListener("input", (event) => {
+              const customColor = event.target.value;
+              applyColor(customColor);
+            });
+          }
+
+          const initialColor = normalizeColorValue(window.getComputedStyle(refs.input).color) || "#0f172a";
+          applyColor(initialColor, { updateCustom: true });
+
+          return {
+            apply: applyColor,
+            hide: hideMenu
+          };
+        };
+
+        const fontColorControl = setupFontColorControl();
 
         const normalizePromptSection = (section, fallback) => {
           const normalized = {
@@ -1293,6 +1700,9 @@ width: 100%;
         };
 
         const handleSend = async () => {
+          if (fontColorControl && typeof fontColorControl.hide === "function") {
+            fontColorControl.hide();
+          }
           const prompt = refs.input.value.trim();
           if (!prompt || !state.apiKey || state.streaming) return;
           if (!state.messages.length) {
