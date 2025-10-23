@@ -8,7 +8,8 @@
     const innerHFWidth = A4W - 36;
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
-      bar:{ position:"sticky", top:"0", zIndex:"2", display:"flex", flexDirection:"column", gap:"10px", alignItems:"stretch", justifyContent:"flex-start", padding:"12px 16px 14px", background:"#fff", borderBottom:"1px solid "+UI.border },
+      toolbarWrap:{ position:"sticky", top:"0", zIndex:"3", background:"#fff" },
+      bar:{ display:"flex", flexDirection:"column", gap:"10px", alignItems:"stretch", justifyContent:"flex-start", padding:"12px 16px 14px", background:"#fff", borderBottom:"1px solid "+UI.border },
       tabHeader:{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:"10px" },
       tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center", flex:"1 1 auto" },
       tabQuickActions:{ display:"flex", gap:"8px", marginLeft:"auto", alignItems:"center" },
@@ -1801,7 +1802,7 @@
       bg.style.padding="0";
       bg.style.overflowY="hidden";
       const modal=document.createElement("div"); applyStyles(modal, WCfg.Style.modal);
-      const cmdBarWrap=document.createElement("div");
+      const cmdBarWrap=document.createElement("div"); applyStyles(cmdBarWrap, WCfg.Style.toolbarWrap);
       const split=document.createElement("div"); applyStyles(split, WCfg.Style.split);
       const left=document.createElement("div"); applyStyles(left, WCfg.Style.left);
       const rightWrap=document.createElement("div"); applyStyles(rightWrap, WCfg.Style.rightWrap);
@@ -2167,7 +2168,7 @@
   }
   WEditorInstance.prototype._mount=function(){
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
-    const toolbarWrap=document.createElement("div");
+    const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
