@@ -1031,6 +1031,90 @@ body.chat-fullscreen-active {
           };
         }
 
+        const COLUMN_GLOSSARY = {
+          dnum_auto: { alias: "document_number", description: "Document number 文件編號" },
+          dnum_master: { alias: "master_number", description: "Master document number 主文件號" },
+          dnum_reference: { alias: "reference_number", description: "Reference number 參考號碼" },
+          party_desc: { alias: "party_name", description: "Customer/Supplier name 客戶或供應商名稱" },
+          party_code: { alias: "party_code", description: "Customer/Supplier code 客戶或供應商代碼" },
+          party_unique: { alias: "party_unique", description: "Customer/Supplier unique ID 客戶或供應商唯一碼" },
+          staff_desc: { alias: "staff_name", description: "Staff in charge 負責同事" },
+          staff_code: { alias: "staff_code", description: "Staff code 員工代碼" },
+          staff_unique: { alias: "staff_unique", description: "Staff unique ID 員工唯一碼" },
+          date_trans: { alias: "transaction_date", description: "Transaction date 交易日期" },
+          recur_dateend: { alias: "period_end", description: "Work done period end 完工期間結束" },
+          wflow_status: { alias: "workflow_status", description: "Workflow status 流程狀態" },
+          notes_memo: { alias: "remarks", description: "Remarks 備註" },
+          curr_short_forex: { alias: "currency_code", description: "Currency code 幣別" },
+          grosstot_forex: { alias: "gross_total", description: "Gross total amount 總金額" },
+          subtot_forex: { alias: "subtotal", description: "Subtotal 小計" },
+          subtot_freight_forex: { alias: "freight_amount", description: "Freight amount 運費金額" },
+          amt_discount_forex: { alias: "discount_amount", description: "Discount amount 折扣金額" },
+          salestaxpct: { alias: "gst_percentage", description: "GST percentage 稅率" },
+          tag_table_usage: { alias: "transaction_type", description: "Transaction type 單據類型" },
+          tag_deleted_yn: { alias: "deleted_flag", description: "Deleted flag 刪除標記" },
+          tag_void_yn: { alias: "void_flag", description: "Void flag 作廢標記" },
+          document_number: { description: "Document number 文件編號" },
+          transaction_date: { description: "Transaction date 交易日期" },
+          party_name: { description: "Customer/Supplier name 客戶或供應商名稱" },
+          workflow_status: { description: "Workflow status 流程狀態" },
+          staff_name: { description: "Staff in charge 負責同事" },
+          remarks: { description: "Remarks 備註" },
+          currency: { description: "Currency 幣別" },
+          gross_total: { description: "Gross total amount 總金額" }
+        };
+
+        const describeColumn = (columnName) => {
+          if (!columnName) return "";
+          const key = String(columnName).toLowerCase();
+          const glossary = COLUMN_GLOSSARY[key];
+          if (!glossary) return columnName;
+          const parts = [];
+          if (glossary.alias && glossary.alias.toLowerCase() !== key) {
+            parts.push(glossary.alias);
+          }
+          if (glossary.description) {
+            parts.push(glossary.description);
+          }
+          return parts.length ? `${columnName} (${parts.join(" · ")})` : columnName;
+        };
+
+        const buildSqlSummaryMessage = (aggregated = []) => {
+          if (!Array.isArray(aggregated) || !aggregated.length) return null;
+
+          const lines = aggregated.map((entry, index) => {
+            const normalized = entry?.normalized ?? {};
+            const rows = Array.isArray(normalized.rows) ? normalized.rows : [];
+            const rowCount = Number(normalized.rowCount ?? rows.length ?? 0);
+            let columns = Array.isArray(normalized.columns) ? normalized.columns.slice(0, 6) : [];
+            if (!columns.length && rows.length) {
+              columns = Object.keys(rows[0]).slice(0, 6);
+            }
+            const header = entry?.label
+              ? `${entry.label}`
+              : `Query ${index + 1}`;
+            const firstRow = rows[0] || null;
+            const sample = firstRow
+              ? columns
+                  .map((col) => {
+                    const friendly = describeColumn(col);
+                    const label = friendly || col;
+                    return `${label}=${firstRow[col] ?? ""}`;
+                  })
+                  .join(", ")
+              : null;
+            const columnText = columns.length
+              ? `欄位 Columns: ${columns.map((col) => describeColumn(col)).join(", ")}`
+              : "欄位 Columns: 無資料";
+            const countText = `筆數 Rows: ${rowCount}`;
+            const sampleText = sample ? `樣本 Sample: ${sample}` : "樣本 Sample: 無";
+            return `${header} → ${countText}; ${columnText}; ${sampleText}`;
+          });
+
+          lines.push("Next 建議: 若需要更深入分析, 可以詢問我進行彙總、篩選或視覺化建議。");
+          return `資料重點 Data Highlights:\n- ${lines.join("\n- ")}`;
+        };
+
         async function executeSql(sql, button) {
           if (!sql) return;
           const statements = splitSqlStatements(sql);
@@ -1064,6 +1148,14 @@ body.chat-fullscreen-active {
             }
             setStatus("Idle", false);
             debug.log("sql:complete");
+          }
+          if (aggregated.length) {
+            const summaryMessage = buildSqlSummaryMessage(aggregated);
+            if (summaryMessage) {
+              appendBubble("assistant", summaryMessage);
+              state.messages.push({ role: "assistant", content: summaryMessage });
+              state.conversation.push({ role: "assistant", content: summaryMessage });
+            }
           }
           return aggregated;
         }
