@@ -2027,6 +2027,28 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const FONT_COLOR_THEME=[
+      { label:"Black", value:"#000000" },
+      { label:"Dark Gray", value:"#4a4a4a" },
+      { label:"Gray", value:"#7f7f7f" },
+      { label:"Light Gray", value:"#bfbfbf" },
+      { label:"Blue", value:"#2f5496" },
+      { label:"Light Blue", value:"#2a75bb" },
+      { label:"Teal", value:"#008080" },
+      { label:"Green", value:"#4b9b2b" },
+      { label:"Orange", value:"#c65911" },
+      { label:"Red", value:"#c00000" }
+    ];
+    const FONT_COLOR_STANDARD=[
+      { label:"Dark Red", value:"#a61c00" },
+      { label:"Orange", value:"#e26c0a" },
+      { label:"Gold", value:"#ffc000" },
+      { label:"Olive", value:"#7f6000" },
+      { label:"Green", value:"#548235" },
+      { label:"Blue", value:"#1f4e79" },
+      { label:"Indigo", value:"#3f3151" }
+    ];
+    const FONT_COLOR_DEFAULT="#d13438";
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function focusTarget(target){ if(target && typeof target.focus==="function"){ try{ target.focus({ preventScroll:true }); } catch(e){ target.focus(); } } }
     function ensureSelectionInfo(target){
@@ -2186,6 +2208,89 @@
       if(success && inst){ inst.highlightColor=null; }
       return success;
     }
+    function fallbackApplyFontColor(target, color){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const doc=target.ownerDocument || document;
+      const span=doc.createElement("span");
+      span.style.color=color;
+      span.appendChild(info.range.extractContents());
+      info.range.insertNode(span);
+      info.sel.removeAllRanges();
+      const newRange=doc.createRange();
+      newRange.selectNodeContents(span);
+      info.sel.addRange(newRange);
+      return true;
+    }
+    function fallbackClearFontColor(target){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const { range }=info; const doc=target.ownerDocument || document;
+      const nodes=[];
+      if(range.commonAncestorContainer && range.commonAncestorContainer.nodeType===1 && target.contains(range.commonAncestorContainer)){
+        nodes.push(range.commonAncestorContainer);
+      }
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==range.commonAncestorContainer && target.contains(current) && intersectsRange(range, current)){
+          nodes.push(current);
+        }
+        while((current=walker.nextNode())){
+          if(!target.contains(current)) continue;
+          if(!intersectsRange(range, current)) continue;
+          nodes.push(current);
+        }
+      }
+      let changed=false;
+      const unwrap=[];
+      for(let i=0;i<nodes.length;i++){
+        const el=nodes[i];
+        if(!el || el.nodeType!==1) continue;
+        let modified=false;
+        if(el.style && el.style.color){
+          el.style.color="";
+          if(el.getAttribute && el.getAttribute("style")==="") el.removeAttribute("style");
+          modified=true;
+        }
+        if(el.hasAttribute && el.hasAttribute("color")){
+          el.removeAttribute("color");
+          modified=true;
+        }
+        if(el.nodeName==="FONT"){ unwrap.push(el); }
+        if(modified) changed=true;
+      }
+      for(let i=0;i<unwrap.length;i++){
+        const fontEl=unwrap[i];
+        const parent=fontEl.parentNode; if(!parent) continue;
+        while(fontEl.firstChild){ parent.insertBefore(fontEl.firstChild, fontEl); }
+        parent.removeChild(fontEl);
+      }
+      return changed;
+    }
+    function applyFontColor(inst, ctx, color){
+      if(!color) return clearFontColor(inst, ctx);
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      try{ success=document.execCommand("foreColor", false, color); }
+      catch(err){ success=false; }
+      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      if(!success){ success=fallbackApplyFontColor(target, color); }
+      if(success && inst){ inst.fontColor=color; }
+      return success;
+    }
+    function clearFontColor(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+      try{ success=document.execCommand("foreColor", false, "inherit"); }
+      catch(err){ success=false; }
+      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      if(!success){ success=fallbackClearFontColor(target); }
+      if(success && inst){ inst.fontColor=null; }
+      return success;
+    }
     function applyUnderline(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, "underline", null, true);
@@ -2238,12 +2343,311 @@
       HIGHLIGHT_COLORS,
       applyFontFamily,
       applyFontSize,
+      applyFontColor,
+      clearFontColor,
       applyHighlight,
       clearHighlight,
       applyUnderline,
       applyDecorationStyle,
-      applySimple
+      applySimple,
+      FONT_COLOR_THEME,
+      FONT_COLOR_STANDARD,
+      FONT_COLOR_DEFAULT
     };
+  })();
+  const FontColorUI=(function(){
+    const AUTO_PATTERN="linear-gradient(135deg,#ffffff 45%,#c8c6c4 45%,#c8c6c4 55%,#ffffff 55%)";
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("title","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("data-command","format.fontColor");
+      button.setAttribute("aria-label","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="44px";
+      button.style.padding="3px 12px";
+      const iconWrap=document.createElement("span");
+      iconWrap.style.display="flex";
+      iconWrap.style.flexDirection="column";
+      iconWrap.style.alignItems="center";
+      iconWrap.style.lineHeight="1";
+      const letter=document.createElement("span");
+      letter.textContent="A";
+      letter.setAttribute("aria-hidden","true");
+      letter.style.fontSize="18px";
+      letter.style.fontWeight="600";
+      letter.style.color=WCfg.UI.text;
+      const underline=document.createElement("span");
+      underline.style.marginTop="4px";
+      underline.style.width="20px";
+      underline.style.height="4px";
+      underline.style.borderRadius="4px";
+      underline.style.background=Formatting.FONT_COLOR_DEFAULT || WCfg.UI.brand;
+      underline.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      iconWrap.appendChild(letter);
+      iconWrap.appendChild(underline);
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(iconWrap);
+      button.appendChild(arrow);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.display="none";
+      palette.style.flexDirection="column";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      palette.style.padding="12px";
+      palette.style.zIndex="20";
+      palette.style.gap="10px";
+      palette.style.minWidth="230px";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      let currentColor;
+      if(inst && typeof inst.fontColor!=="undefined"){ currentColor=inst.fontColor; }
+      else {
+        currentColor=Formatting.FONT_COLOR_DEFAULT || WCfg.UI.text;
+        if(inst) inst.fontColor=currentColor;
+      }
+      const colorButtons=[];
+      let automaticBtn;
+      let customPreview;
+      let customInput;
+      function normalize(value){ return value && typeof value==="string" ? value.toLowerCase() : value; }
+      function updatePreview(color){
+        const hasColor=!!color;
+        underline.style.background = hasColor ? color : AUTO_PATTERN;
+        underline.style.boxShadow = hasColor ? "0 0 0 1px rgba(0,0,0,.08)" : "0 0 0 1px "+WCfg.UI.borderSubtle;
+        if(customPreview){
+          customPreview.style.background = hasColor ? color : WCfg.UI.text;
+          customPreview.style.boxShadow = hasColor ? "0 0 0 1px rgba(0,0,0,.25)" : "0 0 0 1px "+WCfg.UI.borderSubtle;
+        }
+      }
+      function updateSelectionUI(selected){
+        const normalized=normalize(selected);
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const isActive=normalized && entry.value ? normalized===entry.value : false;
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+      }
+      function updateAutomaticState(selected){
+        if(!automaticBtn) return;
+        const active=!selected;
+        automaticBtn.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        automaticBtn.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      function pickColor(value){
+        setOpen(false);
+        let changed=false;
+        if(value){
+          changed=!!Formatting.applyFontColor(inst, ctx, value);
+          if(changed) currentColor=value;
+        } else {
+          changed=!!Formatting.clearFontColor(inst, ctx);
+          if(changed) currentColor=null;
+        }
+        if(changed){
+          updatePreview(currentColor);
+          updateSelectionUI(currentColor);
+          updateAutomaticState(currentColor);
+          if(customInput){
+            if(currentColor && /^#/.test(currentColor)) customInput.value=currentColor;
+            else customInput.value=Formatting.FONT_COLOR_DEFAULT || "#d13438";
+          }
+          if(inst) OutputBinding.syncDebounced(inst);
+        }
+      }
+      function registerButton(buttonEl, value){
+        colorButtons.push({ value:normalize(value), el:buttonEl });
+      }
+      function buildSection(title, colors, columns){
+        if(!colors || !colors.length) return;
+        const section=document.createElement("div");
+        section.style.display="flex";
+        section.style.flexDirection="column";
+        section.style.gap="6px";
+        const heading=document.createElement("div");
+        heading.textContent=title;
+        heading.style.font="12px/1.4 Segoe UI,system-ui";
+        heading.style.color=WCfg.UI.textDim;
+        const grid=document.createElement("div");
+        grid.style.display="grid";
+        grid.style.gridTemplateColumns="repeat("+(columns||5)+", 24px)";
+        grid.style.gap="6px";
+        const doc=button.ownerDocument || document;
+        for(let i=0;i<colors.length;i++){
+          const info=colors[i];
+          const swatch=doc.createElement("button");
+          swatch.type="button";
+          swatch.setAttribute("role","menuitem");
+          swatch.setAttribute("data-color", info.value);
+          swatch.setAttribute("aria-label", info.label+" font color");
+          swatch.title=info.label;
+          swatch.style.width="24px";
+          swatch.style.height="24px";
+          swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+          swatch.style.borderRadius="4px";
+          swatch.style.background=info.value;
+          swatch.style.cursor="pointer";
+          swatch.style.padding="0";
+          swatch.style.display="inline-flex";
+          swatch.style.alignItems="center";
+          swatch.style.justifyContent="center";
+          swatch.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(info.value); });
+          swatch.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+          grid.appendChild(swatch);
+          registerButton(swatch, info.value);
+        }
+        section.appendChild(heading);
+        section.appendChild(grid);
+        palette.appendChild(section);
+      }
+      buildSection("Theme Colors (主题)", Formatting.FONT_COLOR_THEME, 5);
+      buildSection("Standard Colors (标准)", Formatting.FONT_COLOR_STANDARD, 7);
+      const doc=button.ownerDocument || document;
+      automaticBtn=doc.createElement("button");
+      automaticBtn.type="button";
+      automaticBtn.setAttribute("role","menuitem");
+      automaticBtn.textContent="Automatic (自动)";
+      automaticBtn.setAttribute("aria-label","Automatic font color");
+      automaticBtn.style.padding="6px 8px";
+      automaticBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      automaticBtn.style.background="#fff";
+      automaticBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      automaticBtn.style.borderRadius="4px";
+      automaticBtn.style.cursor="pointer";
+      automaticBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(null); });
+      automaticBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(automaticBtn);
+      const customRow=doc.createElement("div");
+      customRow.style.display="flex";
+      customRow.style.alignItems="center";
+      customRow.style.gap="8px";
+      const moreBtn=doc.createElement("button");
+      moreBtn.type="button";
+      moreBtn.textContent="More Colors… (更多颜色)";
+      moreBtn.setAttribute("aria-label","Select custom font color");
+      moreBtn.style.padding="6px 8px";
+      moreBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      moreBtn.style.background="#fff";
+      moreBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      moreBtn.style.borderRadius="4px";
+      moreBtn.style.cursor="pointer";
+      customPreview=doc.createElement("span");
+      customPreview.style.width="22px";
+      customPreview.style.height="22px";
+      customPreview.style.borderRadius="4px";
+      customPreview.style.background=currentColor ? currentColor : WCfg.UI.text;
+      customPreview.style.boxShadow=currentColor ? "0 0 0 1px rgba(0,0,0,.25)" : "0 0 0 1px "+WCfg.UI.borderSubtle;
+      customInput=doc.createElement("input");
+      customInput.type="color";
+      customInput.value=(currentColor && /^#/.test(currentColor)) ? currentColor : Formatting.FONT_COLOR_DEFAULT || "#d13438";
+      customInput.style.position="absolute";
+      customInput.style.opacity="0";
+      customInput.style.pointerEvents="none";
+      customInput.style.width="0";
+      customInput.style.height="0";
+      let customPickerActive=false;
+      function activateCustomPicker(){
+        customPickerActive=true;
+      }
+      function deactivateCustomPicker(){
+        customPickerActive=false;
+      }
+      moreBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        activateCustomPicker();
+        window.requestAnimationFrame(function(){
+          if(customInput){ customInput.focus({ preventScroll:true }); }
+        });
+        customInput.click();
+      });
+      customInput.addEventListener("input", function(e){
+        const val=e.target && e.target.value;
+        if(!val) return;
+        updatePreview(val);
+        updateSelectionUI(val);
+        updateAutomaticState(val);
+      });
+      customInput.addEventListener("change", function(e){
+        const val=e.target && e.target.value;
+        if(val){ pickColor(val); }
+        deactivateCustomPicker();
+      });
+      customInput.addEventListener("cancel", function(){
+        const fallback=currentColor && /^#/.test(currentColor) ? currentColor : Formatting.FONT_COLOR_DEFAULT || "#d13438";
+        customInput.value=fallback;
+        updatePreview(currentColor);
+        updateSelectionUI(currentColor);
+        updateAutomaticState(currentColor);
+        deactivateCustomPicker();
+      });
+      customInput.addEventListener("blur", function(){
+        deactivateCustomPicker();
+      });
+      customRow.appendChild(moreBtn);
+      customRow.appendChild(customPreview);
+      customRow.appendChild(customInput);
+      palette.appendChild(customRow);
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        if(state){
+          palette.style.display="flex";
+          palette.setAttribute("aria-hidden","false");
+          button.setAttribute("aria-expanded","true");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            if(doc.activeElement===button){
+              const first=palette.querySelector("button");
+              if(first) first.focus();
+            }
+          },0);
+        } else {
+          palette.style.display="none";
+          palette.setAttribute("aria-hidden","true");
+          button.setAttribute("aria-expanded","false");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){
+        if(customPickerActive) return;
+        if(!container.contains(e.target)){ setOpen(false); }
+      }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      palette.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      updatePreview(currentColor);
+      updateSelectionUI(currentColor);
+      updateAutomaticState(currentColor);
+      container.appendChild(button);
+      container.appendChild(palette);
+      return container;
+    }
+    return { create };
   })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
@@ -2455,6 +2859,11 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.fontColor":{
+      kind:"custom",
+      ariaLabel:"Font Color (字体颜色 / 文字颜色)",
+      render:function(inst, ctx){ return FontColorUI.create(inst, ctx); }
+    },
     "format.bold":{
       label:"B",
       kind:"button",
@@ -2546,7 +2955,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.fontColor","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -2556,7 +2965,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.fontColor","format.bold","format.italic","format.underline","format.underlineStyle","format.highlight","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
@@ -2577,6 +2986,7 @@
     this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
+    this.fontColor = (Formatting && Formatting.FONT_COLOR_DEFAULT) ? Formatting.FONT_COLOR_DEFAULT : null;
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this._mount();
     OutputBinding.syncDebounced(this);
