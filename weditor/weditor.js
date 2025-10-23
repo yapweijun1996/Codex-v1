@@ -3005,6 +3005,73 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "addon.listGuide":{
+      kind:"custom",
+      ariaLabel:"List buttons breakdown (清單按鈕說明)",
+      render:function(){
+        const wrap=document.createElement("div");
+        wrap.setAttribute("role","group");
+        wrap.setAttribute("aria-label","List buttons breakdown (清單按鈕說明)");
+        wrap.style.display="grid";
+        wrap.style.gap="12px";
+        wrap.style.padding="8px 0";
+        wrap.style.font="13px/1.5 Segoe UI,system-ui";
+        wrap.style.color=WCfg.UI.text;
+        const sections=[
+          {
+            title:"Bulleted List (項目符號清單)",
+            details:[
+              "Adds bullet points (•, ○, ▪ etc.) before each paragraph or line.",
+              "Useful for unordered lists — e.g., listing features, tasks, or points without sequence.",
+              "The small arrow ▼ next to it opens a bullet style gallery where you can choose different symbols or define a custom bullet."
+            ]
+          },
+          {
+            title:"Numbered List (編號清單)",
+            details:[
+              "Adds sequential numbers (1., 2., 3.) or letters (a., b., c.) before each item.",
+              "Best for ordered lists — e.g., step-by-step instructions or processes.",
+              "The arrow ▼ opens options for different numbering formats (1, 2, 3 / i, ii, iii / A, B, C)."
+            ]
+          },
+          {
+            title:"Multilevel List (多層次清單)",
+            details:[
+              "Creates hierarchical lists — for example:",
+              "Main item",
+              "1.1 Sub-item",
+              "1.1.1 Sub-sub-item",
+              "Ideal for outlines, policies, or technical documents that need nested numbering or bullets.",
+              "The arrow ▼ opens presets or allows you to define custom outline styles."
+            ]
+          }
+        ];
+        for(let i=0;i<sections.length;i++){
+          const section=sections[i];
+          const card=document.createElement("div");
+          card.style.border="1px solid "+WCfg.UI.borderSubtle;
+          card.style.borderRadius="8px";
+          card.style.padding="10px 12px";
+          card.style.background="#fafafa";
+          card.style.display="grid";
+          card.style.gap="6px";
+          const heading=document.createElement("div");
+          heading.textContent=section.title;
+          heading.style.font="600 13px/1.4 Segoe UI,system-ui";
+          heading.style.color=WCfg.UI.text;
+          card.appendChild(heading);
+          for(let j=0;j<section.details.length;j++){
+            const paragraph=document.createElement("div");
+            paragraph.textContent=section.details[j];
+            paragraph.style.font="13px/1.5 Segoe UI,system-ui";
+            paragraph.style.color=WCfg.UI.textDim;
+            card.appendChild(paragraph);
+          }
+          wrap.appendChild(card);
+        }
+        return wrap;
+      }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
@@ -3026,6 +3093,7 @@
     idPrefix:"weditor-page",
     tabs:[
       { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"addon", label:"Addon", items:["addon.listGuide"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -3036,6 +3104,7 @@
     idPrefix:"weditor-fs",
     tabs:[
       { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"addon", label:"Addon", items:["addon.listGuide"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
