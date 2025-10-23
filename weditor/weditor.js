@@ -2378,6 +2378,146 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
+    const LIST_STYLE_ID="weditor-list-styles";
+    function ensureListStyles(doc){
+      if(!doc) return;
+      if(doc.getElementById && doc.getElementById(LIST_STYLE_ID)) return;
+      const style=doc.createElement("style");
+      style.id=LIST_STYLE_ID;
+      style.textContent=""+
+        "[data-weditor-bullet=\\"disc\\"]{list-style-type:disc;}"+
+        "[data-weditor-bullet=\\"circle\\"]{list-style-type:circle;}"+
+        "[data-weditor-bullet=\\"square\\"]{list-style-type:square;}"+
+        "[data-weditor-bullet=\\"dash\\"],[data-weditor-bullet=\\"custom\\"]{list-style-type:none;}"+
+        "[data-weditor-bullet=\\"dash\\"]>li,[data-weditor-bullet=\\"custom\\"]>li{list-style:none;position:relative;padding-left:1.4em;}"+
+        "[data-weditor-bullet=\\"dash\\"]>li::before{content:\"\\2013 \";position:absolute;left:0.1em;}"+
+        "[data-weditor-bullet=\\"custom\\"]>li::before{content:var(--weditor-bullet-symbol,\"\\2022\")\" \";position:absolute;left:0;white-space:pre;}"+
+        "[data-weditor-number]{counter-reset:none;}"+
+        "[data-weditor-multilevel]{list-style:none;counter-reset:weditor-l1;padding-left:1.8em;}"+
+        "[data-weditor-multilevel] li{list-style:none;position:relative;padding-left:1.6em;}"+
+        "[data-weditor-multilevel]>li{counter-increment:weditor-l1;}"+
+        "[data-weditor-multilevel]>li>ol{counter-reset:weditor-l2;margin-top:6px;padding-left:1.6em;}"+
+        "[data-weditor-multilevel]>li>ol>li{counter-increment:weditor-l2;}"+
+        "[data-weditor-multilevel]>li>ol>li>ol{counter-reset:weditor-l3;margin-top:6px;padding-left:1.6em;}"+
+        "[data-weditor-multilevel]>li>ol>li>ol>li{counter-increment:weditor-l3;}"+
+        "ol[data-weditor-multilevel=\\"numeric\\"]>li::before{content:counter(weditor-l1)\". \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"numeric\\"]>li>ol>li::before{content:counter(weditor-l1)\".\"counter(weditor-l2)\" \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"numeric\\"]>li>ol>li>ol>li::before{content:counter(weditor-l1)\".\"counter(weditor-l2)\".\"counter(weditor-l3)\" \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"alpha\\"]>li::before{content:counter(weditor-l1, upper-alpha)\". \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"alpha\\"]>li>ol>li::before{content:counter(weditor-l1, upper-alpha)\".\"counter(weditor-l2)\" \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"alpha\\"]>li>ol>li>ol>li::before{content:counter(weditor-l1, upper-alpha)\".\"counter(weditor-l2)\".\"counter(weditor-l3)\" \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"roman\\"]>li::before{content:counter(weditor-l1, upper-roman)\". \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"roman\\"]>li>ol>li::before{content:counter(weditor-l1, upper-roman)\".\"counter(weditor-l2)\" \";font-weight:600;position:absolute;left:-1.8em;}"+
+        "ol[data-weditor-multilevel=\\"roman\\"]>li>ol>li>ol>li::before{content:counter(weditor-l1, upper-roman)\".\"counter(weditor-l2)\".\"counter(weditor-l3)\" \";font-weight:600;position:absolute;left:-1.8em;}";
+      if(doc.head){ doc.head.appendChild(style); }
+      else { doc.appendChild(style); }
+    }
+    function withActiveList(inst, ctx, listType, createIfMissing, callback){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection();
+      if(!sel || sel.rangeCount===0) return false;
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.commonAncestorContainer)){ return false; }
+      let node=range.commonAncestorContainer;
+      while(node && node!==target){
+        if(node.nodeType===1){
+          const tag=node.tagName ? node.tagName.toUpperCase() : "";
+          if(tag==="UL" || tag==="OL"){
+            if(tag!==listType){
+              if(createIfMissing){
+                execCommand(target, listType==="OL"?"insertOrderedList":"insertUnorderedList", null, false);
+                return withActiveList(inst, ctx, listType, false, callback);
+              }
+              return false;
+            }
+            if(typeof callback==="function"){ return callback(node, doc); }
+            return true;
+          }
+        }
+        node=node.parentNode;
+      }
+      if(createIfMissing){
+        execCommand(target, listType==="OL"?"insertOrderedList":"insertUnorderedList", null, false);
+        return withActiveList(inst, ctx, listType, false, callback);
+      }
+      return false;
+    }
+    function toggleList(inst, ctx, type){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      return execCommand(target, type==="ol"?"insertOrderedList":"insertUnorderedList", null, false);
+    }
+    function applyBulletStyle(inst, ctx, variant, symbol){
+      return withActiveList(inst, ctx, "UL", true, function(list, doc){
+        ensureListStyles(doc);
+        list.removeAttribute("data-weditor-number");
+        list.removeAttribute("data-weditor-multilevel");
+        list.style.removeProperty("--weditor-ml-level1");
+        list.style.removeProperty("--weditor-ml-level2");
+        list.style.removeProperty("--weditor-ml-level3");
+        const map={ disc:"disc", circle:"circle", square:"square" };
+        if(variant==="custom"){
+          const sym=symbol || "•";
+          list.setAttribute("data-weditor-bullet","custom");
+          list.style.setProperty("--weditor-bullet-symbol","\""+sym+"\" ");
+          list.style.listStyleType="none";
+        } else if(variant==="dash"){
+          list.setAttribute("data-weditor-bullet","dash");
+          list.style.removeProperty("--weditor-bullet-symbol");
+          list.style.listStyleType="none";
+        } else {
+          const key = variant in map ? variant : "disc";
+          list.setAttribute("data-weditor-bullet", key);
+          list.style.removeProperty("--weditor-bullet-symbol");
+          list.style.listStyleType = map[key] || "disc";
+        }
+        return true;
+      });
+    }
+    function applyNumberStyle(inst, ctx, variant){
+      return withActiveList(inst, ctx, "OL", true, function(list, doc){
+        ensureListStyles(doc);
+        list.removeAttribute("data-weditor-bullet");
+        list.removeAttribute("data-weditor-multilevel");
+        list.style.removeProperty("--weditor-bullet-symbol");
+        list.style.removeProperty("--weditor-ml-level1");
+        list.style.removeProperty("--weditor-ml-level2");
+        list.style.removeProperty("--weditor-ml-level3");
+        const map={ decimal:"decimal", "lower-alpha":"lower-alpha", "upper-alpha":"upper-alpha", "lower-roman":"lower-roman", "upper-roman":"upper-roman" };
+        const styleValue=map[variant] || "decimal";
+        list.setAttribute("data-weditor-number", variant && map[variant]?variant:"decimal");
+        list.style.listStyleType=styleValue;
+        return true;
+      });
+    }
+    function clearMultilevelStyling(list){
+      if(!list) return;
+      list.removeAttribute("data-weditor-multilevel");
+      list.style.removeProperty("--weditor-ml-level1");
+      list.style.removeProperty("--weditor-ml-level2");
+      list.style.removeProperty("--weditor-ml-level3");
+    }
+    function applyMultilevelStyle(inst, ctx, variant){
+      return withActiveList(inst, ctx, "OL", true, function(list, doc){
+        ensureListStyles(doc);
+        list.removeAttribute("data-weditor-bullet");
+        list.removeAttribute("data-weditor-number");
+        list.style.removeProperty("--weditor-bullet-symbol");
+        list.setAttribute("data-weditor-multilevel", variant || "numeric");
+        list.style.listStyleType="none";
+        return true;
+      });
+    }
+    function indent(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      return execCommand(target, "indent", null, false);
+    }
+    function outdent(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      return execCommand(target, "outdent", null, false);
+    }
     return {
       FONT_FAMILIES,
       FONT_SIZES,
@@ -2394,7 +2534,13 @@
       applyUnderline,
       applyDecorationStyle,
       applySimple,
-      applyAlign
+      applyAlign,
+      toggleList,
+      applyBulletStyle,
+      applyNumberStyle,
+      applyMultilevelStyle,
+      indent,
+      outdent
     };
   })();
   const FontColorUI=(function(){
@@ -2659,6 +2805,180 @@
       return container;
     }
     return { create };
+  })();
+  const ListControls=(function(){
+    function createMenuContainer(){
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.padding="6px 0";
+      menu.style.minWidth="220px";
+      menu.style.zIndex="40";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      return menu;
+    }
+    function createMenuItem(label, description, onSelect){
+      const btn=document.createElement("button");
+      btn.type="button";
+      btn.setAttribute("role","menuitem");
+      btn.style.display="flex";
+      btn.style.flexDirection="column";
+      btn.style.alignItems="flex-start";
+      btn.style.gap="3px";
+      btn.style.width="100%";
+      btn.style.border="0";
+      btn.style.background="transparent";
+      btn.style.padding="8px 14px";
+      btn.style.cursor="pointer";
+      btn.style.font="13px/1.4 'Segoe UI', system-ui";
+      btn.style.color=WCfg.UI.text;
+      btn.onmouseenter=function(){ btn.style.background="#f3f2f1"; };
+      btn.onmouseleave=function(){ btn.style.background="transparent"; };
+      const title=document.createElement("span");
+      title.textContent=label;
+      title.style.fontWeight="600";
+      btn.appendChild(title);
+      if(description){
+        const hint=document.createElement("span");
+        hint.textContent=description;
+        hint.style.fontSize="12px";
+        hint.style.color=WCfg.UI.textDim;
+        btn.appendChild(hint);
+      }
+      btn.addEventListener("click", function(e){ e.preventDefault(); if(typeof onSelect==="function"){ onSelect(); } });
+      btn.addEventListener("keydown", function(e){ if(e.key==="Enter" || e.key===" "){ e.preventDefault(); if(typeof onSelect==="function"){ onSelect(); } } });
+      return btn;
+    }
+    function createListControl(inst, ctx, config){
+      const wrap=document.createElement("div");
+      wrap.style.position="relative";
+      wrap.style.display="inline-flex";
+      wrap.style.alignItems="stretch";
+      wrap.style.gap="0";
+      const main=WDom.btn(config.label, false, config.title);
+      main.style.borderTopRightRadius="0";
+      main.style.borderBottomRightRadius="0";
+      const arrow=WDom.btn("▼", false, config.menuLabel || config.title);
+      arrow.style.borderTopLeftRadius="0";
+      arrow.style.borderBottomLeftRadius="0";
+      arrow.style.borderLeft="0";
+      arrow.style.minWidth="36px";
+      arrow.style.padding="8px 10px";
+      arrow.style.fontSize="12px";
+      arrow.setAttribute("aria-haspopup","true");
+      arrow.setAttribute("aria-expanded","false");
+      arrow.setAttribute("title", config.menuLabel || config.title);
+      const menu=createMenuContainer();
+      const doc=main.ownerDocument || document;
+      let open=false;
+      const closeHandlers={ pointer:null, key:null };
+      const items=[];
+      function register(item){
+        items.push(item);
+        menu.appendChild(item);
+      }
+      function setOpen(state){
+        if(state===open) return;
+        open=state;
+        if(open){
+          menu.style.display="flex";
+          menu.setAttribute("aria-hidden","false");
+          arrow.setAttribute("aria-expanded","true");
+          closeHandlers.pointer=function(e){ if(!wrap.contains(e.target)){ setOpen(false); } };
+          closeHandlers.key=function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); arrow.focus(); } };
+          doc.addEventListener("mousedown", closeHandlers.pointer, true);
+          doc.addEventListener("keydown", closeHandlers.key);
+          window.setTimeout(function(){ if(items.length){ items[0].focus(); } }, 0);
+        } else {
+          menu.style.display="none";
+          menu.setAttribute("aria-hidden","true");
+          arrow.setAttribute("aria-expanded","false");
+          if(closeHandlers.pointer){ doc.removeEventListener("mousedown", closeHandlers.pointer, true); closeHandlers.pointer=null; }
+          if(closeHandlers.key){ doc.removeEventListener("keydown", closeHandlers.key); closeHandlers.key=null; }
+        }
+      }
+      main.addEventListener("click", function(e){
+        e.preventDefault();
+        if(typeof config.onPrimary==="function"){ if(config.onPrimary()){ OutputBinding.syncDebounced(inst); } }
+      });
+      arrow.addEventListener("click", function(e){ e.preventDefault(); setOpen(!open); });
+      arrow.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      if(Array.isArray(config.options)){
+        for(let i=0;i<config.options.length;i++){
+          (function(option){
+            const item=createMenuItem(option.label, option.description, function(){
+              setOpen(false);
+              if(typeof option.onSelect==="function"){ if(option.onSelect()){ OutputBinding.syncDebounced(inst); } }
+            });
+            register(item);
+          })(config.options[i]);
+        }
+      }
+      wrap.appendChild(main);
+      wrap.appendChild(arrow);
+      wrap.appendChild(menu);
+      return wrap;
+    }
+    function createBulleted(inst, ctx){
+      return createListControl(inst, ctx, {
+        label:"Bulleted List",
+        title:"Bulleted List (項目符號清單)",
+        menuLabel:"Bullet styles (符號樣式)",
+        onPrimary:function(){ return Formatting.toggleList(inst, ctx, "ul"); },
+        options:[
+          { label:"• Disc", description:"Solid bullet · 適用一般清單", onSelect:function(){ return Formatting.applyBulletStyle(inst, ctx, "disc"); } },
+          { label:"○ Circle", description:"Hollow bullet · 更柔和", onSelect:function(){ return Formatting.applyBulletStyle(inst, ctx, "circle"); } },
+          { label:"▪ Square", description:"Square bullet · 技術細項", onSelect:function(){ return Formatting.applyBulletStyle(inst, ctx, "square"); } },
+          { label:"– Dash", description:"Dash bullet · 簡潔條列", onSelect:function(){ return Formatting.applyBulletStyle(inst, ctx, "dash"); } },
+          { label:"Custom symbol…", description:"自訂符號，輸入單一字元", onSelect:function(){
+            const sym=window.prompt("Enter custom bullet symbol (輸入自訂項目符號)", "•");
+            if(!sym){ return false; }
+            const trimmed=sym.trim();
+            if(!trimmed){ return false; }
+            return Formatting.applyBulletStyle(inst, ctx, "custom", trimmed.charAt(0));
+          } }
+        ]
+      });
+    }
+    function createNumbered(inst, ctx){
+      return createListControl(inst, ctx, {
+        label:"Numbered List",
+        title:"Numbered List (編號清單)",
+        menuLabel:"Number formats (編號樣式)",
+        onPrimary:function(){ return Formatting.toggleList(inst, ctx, "ol"); },
+        options:[
+          { label:"1. 2. 3.", description:"Decimal 編號", onSelect:function(){ return Formatting.applyNumberStyle(inst, ctx, "decimal"); } },
+          { label:"a. b. c.", description:"Lower alpha 小寫字母", onSelect:function(){ return Formatting.applyNumberStyle(inst, ctx, "lower-alpha"); } },
+          { label:"A. B. C.", description:"Upper alpha 大寫字母", onSelect:function(){ return Formatting.applyNumberStyle(inst, ctx, "upper-alpha"); } },
+          { label:"i. ii. iii.", description:"Lower Roman 羅馬數字", onSelect:function(){ return Formatting.applyNumberStyle(inst, ctx, "lower-roman"); } },
+          { label:"I. II. III.", description:"Upper Roman 羅馬數字", onSelect:function(){ return Formatting.applyNumberStyle(inst, ctx, "upper-roman"); } }
+        ]
+      });
+    }
+    function createMultilevel(inst, ctx){
+      return createListControl(inst, ctx, {
+        label:"Multilevel List",
+        title:"Multilevel List (多層次清單)",
+        menuLabel:"Outline styles (大綱樣式)",
+        onPrimary:function(){ return Formatting.toggleList(inst, ctx, "ol"); },
+        options:[
+          { label:"1 › 1.1", description:"數字多層 1.1.1", onSelect:function(){ return Formatting.applyMultilevelStyle(inst, ctx, "numeric"); } },
+          { label:"A › A.1", description:"字母多層 A.1.1", onSelect:function(){ return Formatting.applyMultilevelStyle(inst, ctx, "alpha"); } },
+          { label:"I › I.1", description:"羅馬多層 I.1.1", onSelect:function(){ return Formatting.applyMultilevelStyle(inst, ctx, "roman"); } },
+          { label:"Indent (縮排)", description:"向右縮排、建立子層", onSelect:function(){ return Formatting.indent(inst, ctx); } },
+          { label:"Outdent (減少縮排)", description:"回到上一層", onSelect:function(){ return Formatting.outdent(inst, ctx); } }
+        ]
+      });
+    }
+    return { createBulleted, createNumbered, createMultilevel };
   })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
@@ -2983,6 +3303,21 @@
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
+    "format.listBulleted":{
+      kind:"custom",
+      ariaLabel:"Bulleted List (項目符號清單)",
+      render:function(inst, ctx){ return ListControls.createBulleted(inst, ctx); }
+    },
+    "format.listNumbered":{
+      kind:"custom",
+      ariaLabel:"Numbered List (編號清單)",
+      render:function(inst, ctx){ return ListControls.createNumbered(inst, ctx); }
+    },
+    "format.listMultilevel":{
+      kind:"custom",
+      ariaLabel:"Multilevel List (多層次清單)",
+      render:function(inst, ctx){ return ListControls.createMultilevel(inst, ctx); }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -3025,7 +3360,7 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.listBulleted","format.listNumbered","format.listMultilevel","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -3035,7 +3370,7 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.listBulleted","format.listNumbered","format.listMultilevel","format.strike","format.subscript","format.superscript"] },
       { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
