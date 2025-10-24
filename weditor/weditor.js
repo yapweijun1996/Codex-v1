@@ -1060,6 +1060,15 @@
           align:"left"
         },
         {
+          id:"logoOnly",
+          label:"🖼️ Logo Only Header",
+          preview:'<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="max-width:140px;height:auto;object-fit:contain;">',
+          html:'<div style="width:100%;display:flex;justify-content:center;">'+
+            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="max-width:160px;height:auto;object-fit:contain;">'+
+          '</div>',
+          align:"center"
+        },
+        {
           id:"report",
           label:"📊 Company Report",
           preview:'<span>Q4 Business Review</span><span>Confidential · {{date}}</span>',
