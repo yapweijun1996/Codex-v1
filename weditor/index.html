@@ -19,33 +19,35 @@
                                         (between top-level blocks), not at the end.
                                 </p>
                         </div>
-                        <textarea class="weditor_output" aria-label="Editor A paged HTML" data-weditor-output="paged-html"></textarea>
+                        <textarea
+                                class="weditor_output weditor_output_html"
+                                aria-label="Editor A paged HTML"
+                                data-weditor-for="editorA"
+                                data-weditor-output="paged-html"
+                                placeholder="Paged HTML output will appear here. Save this string for read-only previews."></textarea>
+                        <textarea
+                                class="weditor_output weditor_output_json"
+                                aria-label="Editor A stored state"
+                                data-weditor-for="editorA"
+                                data-weditor-output="state"
+                                placeholder="JSON editor state for Editor A. Persist this to reload editable content."></textarea>
                 </div>
                 <div style="overflow: auto; height: 300px; width: 400px;">
-                        <div class="weditor weditor--paged" id="editorB">
+                        <div class="weditor" id="editorB">
                                 <h2>Editor B (Raw Output)</h2>
-                                <p>Raw HTML mirrored below.</p>
+                                <p>The JSON textarea below is pre-populated to simulate a database load.</p>
                         </div>
-                        <textarea class="weditor_output" aria-label="Editor B stored state" data-weditor-output="state"></textarea>
-                        <button type="button" id="reload-editor-b">Reload Editor B from stored JSON</button>
+                        <textarea
+                                class="weditor_output weditor_output_html"
+                                aria-label="Editor B raw HTML"
+                                data-weditor-for="editorB"
+                                data-weditor-output="raw-html"
+                                placeholder="Raw HTML output for Editor B"></textarea>
+                        <textarea
+                                class="weditor_output weditor_output_json"
+                                aria-label="Editor B stored state"
+                                data-weditor-for="editorB"
+                                data-weditor-output="state">{"version":"1.0","outputMode":"raw","html":"<h2>Editor B (Raw Output)</h2><p>The JSON textarea below is pre-populated to simulate a database load.</p><p>You can tweak this JSON, reload the page, and the editor will pick it up automatically.</p>","header":{"enabled":false,"html":"","align":"left"},"footer":{"enabled":false,"html":"","align":"left"}}</textarea>
                 </div>
-                <script>
-                        document.addEventListener("DOMContentLoaded", function () {
-                                var reloadBtn = document.getElementById("reload-editor-b");
-                                if (!reloadBtn) return;
-                                reloadBtn.addEventListener("click", function () {
-                                        var output = document.querySelector("textarea[data-weditor-output='state']");
-                                        var editor = document.getElementById("editorB");
-                                        if (!output || !editor || !window.WEditor || !output.value.trim()) {
-                                                return;
-                                        }
-                                        try {
-                                                window.WEditor.applyState(editor, output.value);
-                                        } catch (err) {
-                                                console.warn("Unable to reload editor state", err);
-                                        }
-                                });
-                        });
-                </script>
         </body>
 </html>

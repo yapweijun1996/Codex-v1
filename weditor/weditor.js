@@ -1788,34 +1788,81 @@
   })();
   const OutputBinding=(function(){
     function isOut(el){
-      return el && el.tagName === "TEXTAREA" &&
-        (el.classList.contains("weditor_output") || el.classList.contains("w-editor_output"));
+      if(!el || el.tagName !== "TEXTAREA") return false;
+      if(el.hasAttribute("data-weditor-output")) return true;
+      if(!el.classList) return false;
+      for(let i=0;i<el.classList.length;i++){
+        const cls=el.classList[i];
+        if(cls==="weditor_output" || cls==="w-editor_output") return true;
+        if(/^weditor_output[_-]/.test(cls)) return true;
+        if(/^w-editor_output[_-]/.test(cls)) return true;
+      }
+      return false;
     }
-    function resolve(editorEl){
+    function isEditorEl(el){
+      return !!(el && el.classList && (el.classList.contains("weditor") || el.classList.contains("w-editor")));
+    }
+    function collectTargeted(editorEl){
+      const outputs=[];
+      const id=editorEl && editorEl.getAttribute && editorEl.getAttribute("id");
+      if(!id) return outputs;
+      const root=(editorEl.ownerDocument || document);
+      const list=root.querySelectorAll("textarea[data-weditor-for]");
+      for(let i=0;i<list.length;i++){
+        const target=list[i].getAttribute("data-weditor-for");
+        if(target && target===id && isOut(list[i])){
+          outputs.push(list[i]);
+        }
+      }
+      return outputs;
+    }
+    function collectSiblings(editorEl){
+      const outputs=[];
+      function add(el){ if(el && outputs.indexOf(el)<0 && isOut(el)) outputs.push(el); }
+      function addFromNode(node){
+        if(!node || !node.querySelectorAll) return;
+        const nested=node.querySelectorAll("textarea");
+        for(let i=0;i<nested.length;i++) add(nested[i]);
+      }
       let sib = editorEl.nextElementSibling;
       while(sib){
-        if(isOut(sib)) return sib;
-        if(sib.classList && sib.classList.contains("weditor")) break;
+        if(isEditorEl(sib)) break;
+        if(isOut(sib)) add(sib);
+        else addFromNode(sib);
         sib = sib.nextElementSibling;
       }
       sib = editorEl.previousElementSibling;
       while(sib){
-        if(isOut(sib)) return sib;
-        if(sib.classList && sib.classList.contains("weditor")) break;
+        if(isEditorEl(sib)) break;
+        if(isOut(sib)) add(sib);
+        else addFromNode(sib);
         sib = sib.previousElementSibling;
       }
+      if(outputs.length) return outputs;
       const parent = editorEl.parentElement;
       if(parent){
-        const editors = Array.prototype.slice.call(parent.querySelectorAll(".weditor, .w-editor"));
-        const outputs = Array.prototype.slice.call(parent.querySelectorAll("textarea.weditor_output, textarea.w-editor_output"));
-        const idx = editors.indexOf(editorEl);
-        if(idx > -1 && outputs[idx]) return outputs[idx];
+        const candidates = parent.querySelectorAll("textarea[data-weditor-output], textarea[class*='weditor_output'], textarea[class*='w-editor_output']");
+        for(let i=0;i<candidates.length;i++){
+          const el=candidates[i];
+          if(isOut(el)) add(el);
+        }
       }
-      return null;
+      return outputs;
     }
-    function resolveFormat(inst){
-      if(!inst || !inst.outputEl) return inst && inst.outputMode==="paged" ? "paged" : "raw";
-      const attr=inst.outputEl.getAttribute("data-weditor-output");
+    function resolveAll(editorEl){
+      if(!editorEl) return [];
+      const targeted=collectTargeted(editorEl);
+      if(targeted.length) return targeted;
+      return collectSiblings(editorEl);
+    }
+    function resolve(editorEl){
+      const all=resolveAll(editorEl);
+      return all.length ? all[0] : null;
+    }
+    function resolveFormat(inst, outputEl){
+      const el=outputEl || (inst && inst.outputEl);
+      if(!inst || !el) return inst && inst.outputMode==="paged" ? "paged" : "raw";
+      const attr=el.getAttribute("data-weditor-output");
       if(attr){
         const value=String(attr).toLowerCase();
         if(value==="state" || value==="json") return "state";
@@ -1824,26 +1871,73 @@
       }
       return inst.outputMode==="paged" ? "paged" : "raw";
     }
+    function getOutputs(inst){
+      if(!inst) return [];
+      if(inst.outputEls && inst.outputEls.length) return inst.outputEls;
+      if(inst.outputEl) return [inst.outputEl];
+      return [];
+    }
     function sync(inst){
-      if(!inst || !inst.outputEl) return;
-      const format=resolveFormat(inst);
-      if(format==="state"){
-        const state=StateBinding.capture(inst);
-        inst.outputEl.value = StateBinding.stringify(state);
-        return;
+      const outputs=getOutputs(inst);
+      if(!outputs.length) return;
+      let cachedRaw=null;
+      let cachedPaged=null;
+      let cachedState=null;
+      for(let i=0;i<outputs.length;i++){
+        const out=outputs[i];
+        const format=resolveFormat(inst, out);
+        if(format==="state"){
+          if(cachedState===null){
+            const state=StateBinding.capture(inst);
+            cachedState=StateBinding.stringify(state);
+          }
+          out.value = cachedState || "";
+        } else if(format==="paged"){
+          if(cachedPaged===null){
+            cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst);
+          }
+          out.value = cachedPaged;
+        } else {
+          if(cachedRaw===null){
+            cachedRaw=Breaks.serialize(inst.el);
+          }
+          out.value = cachedRaw;
+        }
       }
-      if(format==="paged"){
-        inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst);
-        return;
-      }
-      inst.outputEl.value = Breaks.serialize(inst.el);
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
       const t=timers.get(inst); if(t) window.clearTimeout(t);
       timers.set(inst, window.setTimeout(function(){ sync(inst); }, 200));
     }
-    return { resolve, sync, syncDebounced };
+    function consumeInitialState(inst){
+      const outputs=getOutputs(inst);
+      for(let i=0;i<outputs.length;i++){
+        const out=outputs[i];
+        if(resolveFormat(inst, out)==="state"){
+          const parsed=StateBinding.parse(out.value);
+          if(parsed){
+            out.value = StateBinding.stringify(parsed) || "";
+            return parsed;
+          }
+        }
+      }
+      return null;
+    }
+    function consumeInitialHTML(inst){
+      const outputs=getOutputs(inst);
+      for(let i=0;i<outputs.length;i++){
+        const out=outputs[i];
+        if(resolveFormat(inst, out)==="raw"){
+          const raw=(out.value||"").trim();
+          if(raw){
+            return raw;
+          }
+        }
+      }
+      return null;
+    }
+    return { resolve, resolveAll, resolveFormat, sync, syncDebounced, consumeInitialState, consumeInitialHTML };
   })();
   const ToolbarFactory=(function(){
     function createCommandButton(id, inst, ctx){
@@ -4315,19 +4409,29 @@
     this.uid = ++INSTANCE_SEQ;
     this.el = editorEl;
     this.el.setAttribute("data-weditor-instance", String(this.uid));
-    const initialState=StateBinding.consumeInitial(editorEl);
+    const initialStateAttr=StateBinding.consumeInitial(editorEl);
     this.headerHTML = "Demo Header — {{date}} · Page {{page}} / {{total}}";
     this.footerHTML = "Confidential · {{date}}";
     this.headerAlign = HFAlign.normalize(editorEl.getAttribute("data-header-align"));
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
     this.headerEnabled = !editorEl.classList.contains("weditor--no-header");
     this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
-    this.outputEl = OutputBinding.resolve(editorEl);
+    this.outputEls = OutputBinding.resolveAll(editorEl);
+    this.outputEl = this.outputEls.length ? this.outputEls[0] : null;
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
-    if(initialState){ StateBinding.apply(this, initialState); }
+    const initialState = initialStateAttr || OutputBinding.consumeInitialState(this);
+    if(initialState){
+      StateBinding.apply(this, initialState);
+    } else {
+      const initialHTML = OutputBinding.consumeInitialHTML(this);
+      if(initialHTML){
+        this.el.innerHTML = Sanitizer.clean(initialHTML);
+        Breaks.ensurePlaceholders(this.el);
+      }
+    }
     this.el.classList.toggle("weditor--no-header", !this.headerEnabled);
     this.el.classList.toggle("weditor--no-footer", !this.footerEnabled);
     this.el.classList.toggle("weditor--paged", this.outputMode==="paged");
