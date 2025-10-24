@@ -13,7 +13,7 @@
       tabHeader:{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:"10px" },
       tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center", flex:"1 1 auto" },
       tabQuickActions:{ display:"flex", gap:"8px", marginLeft:"auto", alignItems:"center" },
-      fsSaveCloseWrap:{ position:"fixed", top:"18px", right:"24px", zIndex:"2147483200", display:"flex" },
+      fsSaveCloseWrap:{ position:"fixed", top:"8px", right:"24px", zIndex:"2147483200", display:"flex" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
       tabPanel:{ display:"flex", flexWrap:"wrap", gap:"12px", alignItems:"stretch" },
