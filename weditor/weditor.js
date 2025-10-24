@@ -2359,11 +2359,51 @@
       }
       return updated;
     }
+    function selectionHasUnderline(target){
+      if(!target || !target.ownerDocument){ return false; }
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0){ return false; }
+      const range=sel.getRangeAt(0);
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && container!==target && !target.contains(container)){ return false; }
+      function hasUnderlineOnNode(node){
+        if(!node){ return false; }
+        if(node.nodeType===3){ node=node.parentElement; }
+        if(!node || node.nodeType!==1){ return false; }
+        if(node.tagName && node.tagName.toLowerCase()==="u"){ return true; }
+        if(win && typeof win.getComputedStyle==="function"){ try{
+            const computed=win.getComputedStyle(node);
+            if(computed){
+              const textLine=(computed.textDecorationLine || computed.textDecoration || "");
+              if(textLine && textLine.indexOf("underline")>-1){ return true; }
+            }
+          } catch(e){}
+        }
+        return false;
+      }
+      if(hasUnderlineOnNode(range.startContainer)){ return true; }
+      if(hasUnderlineOnNode(range.endContainer)){ return true; }
+      if(!doc.createTreeWalker){ return hasUnderlineOnNode(container); }
+      const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+        acceptNode:function(node){
+          if(node===target) return NodeFilter.FILTER_SKIP;
+          return intersectsRange(range, node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        }
+      });
+      let current;
+      while((current=walker.nextNode())){
+        if(hasUnderlineOnNode(current)){ return true; }
+      }
+      return false;
+    }
     function applyUnderline(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, "underline", null, true);
       const style = inst && inst.underlineStyle ? inst.underlineStyle : null;
-      if(style){ applyDecorationStyle(inst, ctx, style); }
+      if(style && selectionHasUnderline(target)){ applyDecorationStyle(inst, ctx, style); }
     }
     function applyDecorationStyle(inst, ctx, style){
       if(!style){ return; }
