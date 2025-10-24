@@ -10,23 +10,44 @@
 		<script src="weditor.js" defer></script>
 	</head>
 	<body>
-		<div style="overflow: auto; height: 500px; width: 600px;">
-			<div class="weditor weditor--paged">
-				<h2>Editor A (Paged Output)</h2>
-				<p>
-					Try pasting complex Word/Docs content, place the caret, then click
-					<em>Insert Break</em>. The break will land where your caret is
-					(between top-level blocks), not at the end.
-				</p>
-			</div>
-			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
-		</div>
-		<div style="overflow: auto; height: 300px; width: 400px;">
-			<div class="weditor weditor--paged">
-				<h2>Editor B (Raw Output)</h2>
-				<p>Raw HTML mirrored below.</p>
-			</div>
-			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
-		</div>
-	</body>
+                <div style="overflow: auto; height: 500px; width: 600px;">
+                        <div class="weditor weditor--paged" id="editorA">
+                                <h2>Editor A (Paged Output)</h2>
+                                <p>
+                                        Try pasting complex Word/Docs content, place the caret, then click
+                                        <em>Insert Break</em>. The break will land where your caret is
+                                        (between top-level blocks), not at the end.
+                                </p>
+                        </div>
+                        <textarea
+                                class="weditor_output weditor_output_html"
+                                aria-label="Editor A paged HTML"
+                                data-weditor-for="editorA"
+                                data-weditor-output="paged-html"
+                                placeholder="Paged HTML output will appear here. Save this string for read-only previews."></textarea>
+                        <textarea
+                                class="weditor_output weditor_output_json"
+                                aria-label="Editor A stored state"
+                                data-weditor-for="editorA"
+                                data-weditor-output="state"
+                                placeholder="JSON editor state for Editor A. Persist this to reload editable content."></textarea>
+                </div>
+                <div style="overflow: auto; height: 300px; width: 400px;">
+                        <div class="weditor" id="editorB">
+                                <h2>Editor B (Raw Output)</h2>
+                                <p>The JSON textarea below is pre-populated to simulate a database load.</p>
+                        </div>
+                        <textarea
+                                class="weditor_output weditor_output_html"
+                                aria-label="Editor B raw HTML"
+                                data-weditor-for="editorB"
+                                data-weditor-output="raw-html"
+                                placeholder="Raw HTML output for Editor B"></textarea>
+                        <textarea
+                                class="weditor_output weditor_output_json"
+                                aria-label="Editor B stored state"
+                                data-weditor-for="editorB"
+                                data-weditor-output="state">{"version":"1.0","outputMode":"raw","html":"<h2>Editor B (Raw Output)</h2><p>The JSON textarea below is pre-populated to simulate a database load.</p><p>You can tweak this JSON, reload the page, and the editor will pick it up automatically.</p>","header":{"enabled":false,"html":"","align":"left"},"footer":{"enabled":false,"html":"","align":"left"}}</textarea>
+                </div>
+        </body>
 </html>
