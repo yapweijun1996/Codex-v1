@@ -13,6 +13,13 @@
       tabHeader:{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:"10px" },
       tabList:{ display:"flex", gap:"6px", flexWrap:"wrap", alignItems:"center", flex:"1 1 auto" },
       tabQuickActions:{ display:"flex", gap:"8px", marginLeft:"auto", alignItems:"center" },
+      historyGroup:{ position:"relative", display:"inline-flex", alignItems:"stretch" },
+      historyMenu:{ position:"absolute", top:"calc(100% + 4px)", right:"0", display:"none", flexDirection:"column", gap:"0",
+        background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 8px 24px rgba(0,0,0,.12)", padding:"6px 0",
+        minWidth:"180px", zIndex:"8" },
+      historyMenuItem:{ border:"0", background:"transparent", padding:"8px 16px", textAlign:"left", font:"13px/1.4 Segoe UI,system-ui",
+        color:UI.text, cursor:"pointer", transition:"background .15s ease" },
+      historyMenuEmpty:{ padding:"10px 16px", font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
       fsSaveCloseWrap:{ position:"fixed", top:"18px", right:"24px", zIndex:"2147483200", display:"flex" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
@@ -1686,6 +1693,401 @@
     }
     return { resolve, sync, syncDebounced };
   })();
+  const History=(function(){
+    const LIMIT=150;
+    const MENU_LIMIT=20;
+    const controllers=new WeakMap();
+    function formatLabel(label){ return label || "Edit"; }
+    function setDisabled(btn, disabled){
+      if(!btn) return;
+      btn.disabled = !!disabled;
+      btn.style.opacity = disabled ? "0.5" : "1";
+      btn.style.cursor = disabled ? "not-allowed" : "pointer";
+      if(disabled){ btn.setAttribute("aria-disabled","true"); }
+      else { btn.removeAttribute("aria-disabled"); }
+    }
+    function HistoryController(inst){
+      this.inst = inst;
+      this.initialized = false;
+      this.stack = [];
+      this.pointer = -1;
+      this.beginSnapshot = null;
+      this.pendingInputTimer = null;
+      this.undoControls = null;
+      this.redoControl = null;
+      this.menuOpen = false;
+      this.repeatAction = null;
+      this.repeatLabel = "";
+      this.onInput = this.onInput.bind(this);
+      this.onKeyDown = this.onKeyDown.bind(this);
+      this.onDocClick = this.onDocClick.bind(this);
+    }
+    HistoryController.prototype.attach=function(){
+      if(this.initialized){ return this; }
+      this.initialized = true;
+      this.stack = [{ html:this.captureHTML(), label:"Initial" }];
+      this.pointer = 0;
+      this.beginSnapshot = null;
+      this.repeatAction = null;
+      this.repeatLabel = "";
+      this.menuOpen = false;
+      this.inst.el.addEventListener("input", this.onInput);
+      this.inst.el.addEventListener("keydown", this.onKeyDown);
+      this.updateUI();
+      return this;
+    };
+    HistoryController.prototype.captureHTML=function(){
+      return this.inst && this.inst.el ? this.inst.el.innerHTML : "";
+    };
+    HistoryController.prototype.onInput=function(){
+      if(this.pendingInputTimer){ window.clearTimeout(this.pendingInputTimer); }
+      const self=this;
+      this.pendingInputTimer = window.setTimeout(function(){
+        self.pendingInputTimer = null;
+        self.commit("Typing", null);
+      }, 320);
+    };
+    HistoryController.prototype.onKeyDown=function(e){
+      if(!e) return;
+      const key=(e.key||"").toLowerCase();
+      const isMac = typeof navigator!=="undefined" && navigator.platform ? /mac/i.test(navigator.platform) : false;
+      if((e.ctrlKey || (isMac && e.metaKey)) && !e.shiftKey && key === "z"){
+        e.preventDefault();
+        this.closeMenu();
+        this.undo();
+        return;
+      }
+      if((e.ctrlKey || (isMac && e.metaKey)) && (key === "y" || (e.shiftKey && key === "z"))){
+        e.preventDefault();
+        this.closeMenu();
+        if(!this.redo()){
+          this.repeat();
+        }
+        return;
+      }
+      if(!e.ctrlKey && !e.metaKey && !e.altKey && e.key === "F4"){
+        e.preventDefault();
+        this.repeat();
+      }
+      if(e.key === "Escape" && this.menuOpen){
+        e.preventDefault();
+        this.closeMenu();
+      }
+    };
+    HistoryController.prototype.onDocClick=function(ev){
+      if(!this.undoControls || !this.menuOpen) return;
+      const wrap=this.undoControls.wrap;
+      if(wrap && wrap.contains(ev.target)) return;
+      this.closeMenu();
+    };
+    HistoryController.prototype.begin=function(){
+      this.beginSnapshot = this.captureHTML();
+    };
+    HistoryController.prototype.applyRepeatFromEntry=function(entry){
+      if(entry && entry.repeat && typeof entry.repeat.action==="function"){
+        this.repeatAction = entry.repeat.action;
+        this.repeatLabel = entry.repeat.label || entry.label || "Repeat";
+      } else {
+        this.repeatAction = null;
+        this.repeatLabel = "";
+      }
+    };
+    HistoryController.prototype.commit=function(label, options){
+      const html=this.captureHTML();
+      const current=this.stack[this.pointer] || null;
+      const prevSnapshot=this.beginSnapshot;
+      this.beginSnapshot = null;
+      if(prevSnapshot!==null && prevSnapshot===html){
+        if(options && options.repeat){
+          this.applyRepeatFromEntry({ label:formatLabel(label), repeat:options.repeat });
+        }
+        this.updateUI();
+        return null;
+      }
+      if(current && current.html===html){
+        if(options && options.repeat){
+          this.applyRepeatFromEntry({ label:formatLabel(label), repeat:options.repeat });
+        }
+        this.updateUI();
+        return null;
+      }
+      if(this.pointer < this.stack.length-1){
+        this.stack = this.stack.slice(0, this.pointer+1);
+      }
+      const entry={ html, label:formatLabel(label) };
+      if(options && options.repeat){ entry.repeat = options.repeat; }
+      this.stack.push(entry);
+      if(this.stack.length>LIMIT){
+        this.stack.shift();
+        if(this.pointer>0) this.pointer--;
+      }
+      this.pointer = this.stack.length-1;
+      this.applyRepeatFromEntry(entry);
+      this.updateUI();
+      return entry;
+    };
+    HistoryController.prototype.canUndo=function(){ return this.pointer>0; };
+    HistoryController.prototype.canRedo=function(){ return this.pointer >=0 && this.pointer < this.stack.length-1; };
+    HistoryController.prototype.undo=function(steps){
+      if(!this.canUndo()) return false;
+      this.closeMenu();
+      const count = steps && steps>0 ? steps : 1;
+      this.pointer = Math.max(0, this.pointer - count);
+      this.applyCurrent();
+      this.applyRepeatFromEntry(null);
+      this.updateUI();
+      return true;
+    };
+    HistoryController.prototype.undoTo=function(target){
+      if(typeof target!=='number') return false;
+      if(target<0) target=0;
+      if(target>=this.pointer) return false;
+      this.closeMenu();
+      this.pointer = target;
+      this.applyCurrent();
+      this.applyRepeatFromEntry(null);
+      this.updateUI();
+      return true;
+    };
+    HistoryController.prototype.redo=function(steps){
+      if(!this.canRedo()) return false;
+      const count = steps && steps>0 ? steps : 1;
+      this.pointer = Math.min(this.stack.length-1, this.pointer + count);
+      this.applyCurrent();
+      this.applyRepeatFromEntry(this.stack[this.pointer]);
+      this.updateUI();
+      return true;
+    };
+    HistoryController.prototype.repeat=function(){
+      if(this.canRedo()) return false;
+      if(!this.repeatAction) return false;
+      this.repeatAction();
+      return true;
+    };
+    HistoryController.prototype.applyCurrent=function(){
+      const entry=this.stack[this.pointer];
+      if(!entry || !this.inst || !this.inst.el) return;
+      this.inst.el.innerHTML = entry.html;
+      Breaks.ensurePlaceholders(this.inst.el);
+      try{ WDom.placeCaretAtEnd(this.inst.el); }
+      catch(e){}
+      OutputBinding.syncDebounced(this.inst);
+    };
+    HistoryController.prototype.getUndoEntries=function(){
+      const entries=[];
+      for(let i=this.pointer; i>0 && entries.length<MENU_LIMIT; i--){
+        const entry=this.stack[i];
+        if(!entry) continue;
+        entries.push({ label:entry.label, target:i-1 });
+      }
+      return entries;
+    };
+    HistoryController.prototype.buildMenu=function(){
+      if(!this.undoControls) return;
+      const menu=this.undoControls.menu;
+      if(!menu) return;
+      menu.innerHTML="";
+      const entries=this.getUndoEntries();
+      menu.scrollTop=0;
+      if(!entries.length){
+        const empty=document.createElement("div");
+        applyStyles(empty, WCfg.Style.historyMenuEmpty);
+        empty.textContent="No actions to undo";
+        menu.appendChild(empty);
+        return;
+      }
+      for(let i=0;i<entries.length;i++){
+        const item=document.createElement("button");
+        item.type="button";
+        applyStyles(item, WCfg.Style.historyMenuItem);
+        item.textContent=entries[i].label;
+        item.setAttribute("role","menuitem");
+        item.onclick=(function(self,target){
+          return function(){
+            self.undoTo(target);
+            self.closeMenu();
+          };
+        })(this, entries[i].target);
+        item.onmouseenter=function(){ item.style.background="#f3f2f1"; };
+        item.onmouseleave=function(){ item.style.background="transparent"; };
+        item.onfocus=function(){ item.style.background="#f3f2f1"; };
+        item.onblur=function(){ item.style.background="transparent"; };
+        menu.appendChild(item);
+      }
+    };
+    HistoryController.prototype.toggleMenu=function(){
+      if(!this.undoControls || !this.undoControls.menu) return;
+      if(!this.canUndo()) return;
+      if(this.menuOpen){ this.closeMenu(); return; }
+      this.buildMenu();
+      this.undoControls.menu.style.display="flex";
+      this.undoControls.menu.setAttribute("aria-hidden","false");
+      document.addEventListener("mousedown", this.onDocClick, true);
+      this.menuOpen = true;
+      this.updateUI();
+    };
+    HistoryController.prototype.closeMenu=function(){
+      if(!this.undoControls || !this.menuOpen) return;
+      const menu=this.undoControls.menu;
+      if(menu){
+        menu.style.display="none";
+        menu.setAttribute("aria-hidden","true");
+      }
+      document.removeEventListener("mousedown", this.onDocClick, true);
+      this.menuOpen = false;
+      this.updateUI();
+    };
+    HistoryController.prototype.setUndoControls=function(controls){
+      this.undoControls = controls;
+      this.updateUI();
+    };
+    HistoryController.prototype.setRedoControl=function(btn){
+      this.redoControl = btn;
+      this.updateUI();
+    };
+    HistoryController.prototype.updateUI=function(){
+      if(this.undoControls){
+        const { main, arrow } = this.undoControls;
+        const canUndo=this.canUndo();
+        setDisabled(main, !canUndo);
+        setDisabled(arrow, !canUndo);
+        if(arrow){ arrow.setAttribute("aria-expanded", this.menuOpen?"true":"false"); }
+        if(!canUndo && this.menuOpen){ this.closeMenu(); }
+      }
+      if(this.redoControl){
+        if(this.canRedo()){
+          this.redoControl.textContent="↷ Redo";
+          this.redoControl.title="Redo (Ctrl+Y)";
+          this.redoControl.setAttribute("aria-label","Redo");
+          setDisabled(this.redoControl, false);
+        } else {
+          this.redoControl.textContent="↻ Repeat";
+          const repeatLabel=this.repeatLabel ? "Repeat "+this.repeatLabel : "Repeat";
+          this.redoControl.title = this.repeatAction ? repeatLabel+" (F4)" : "Nothing to repeat";
+          this.redoControl.setAttribute("aria-label", this.repeatAction ? repeatLabel : "Repeat unavailable");
+          setDisabled(this.redoControl, !this.repeatAction);
+        }
+      }
+      if(this.menuOpen){ this.buildMenu(); }
+    };
+    function ensure(inst){
+      if(!inst) return null;
+      let controller=controllers.get(inst);
+      if(!controller){
+        controller=new HistoryController(inst);
+        controllers.set(inst, controller);
+      }
+      return controller;
+    }
+    function attach(inst){
+      const controller=ensure(inst);
+      if(controller){ controller.attach(); }
+      return controller;
+    }
+    function execute(inst, meta, ctx, detail){
+      if(!meta || typeof meta.run!=="function"){ return null; }
+      const controller=ensure(inst);
+      const args=detail ? Object.assign({}, detail) : {};
+      if(!args.ctx) args.ctx = ctx;
+      if(!controller){ return meta.run(inst, args); }
+      controller.begin();
+      const result=meta.run(inst, args);
+      controller.finish(meta, ctx, args);
+      return result;
+    }
+    HistoryController.prototype.finish=function(meta, ctx, args){
+      if(meta && meta.history===false){
+        this.beginSnapshot = null;
+        return;
+      }
+      const label=formatLabel(meta && meta.history && meta.history.label || meta && meta.title || meta && meta.ariaLabel || meta && meta.label || "Edit");
+      let repeatOption=null;
+      if(meta && meta.history && meta.history.repeat){
+        const inst=this.inst;
+        const storedCtx=ctx;
+        const storedArgs=args ? Object.assign({}, args) : {};
+        if(storedArgs && storedArgs.event){ delete storedArgs.event; }
+        if(typeof meta.history.repeat==="function"){
+          repeatOption={
+            action:function(){ meta.history.repeat(inst, storedCtx, storedArgs); },
+            label: meta.history.repeatLabel || label
+          };
+        } else {
+          repeatOption={
+            action:function(){ execute(inst, meta, storedCtx, storedArgs); },
+            label: meta.history.repeatLabel || label
+          };
+        }
+      }
+      const entry=this.commit(label, repeatOption ? { repeat: repeatOption } : null);
+      if(!entry && repeatOption){
+        this.applyRepeatFromEntry({ label, repeat:repeatOption });
+        this.updateUI();
+      }
+    };
+    function createUndo(inst){
+      const controller=ensure(inst);
+      const wrap=document.createElement("div");
+      applyStyles(wrap, WCfg.Style.historyGroup);
+      wrap.setAttribute("role","group");
+      const main=WDom.btn("↶ Undo", false, "Undo (Ctrl+Z)");
+      main.style.borderTopRightRadius="0";
+      main.style.borderBottomRightRadius="0";
+      main.setAttribute("aria-label","Undo");
+      const arrow=WDom.btn("▼", false, "Undo history");
+      arrow.style.borderTopLeftRadius="0";
+      arrow.style.borderBottomLeftRadius="0";
+      arrow.style.marginLeft="-1px";
+      arrow.style.width="34px";
+      arrow.style.padding="8px 0";
+      arrow.style.display="flex";
+      arrow.style.alignItems="center";
+      arrow.style.justifyContent="center";
+      arrow.setAttribute("aria-haspopup","menu");
+      arrow.setAttribute("aria-label","Open undo history");
+      const menu=document.createElement("div");
+      applyStyles(menu, WCfg.Style.historyMenu);
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      wrap.appendChild(main);
+      wrap.appendChild(arrow);
+      wrap.appendChild(menu);
+      main.onclick=function(){
+        controller.closeMenu();
+        controller.undo();
+      };
+      arrow.onclick=function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        if(arrow.disabled) return;
+        controller.toggleMenu();
+      };
+      arrow.onkeydown=function(e){
+        if(e.key === "Enter" || e.key === " " || e.key === "ArrowDown"){
+          e.preventDefault();
+          if(arrow.disabled) return;
+          controller.toggleMenu();
+        } else if(e.key === "Escape" && controller.menuOpen){
+          e.preventDefault();
+          controller.closeMenu();
+        }
+      };
+      controller.setUndoControls({ wrap, main, arrow, menu });
+      return wrap;
+    }
+    function createRedo(inst){
+      const controller=ensure(inst);
+      const btn=WDom.btn("↷ Redo", false, "Redo (Ctrl+Y)");
+      btn.setAttribute("aria-label","Redo");
+      btn.onclick=function(){
+        if(controller.canRedo()){ controller.redo(); return; }
+        controller.repeat();
+      };
+      controller.setRedoControl(btn);
+      return btn;
+    }
+    return { attach, ensure, execute, createUndoButton:createUndo, createRedoButton:createRedo };
+  })();
   const ToolbarFactory=(function(){
     function createCommandButton(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
@@ -1710,7 +2112,7 @@
           if(current){ select.value=current; }
         }
         select.onchange=function(e){
-          if(meta.run) meta.run(inst, { event:e, ctx, value:select.value });
+          if(meta.run) History.execute(inst, meta, ctx, { event:e, value:select.value });
         };
         wrap.appendChild(select);
         return wrap;
@@ -1720,7 +2122,7 @@
       btn.setAttribute("data-command", id);
       btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
       btn.onclick = function(e){
-        meta.run(inst, { event:e, ctx });
+        History.execute(inst, meta, ctx, { event:e });
         if(isToggle){
           const active = !!meta.getActive(inst);
           btn.setAttribute("data-active", active?"1":"0");
@@ -3197,12 +3599,25 @@
     btn.appendChild(icon);
   }
   const Commands={
+    "history.undo":{
+      kind:"custom",
+      ariaLabel:"Undo",
+      history:false,
+      render:function(inst){ return History.createUndoButton(inst); }
+    },
+    "history.redo":{
+      kind:"custom",
+      ariaLabel:"Redo",
+      history:false,
+      render:function(inst){ return History.createRedoButton(inst); }
+    },
     "format.fontFamily":{
       label:"Font",
       kind:"select",
       ariaLabel:"Select font family",
       placeholder:"Font",
       options:Formatting.FONT_FAMILIES.map(function(item){ return { label:item.label, value:item.value }; }),
+      history:{ label:"Font Family" },
       run:function(inst, arg){
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
         if(!value) return;
@@ -3216,6 +3631,7 @@
       ariaLabel:"Select font size",
       placeholder:"Size",
       options:Formatting.FONT_SIZES.map(function(item){ return { label:item.label, value:item.label }; }),
+      history:{ label:"Font Size" },
       run:function(inst, arg){
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
         if(!value) return;
@@ -3229,6 +3645,7 @@
       ariaLabel:"Bold",
       title:"Bold (Ctrl+B)",
       decorate:function(btn){ btn.style.fontWeight="700"; },
+      history:{ label:"Bold", repeat:true },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "bold"); OutputBinding.syncDebounced(inst); }
     },
     "format.italic":{
@@ -3237,6 +3654,7 @@
       ariaLabel:"Italic",
       title:"Italic (Ctrl+I)",
       decorate:function(btn){ btn.style.fontStyle="italic"; },
+      history:{ label:"Italic", repeat:true },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "italic"); OutputBinding.syncDebounced(inst); }
     },
     "format.underline":{
@@ -3245,6 +3663,7 @@
       ariaLabel:"Underline",
       title:"Underline (Ctrl+U)",
       decorate:function(btn){ btn.style.textDecoration="underline"; btn.style.textDecorationThickness="2px"; },
+      history:{ label:"Underline", repeat:true },
       run:function(inst, arg){ Formatting.applyUnderline(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
     },
     "format.underlineStyle":{
@@ -3258,6 +3677,7 @@
         { label:"Dashed", value:"dashed" },
         { label:"Wavy", value:"wavy" }
       ],
+      history:{ label:"Underline Style" },
       getValue:function(inst){ return inst && inst.underlineStyle ? inst.underlineStyle : "solid"; },
       run:function(inst, arg){
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
@@ -3298,6 +3718,7 @@
       ariaLabel:"Align Left (靠左對齊)",
       title:"Align Left (靠左對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "left"); },
+      history:{ label:"Align Left", repeat:true },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "left"); OutputBinding.syncDebounced(inst); }
     },
     "format.alignCenter":{
@@ -3306,6 +3727,7 @@
       ariaLabel:"Align Center (置中對齊)",
       title:"Align Center (置中對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "center"); },
+      history:{ label:"Align Center", repeat:true },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "center"); OutputBinding.syncDebounced(inst); }
     },
     "format.alignRight":{
@@ -3314,6 +3736,7 @@
       ariaLabel:"Align Right (靠右對齊)",
       title:"Align Right (靠右對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "right"); },
+      history:{ label:"Align Right", repeat:true },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "right"); OutputBinding.syncDebounced(inst); }
     },
     "format.alignJustify":{
@@ -3322,6 +3745,7 @@
       ariaLabel:"Justify (左右對齊)",
       title:"Justify (左右對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
+      history:{ label:"Justify", repeat:true },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
     "format.strike":{
@@ -3330,6 +3754,7 @@
       ariaLabel:"Strikethrough",
       title:"Strikethrough",
       decorate:function(btn){ btn.style.textDecoration="line-through"; btn.style.textDecorationThickness="2px"; },
+      history:{ label:"Strikethrough", repeat:true },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "strikeThrough"); OutputBinding.syncDebounced(inst); }
     },
     "format.subscript":{
@@ -3337,6 +3762,7 @@
       kind:"button",
       ariaLabel:"Subscript",
       title:"Subscript",
+      history:{ label:"Subscript", repeat:true },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "subscript"); OutputBinding.syncDebounced(inst); }
     },
     "format.superscript":{
@@ -3344,24 +3770,25 @@
       kind:"button",
       ariaLabel:"Superscript",
       title:"Superscript",
+      history:{ label:"Superscript", repeat:true },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
-    "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
-    "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
+    "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", history:false, run:function(inst){ Fullscreen.open(inst); } },
+    "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break", history:{ label:"Insert Break" },
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
-    "break.remove":{ label:"Remove Break", kind:"button", ariaLabel:"Remove page break",
+    "break.remove":{ label:"Remove Break", kind:"button", ariaLabel:"Remove page break", history:{ label:"Remove Break" },
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; if(Breaks.remove(target)){ if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } } },
-    "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
+    "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer", history:false,
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
-    "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
+    "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", history:false, getActive:function(inst){ return !!inst.headerEnabled; },
       run:function(inst){ inst.headerEnabled = !inst.headerEnabled; OutputBinding.syncDebounced(inst); } },
-    "toggle.footer":{ label:"Footer", kind:"toggle", ariaLabel:"Toggle footer", getActive:function(inst){ return !!inst.footerEnabled; },
+    "toggle.footer":{ label:"Footer", kind:"toggle", ariaLabel:"Toggle footer", history:false, getActive:function(inst){ return !!inst.footerEnabled; },
       run:function(inst){ inst.footerEnabled = !inst.footerEnabled; OutputBinding.syncDebounced(inst); } },
-    "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
-    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
-    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
-    "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
-    "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
+    "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", history:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
+    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", history:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
+    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", history:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
+    "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", history:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
+    "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", history:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
@@ -3371,7 +3798,7 @@
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
     ],
-    quickActions:["fullscreen.open"]
+    quickActions:["history.undo","history.redo","fullscreen.open"]
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
@@ -3381,7 +3808,8 @@
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
-    ]
+    ],
+    quickActions:["history.undo","history.redo"]
   };
   let INSTANCE_SEQ=0;
   function WEditorInstance(editorEl){
@@ -3403,12 +3831,13 @@
     OutputBinding.syncDebounced(this);
   }
   WEditorInstance.prototype._mount=function(){
+    Breaks.ensurePlaceholders(this.el);
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
-    Breaks.ensurePlaceholders(this.el);
+    this.history = History.attach(this);
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
