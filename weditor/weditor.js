@@ -586,7 +586,7 @@
         header=document.createElement("div");
         header.className="weditor_page-header";
         const minHeaderHeight=Math.max(WCfg.HDR_MIN, headerHeight);
-        header.style.cssText="position:absolute;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+minHeaderHeight+"px;";
+        header.style.cssText="position:relative;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+minHeaderHeight+"px;";
         header.innerHTML=headerHTML;
         HFAlign.applyHeader(header, headerAlign);
         page.appendChild(header);
