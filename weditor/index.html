@@ -10,23 +10,24 @@
 		<script src="weditor.js" defer></script>
 	</head>
 	<body>
-		<div style="overflow: auto; height: 500px; width: 600px;">
-			<div class="weditor weditor--paged">
-				<h2>Editor A (Paged Output)</h2>
-				<p>
-					Try pasting complex Word/Docs content, place the caret, then click
-					<em>Insert Break</em>. The break will land where your caret is
-					(between top-level blocks), not at the end.
-				</p>
-			</div>
-			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
-		</div>
-		<div style="overflow: auto; height: 300px; width: 400px;">
-			<div class="weditor weditor--paged">
-				<h2>Editor B (Raw Output)</h2>
-				<p>Raw HTML mirrored below.</p>
-			</div>
-			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
-		</div>
+                <div style="overflow: auto; height: 500px; width: 600px;">
+                        <div class="weditor weditor--paged">
+                                <h2>Editor A (Paged Output)</h2>
+                                <p>
+                                        Try pasting complex Word/Docs content, place the caret, then click
+                                        <em>Insert Break</em>. The break will land where your caret is
+                                        (between top-level blocks), not at the end.
+                                </p>
+                        </div>
+                        <textarea class="weditor_output" data-weditor-output="raw" aria-label="Editor A source HTML"></textarea>
+                        <textarea class="weditor_output" data-weditor-output="paged" aria-label="Editor A paged HTML"></textarea>
+                </div>
+                <div style="overflow: auto; height: 300px; width: 400px;">
+                        <div class="weditor">
+                                <h2>Editor B (Raw Output)</h2>
+                                <p>Raw HTML mirrored below.</p>
+                        </div>
+                        <textarea class="weditor_output" data-weditor-output="raw" aria-label="Editor B source HTML"></textarea>
+                </div>
 	</body>
 </html>

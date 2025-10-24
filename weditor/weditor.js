@@ -1706,36 +1706,91 @@
     return { open };
   })();
   const OutputBinding=(function(){
+    function isEditor(el){
+      return !!(el && el.classList && (el.classList.contains("weditor") || el.classList.contains("w-editor")));
+    }
     function isOut(el){
       return el && el.tagName === "TEXTAREA" &&
         (el.classList.contains("weditor_output") || el.classList.contains("w-editor_output"));
     }
+    function gatherAdjacent(editorEl){
+      const results=[];
+      let sib=editorEl.previousElementSibling;
+      const before=[];
+      while(sib){
+        if(isEditor(sib)) break;
+        if(isOut(sib)) before.unshift(sib);
+        sib=sib.previousElementSibling;
+      }
+      sib=editorEl.nextElementSibling;
+      while(sib){
+        if(isEditor(sib)) break;
+        if(isOut(sib)) results.push(sib);
+        sib=sib.nextElementSibling;
+      }
+      return before.concat(results);
+    }
     function resolve(editorEl){
-      let sib = editorEl.nextElementSibling;
-      while(sib){
-        if(isOut(sib)) return sib;
-        if(sib.classList && sib.classList.contains("weditor")) break;
-        sib = sib.nextElementSibling;
+      let outputs=gatherAdjacent(editorEl);
+      if(!outputs.length){
+        const parent=editorEl.parentElement;
+        if(parent){
+          const editors=Array.prototype.slice.call(parent.querySelectorAll(".weditor, .w-editor"));
+          const candidates=Array.prototype.slice.call(parent.querySelectorAll("textarea.weditor_output, textarea.w-editor_output"));
+          const idx=editors.indexOf(editorEl);
+          if(idx>-1 && candidates[idx]) outputs=[candidates[idx]];
+        }
       }
-      sib = editorEl.previousElementSibling;
-      while(sib){
-        if(isOut(sib)) return sib;
-        if(sib.classList && sib.classList.contains("weditor")) break;
-        sib = sib.previousElementSibling;
+      const resolved={ all:outputs.slice(), raw:null, paged:null, primary:null };
+      function roleOf(el){
+        if(!el) return "";
+        const ds=el.dataset||{};
+        const role=(ds.output || ds.weditorOutput || el.getAttribute("data-output") || "").toLowerCase();
+        return role;
       }
-      const parent = editorEl.parentElement;
-      if(parent){
-        const editors = Array.prototype.slice.call(parent.querySelectorAll(".weditor, .w-editor"));
-        const outputs = Array.prototype.slice.call(parent.querySelectorAll("textarea.weditor_output, textarea.w-editor_output"));
-        const idx = editors.indexOf(editorEl);
-        if(idx > -1 && outputs[idx]) return outputs[idx];
+      for(let i=0;i<outputs.length;i++){
+        const out=outputs[i];
+        const role=roleOf(out);
+        if(!resolved.primary) resolved.primary=out;
+        if(!resolved.raw && (role==="raw" || role==="source" || role==="edit")) resolved.raw=out;
+        if(!resolved.paged && (role==="paged" || role==="print" || role==="preview")) resolved.paged=out;
       }
-      return null;
+      if(!resolved.raw && !resolved.paged && resolved.primary){
+        if(editorEl.classList.contains("weditor--paged")) resolved.paged=resolved.primary;
+        else resolved.raw=resolved.primary;
+      }
+      if(!resolved.raw){
+        for(let i=0;i<outputs.length;i++){
+          const role=roleOf(outputs[i]);
+          if(role!=="paged" && role!=="print" && role!=="preview"){
+            resolved.raw=outputs[i];
+            break;
+          }
+        }
+      }
+      if(!resolved.paged){
+        for(let i=0;i<outputs.length;i++){
+          const role=roleOf(outputs[i]);
+          if(role!=="raw" && role!=="source" && role!=="edit"){
+            resolved.paged=outputs[i];
+            break;
+          }
+        }
+      }
+      return resolved;
     }
     function sync(inst){
-      if(!inst.outputEl) return;
-      if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
-      else { inst.outputEl.value = Breaks.serialize(inst.el); }
+      const outputs=inst && inst.outputs;
+      if(!outputs || (!outputs.raw && !outputs.paged && !outputs.primary)) return;
+      const rawHTML=Breaks.serialize(inst.el);
+      const needPaged=!!(outputs.paged || (!outputs.raw && !outputs.paged && outputs.primary && inst.outputMode==="paged"));
+      const pagedHTML=needPaged ? "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst) : null;
+      if(outputs.raw){ outputs.raw.value = rawHTML; }
+      if(outputs.paged && pagedHTML!==null){ outputs.paged.value = pagedHTML; }
+      if(!outputs.raw && !outputs.paged && outputs.primary){
+        if(inst.outputMode==="paged" && pagedHTML!==null) outputs.primary.value = pagedHTML;
+        else outputs.primary.value = rawHTML;
+      }
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
@@ -4220,7 +4275,8 @@
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
     this.headerEnabled = !editorEl.classList.contains("weditor--no-header");
     this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
-    this.outputEl = OutputBinding.resolve(editorEl);
+    this.outputs = OutputBinding.resolve(editorEl);
+    this.outputEl = this.outputs ? this.outputs.primary || null : null;
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
