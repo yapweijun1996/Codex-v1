@@ -1094,6 +1094,15 @@
             '</div>'+
           '</div>',
           align:"left"
+        },
+        {
+          id:"innovatech-banner",
+          label:"🏙️ Innovatech Header",
+          preview:'<span>Innovatech Solutions Pte Ltd</span><span>Letterhead Graphic</span>',
+          html:'<div style="width:100%;display:flex;justify-content:center;">'+
+            '<img src="https://lh3.googleusercontent.com/pw/AP1GczM_CqZ8r4GXD0w6JLY0sEobH--sPbzNd5xR8qkKR_advDmcwBrl0Ax6rtTDQjteze1NB2K2CsGoKA2HY95JTl7Y6_wCHajLaX5o6atA95Y6pdYqx9j-9syE0XLyRe4ht4ltmHIAO_A2mfmh6uCieAg6=w1920-h418-s-no-gm?authuser=0" alt="Innovatech Solutions Pte Ltd letterhead banner" style="width:100%;max-width:100%;height:auto;display:block;">'+
+          '</div>',
+          align:"center"
         }
       ],
       footer:[
