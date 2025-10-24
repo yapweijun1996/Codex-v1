@@ -2688,16 +2688,10 @@
       });
       const { container, primary, menu, setOpen }=split;
       const icon=document.createElement("span");
-      icon.style.display="inline-flex";
-      icon.style.flexDirection="column";
-      icon.style.alignItems="flex-start";
+      icon.textContent="1. a. i.";
       icon.style.fontSize="12px";
-      icon.style.lineHeight="1.2";
+      icon.style.lineHeight="1";
       icon.setAttribute("aria-hidden","true");
-      const line1=document.createElement("span"); line1.textContent="1.";
-      const line2=document.createElement("span"); line2.textContent="  a.";
-      const line3=document.createElement("span"); line3.textContent="    i.";
-      icon.appendChild(line1); icon.appendChild(line2); icon.appendChild(line3);
       const label=document.createElement("span");
       label.textContent="Multilevel";
       label.style.fontSize="13px";
