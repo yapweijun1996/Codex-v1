@@ -1734,8 +1734,16 @@
     }
     function sync(inst){
       if(!inst.outputEl) return;
-      if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
-      else { inst.outputEl.value = Breaks.serialize(inst.el); }
+      const rawHTML = Breaks.serialize(inst.el);
+      inst.outputEl.value = rawHTML;
+      if(inst.outputMode==="paged"){
+        const previewHTML = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst);
+        inst.outputEl.dataset.weditorPreview = previewHTML;
+        inst.outputEl.dataset.weditorPreviewMode = "paged";
+      } else {
+        delete inst.outputEl.dataset.weditorPreview;
+        delete inst.outputEl.dataset.weditorPreviewMode;
+      }
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
