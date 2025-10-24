@@ -16,7 +16,10 @@
       fsSaveCloseWrap:{ position:"fixed", top:"18px", right:"24px", zIndex:"2147483200", display:"flex" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
-      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"10px", alignItems:"flex-start", justifyContent:"flex-start" },
+      tabGroup:{ display:"flex", flexDirection:"column", gap:"6px", padding:"10px 12px", background:"#f9f9f8", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", minWidth:"min(100%, 240px)" },
+      tabGroupLabel:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, textTransform:"uppercase", letterSpacing:".08em" },
+      tabGroupControls:{ display:"flex", flexWrap:"wrap", gap:"6px", alignItems:"center" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
@@ -1799,11 +1802,51 @@
         panel.style.display="none";
         panel.setAttribute("role","tabpanel");
         panel.setAttribute("aria-hidden","true");
-        const items=tab.items || [];
-        for(let j=0;j<items.length;j++){
-          const cmdBtn=createCommandButton(items[j], inst, ctx);
-          if(cmdBtn) panel.appendChild(cmdBtn);
+      function makeGroup(entries, label, ariaLabel){
+        if(!Array.isArray(entries) || !entries.length){ return null; }
+        const controls=document.createElement("div");
+        applyStyles(controls, WCfg.Style.tabGroupControls);
+        for(let k=0;k<entries.length;k++){
+          const entry=entries[k];
+          if(Array.isArray(entry)){
+            const nested=makeGroup(entry);
+            if(nested){ controls.appendChild(nested); }
+            continue;
+          }
+          const control=createCommandButton(entry, inst, ctx);
+          if(control) controls.appendChild(control);
         }
+        if(!controls.childNodes.length){ return null; }
+        const group=document.createElement("div");
+        applyStyles(group, WCfg.Style.tabGroup);
+        group.setAttribute("role","group");
+        if(label){
+          const labelEl=document.createElement("div");
+          labelEl.textContent=label;
+          applyStyles(labelEl, WCfg.Style.tabGroupLabel);
+          group.appendChild(labelEl);
+        }
+        group.appendChild(controls);
+        if(ariaLabel){ group.setAttribute("aria-label", ariaLabel); }
+        else if(label){ group.setAttribute("aria-label", label); }
+        return group;
+      }
+      const items=tab.items || [];
+      for(let j=0;j<items.length;j++){
+        const item=items[j];
+        if(Array.isArray(item)){
+          const group=makeGroup(item);
+          if(group) panel.appendChild(group);
+          continue;
+        }
+        if(item && typeof item==="object" && !Array.isArray(item)){
+          const group=makeGroup(item.items || [], item.label || "", item.ariaLabel || "");
+          if(group) panel.appendChild(group);
+          continue;
+        }
+        const cmdBtn=createCommandButton(item, inst, ctx);
+        if(cmdBtn) panel.appendChild(cmdBtn);
+      }
         tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
         tabBtn.onkeydown=(function(idx){
           return function(e){
@@ -4056,21 +4099,54 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
-      { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] }
+      { id:"format", label:"Format", items:[
+        { label:"Font", items:["format.fontFamily","format.fontSize"] },
+        { label:"Emphasis", items:["format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Scripts", items:["format.subscript","format.superscript"] },
+        { label:"Lists", items:["format.bulletedList","format.numberedList","format.multilevelList"] },
+        { label:"Alignment", items:["format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Color", items:["format.fontColor","format.highlight"] }
+      ] },
+      { id:"editing", label:"Editing", items:[
+        { label:"History", items:["history.undo","history.redo"] },
+        { label:"Breaks", items:["break.insert","break.remove"] },
+        { label:"Header & Footer", items:["hf.edit"] }
+      ] },
+      { id:"layout", label:"Layout", items:[
+        { label:"Visibility", items:["toggle.header","toggle.footer"] }
+      ] },
+      { id:"output", label:"Output", items:[
+        { label:"Share", items:["print","export"] }
+      ] }
     ],
     quickActions:["fullscreen.open"]
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
-      { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] },
-      { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
+      { id:"format", label:"Format", items:[
+        { label:"Font", items:["format.fontFamily","format.fontSize"] },
+        { label:"Emphasis", items:["format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Scripts", items:["format.subscript","format.superscript"] },
+        { label:"Lists", items:["format.bulletedList","format.numberedList","format.multilevelList"] },
+        { label:"Alignment", items:["format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Color", items:["format.fontColor","format.highlight"] }
+      ] },
+      { id:"editing", label:"Editing", items:[
+        { label:"History", items:["history.undo","history.redo"] },
+        { label:"Breaks", items:["break.insert","break.remove"] },
+        { label:"Header & Footer", items:["hf.edit"] },
+        { label:"Sync", items:["reflow"] }
+      ] },
+      { id:"layout", label:"Layout", items:[
+        { label:"Visibility", items:["toggle.header","toggle.footer"] }
+      ] },
+      { id:"output", label:"Output", items:[
+        { label:"Share", items:["print","export"] }
+      ] },
+      { id:"session", label:"Session", items:[
+        { label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
+      ] }
     ]
   };
   let INSTANCE_SEQ=0;
