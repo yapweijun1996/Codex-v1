@@ -581,13 +581,6 @@
       const page=document.createElement("div");
       page.setAttribute("data-page", String(pageNo));
       page.style.cssText="width:"+A4W+"px;height:"+A4H+"px;"+Style.pageFrame+";";
-      if(pageNo===1){
-        page.style.pageBreakBefore="auto";
-        page.style.breakBefore="auto";
-      } else {
-        page.style.pageBreakBefore="always";
-        page.style.breakBefore="page";
-      }
       let header=null, footer=null;
       if(headerEnabled){
         header=document.createElement("div");
@@ -786,7 +779,12 @@
         if(pg.headerNode){ observeMedia(pg.headerNode, function(){ adjustPageOffsets(pg); }); }
         if(pg.footerNode){ observeMedia(pg.footerNode, function(){ adjustPageOffsets(pg); }); }
       }
-      let pagesHTML=""; for(let i=0;i<pages.length;i++){ pagesHTML+=pages[i].page.outerHTML; }
+      const pageBreakHTML='<div class="weditor_page-break" style="page-break-before: always;"></div>';
+      let pagesHTML="";
+      for(let i=0;i<pages.length;i++){
+        if(i>0){ pagesHTML+=pageBreakHTML; }
+        pagesHTML+=pages[i].page.outerHTML;
+      }
       measWrap.parentNode.removeChild(measWrap);
       return { pages: pages.map(function(p){ return p.page; }), pagesHTML };
     }
@@ -818,7 +816,11 @@
     }
     return { open };
   })();
-  const PAGED_PRINT_STYLES = "div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}";
+  const PAGED_PRINT_STYLES = "div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}"+
+    ".weditor_page-break{display:block;width:100%;height:0;margin:0;padding:0;border:0;font-size:0;line-height:0;page-break-before:always;}"+
+    ".weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}"+
+    ".weditor_page-header{border-bottom:0!important;}"+
+    ".weditor_page-footer{border-top:0!important;}";
   const PrintUI=(function(){
     function open(pagedHTML){
       const w=WDom.openBlank(); if(!w) return;
