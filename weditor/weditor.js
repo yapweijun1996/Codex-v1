@@ -16,13 +16,16 @@
       fsSaveCloseWrap:{ position:"fixed", top:"18px", right:"24px", zIndex:"2147483200", display:"flex" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
-      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"12px", alignItems:"stretch" },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
       controlWrap:{ display:"inline-flex", alignItems:"center", gap:"6px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
       controlLabel:{ font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
+      toolbarGroup:{ display:"flex", flexDirection:"column", gap:"10px", padding:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#fafafa", flex:"1 1 240px", boxSizing:"border-box" },
+      toolbarGroupTitle:{ font:"12px/1.4 Segoe UI,system-ui", textTransform:"uppercase", letterSpacing:".06em", color:UI.textDim },
+      toolbarGroupRow:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
@@ -1800,9 +1803,40 @@
         panel.setAttribute("role","tabpanel");
         panel.setAttribute("aria-hidden","true");
         const items=tab.items || [];
+        function appendItem(target, entry){
+          if(!entry) return;
+          if(typeof entry==="string"){
+            const cmdBtn=createCommandButton(entry, inst, ctx);
+            if(cmdBtn) target.appendChild(cmdBtn);
+            return;
+          }
+          if(entry && typeof entry==="object" && Array.isArray(entry.items) && entry.items.length){
+            const group=document.createElement("div");
+            applyStyles(group, WCfg.Style.toolbarGroup);
+            if(entry.label){
+              const title=document.createElement("div");
+              title.textContent=entry.label;
+              applyStyles(title, WCfg.Style.toolbarGroupTitle);
+              group.appendChild(title);
+            }
+            const row=document.createElement("div");
+            applyStyles(row, WCfg.Style.toolbarGroupRow);
+            for(let k=0;k<entry.items.length;k++){
+              const child=entry.items[k];
+              if(!child) continue;
+              if(typeof child==="string"){
+                const childBtn=createCommandButton(child, inst, ctx);
+                if(childBtn) row.appendChild(childBtn);
+              } else {
+                appendItem(row, child);
+              }
+            }
+            if(row.childNodes.length){ group.appendChild(row); panel.appendChild(group); }
+            return;
+          }
+        }
         for(let j=0;j<items.length;j++){
-          const cmdBtn=createCommandButton(items[j], inst, ctx);
-          if(cmdBtn) panel.appendChild(cmdBtn);
+          appendItem(panel, items[j]);
         }
         tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
         tabBtn.onkeydown=(function(idx){
@@ -4056,7 +4090,11 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:[
+        { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -4066,7 +4104,11 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:[
+        { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
