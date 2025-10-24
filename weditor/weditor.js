@@ -755,7 +755,10 @@
           const rect=pg.headerNode.getBoundingClientRect();
           const actual=Math.max(Math.ceil(rect.height||0), WCfg.HDR_MIN);
           topOffset=Math.max(topOffset, actual);
-          pg.headerNode.style.minHeight=Math.max(actual, WCfg.HDR_MIN)+"px";
+          const appliedHeight=Math.max(actual, WCfg.HDR_MIN);
+          pg.headerNode.style.minHeight=appliedHeight+"px";
+          pg.headerNode.style.setProperty("--weditor-header-offset-height", appliedHeight+"px");
+          pg.headerNode.setAttribute("data-offset-height", String(appliedHeight));
         }
         let bottomOffset = pg.footerNode ? Math.max(WCfg.FTR_MIN, baseFooter) : 0;
         if(pg.footerNode){
