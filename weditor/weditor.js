@@ -2896,6 +2896,13 @@
       if(!handler) return false;
       const result=handler(inst, target, state.lastRepeatable.args);
       if(result===false) return false;
+      record(inst, target, {
+        label:state.lastRepeatable.label || "Edit",
+        repeatable:true,
+        repeatId:state.lastRepeatable.id,
+        repeatArgs:state.lastRepeatable.args || null,
+        repeatLabel:state.lastRepeatable.label || "Edit"
+      });
       return true;
     }
     function handleInput(inst, target, ev){
