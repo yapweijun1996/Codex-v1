@@ -1040,6 +1040,17 @@
     const TEMPLATE_LIBRARY={
       header:[
         {
+          id:"letterhead_image",
+          label:"🖼️ Letterhead Banner",
+          preview:'<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
+            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+          '</div>',
+          html:'<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+          '</div>',
+          align:"center"
+        },
+        {
           id:"letterhead",
           label:"🏢 Company Letterhead",
           preview:'<strong>Acme Corp</strong><span>123 Market St · {{date}}</span>',
@@ -1315,15 +1326,21 @@
       uploadBtn.style.fontSize="12px";
       uploadBtn.style.lineHeight="1.2";
       uploadBtn.style.alignSelf="flex-start";
+      const stretchBtn=WDom.btn("Stretch images", false, "Make all images span header/footer width");
+      stretchBtn.style.padding="6px 10px";
+      stretchBtn.style.fontSize="12px";
+      stretchBtn.style.lineHeight="1.2";
+      stretchBtn.style.alignSelf="flex-start";
       const fileInput=document.createElement("input");
       fileInput.type="file";
       fileInput.accept="image/png,image/jpeg";
       fileInput.style.display="none";
       const tip=document.createElement("div");
-      tip.textContent="Upload .png / .jpg 會自動插入 <img>，可直接在上方編輯區拖曳調整";
+      tip.textContent="Upload .png / .jpg 會自動插入 <img>，可直接在上方編輯區拖曳調整；點擊 Stretch images 讓圖片自動撐滿寬度";
       tip.style.font="12px/1.4 Segoe UI,system-ui";
       tip.style.color=WCfg.UI.textDim;
       uploaderRow.appendChild(uploadBtn);
+      uploaderRow.appendChild(stretchBtn);
       uploaderRow.appendChild(tip);
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
@@ -1378,6 +1395,40 @@
         return name.replace(/\.[^.]+$/,"").replace(/[^a-z0-9\s_-]/gi," ").trim()||"Uploaded image";
       }
       uploadBtn.addEventListener("click", function(){ fileInput.value=""; fileInput.click(); });
+      stretchBtn.addEventListener("click", function(){
+        if(stretchBtn.disabled) return;
+        const imgs=editor.querySelectorAll ? editor.querySelectorAll("img") : [];
+        let touched=false;
+        for(let i=0;i<imgs.length;i++){
+          const img=imgs[i];
+          if(img.style.width!=="100%"){
+            img.style.width="100%";
+            touched=true;
+          }
+          if(img.style.maxWidth!=="100%"){
+            img.style.maxWidth="100%";
+            touched=true;
+          }
+          if(img.style.height!=="auto"){
+            img.style.height="auto";
+            touched=true;
+          }
+          if(img.style.display!=="block"){
+            img.style.display="block";
+            touched=true;
+          }
+          if(img.style.objectFit!=="contain"){
+            img.style.objectFit="contain";
+            touched=true;
+          }
+        }
+        if(touched){
+          enforceImageSizing(editor);
+          reattachImageOverlay();
+          if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
+          notifyChange();
+        }
+      });
       fileInput.addEventListener("change", function(){
         const file=(fileInput.files&&fileInput.files[0])||null;
         if(!file) return;
@@ -1409,6 +1460,9 @@
         uploadBtn.disabled=!on;
         uploadBtn.style.opacity=on?"1":"0.55";
         uploadBtn.style.cursor=on?"pointer":"not-allowed";
+        stretchBtn.disabled=!on;
+        stretchBtn.style.opacity=on?"1":"0.55";
+        stretchBtn.style.cursor=on?"pointer":"not-allowed";
         fileInput.disabled=!on;
         for(let k=0;k<tokenButtons.length;k++){
           const chip=tokenButtons[k];
