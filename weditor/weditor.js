@@ -32,12 +32,12 @@
       modal:{ width:"100%", maxWidth:"none", height:"100%", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"0", boxShadow:"none", overflow:"hidden" },
       split:{ flex:"1", minHeight:"0", display:"flex", background:"#fff" },
       left:{ flex:"1", minWidth:"0", padding:"48px 36px", display:"grid", gridTemplateColumns:"minmax(0,1fr)", gap:"28px", justifyItems:"center", alignContent:"start", background:"linear-gradient(180deg,#f6f4f3 0%,#ecebea 100%)", overflowX:"hidden", overflowY:"auto", boxSizing:"border-box" },
-      previewStage:{ display:"grid", justifyItems:"center", gap:"32px", width:"100%", maxWidth:"min(100%, "+Math.round(A4W*PREVIEW_MAX_SCALE+120)+"px)", margin:"0 auto", padding:"12px 0 48px", boxSizing:"border-box" },
+      previewStage:{ display:"grid", justifyItems:"center", gap:"32px", width:"100%", maxWidth:"min(100%, "+Math.round(A4W*PREVIEW_MAX_SCALE+120)+"px)", margin:"0px", padding:"12px 0 48px", boxSizing:"border-box" },
       pageDivider:{ width:"100%", textAlign:"center", color:UI.textDim, font:"12px/1.4 Segoe UI,system-ui", borderTop:"1px dashed "+UI.borderSubtle, padding:"14px 0 0", opacity:"0.75" },
       breakMarker:{ display:"flex", alignItems:"center", justifyContent:"center", gap:"12px", margin:"18px 0", padding:"10px 12px", border:"1px dashed "+UI.borderSubtle, borderRadius:"6px", background:"#f8fbff", color:UI.brand, font:"12px/1.3 Segoe UI,system-ui", letterSpacing:".08em", textTransform:"uppercase", userSelect:"none", cursor:"default" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
-      pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
+      pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0px",
       hfModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
       hfHead:{ padding:"18px 22px", borderBottom:"1px solid "+UI.border, display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
@@ -2273,7 +2273,7 @@
           outer.style.display="block";
           outer.style.position="relative";
           outer.style.maxWidth="100%";
-          outer.style.margin="0 auto";
+          outer.style.margin="0px";
           outer.style.overflow="visible";
           page.style.transformOrigin="top left";
           page.style.transform="scale("+scale+")";
