@@ -16,12 +16,13 @@
       fsSaveCloseWrap:{ position:"fixed", top:"18px", right:"24px", zIndex:"2147483200", display:"flex" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
-      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
-      btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
-      btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
-      toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
-      controlWrap:{ display:"inline-flex", alignItems:"center", gap:"6px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
-      controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
+      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"12px", alignItems:"stretch" },
+      tabPanelItem:{ flex:"1 1 160px", minWidth:"150px", display:"flex", flexDirection:"column", alignItems:"stretch", gap:"6px" },
+      btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui", width:"100%", textAlign:"center" },
+      btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui", width:"100%", textAlign:"center" },
+      toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui", width:"100%", textAlign:"center" },
+      controlWrap:{ display:"flex", flexDirection:"column", alignItems:"stretch", gap:"4px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
+      controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer", width:"100%" },
       controlLabel:{ font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
@@ -1802,7 +1803,12 @@
         const items=tab.items || [];
         for(let j=0;j<items.length;j++){
           const cmdBtn=createCommandButton(items[j], inst, ctx);
-          if(cmdBtn) panel.appendChild(cmdBtn);
+          if(cmdBtn){
+            const holder=document.createElement("div");
+            applyStyles(holder, WCfg.Style.tabPanelItem);
+            holder.appendChild(cmdBtn);
+            panel.appendChild(holder);
+          }
         }
         tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
         tabBtn.onkeydown=(function(idx){
