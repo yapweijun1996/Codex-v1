@@ -32,7 +32,7 @@
       modal:{ width:"100%", maxWidth:"none", height:"100%", background:"#fff", display:"flex", flexDirection:"column", borderRadius:"0", boxShadow:"none", overflow:"hidden" },
       split:{ flex:"1", minHeight:"0", display:"flex", background:"#fff" },
       left:{ flex:"1", minWidth:"0", padding:"48px 36px", display:"grid", gridTemplateColumns:"minmax(0,1fr)", gap:"28px", justifyItems:"center", alignContent:"start", background:"linear-gradient(180deg,#f6f4f3 0%,#ecebea 100%)", overflowX:"hidden", overflowY:"auto", boxSizing:"border-box" },
-      previewStage:{ display:"grid", justifyItems:"center", gap:"32px", width:"100%", maxWidth:"min(100%, "+Math.round(A4W*PREVIEW_MAX_SCALE+120)+"px)", margin:"0 auto", padding:"12px 0 48px", boxSizing:"border-box" },
+      previewStage:{ display:"grid", justifyItems:"center", gap:"32px", width:"100%", maxWidth:"min(100%, "+Math.round(A4W*PREVIEW_MAX_SCALE+120)+"px)", margin:"0", padding:"12px 0 48px", boxSizing:"border-box" },
       pageDivider:{ width:"100%", textAlign:"center", color:UI.textDim, font:"12px/1.4 Segoe UI,system-ui", borderTop:"1px dashed "+UI.borderSubtle, padding:"14px 0 0", opacity:"0.75" },
       breakMarker:{ display:"flex", alignItems:"center", justifyContent:"center", gap:"12px", margin:"18px 0", padding:"10px 12px", border:"1px dashed "+UI.borderSubtle, borderRadius:"6px", background:"#f8fbff", color:UI.brand, font:"12px/1.3 Segoe UI,system-ui", letterSpacing:".08em", textTransform:"uppercase", userSelect:"none", cursor:"default" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
