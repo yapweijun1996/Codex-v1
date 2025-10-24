@@ -1628,6 +1628,7 @@
         inst.headerAlign = headerSection.getAlign();
         inst.footerAlign = footerSection.getAlign();
         if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+        HistoryManager.record(inst, inst ? inst.el : null, { label:"Update Header & Footer", repeatable:false });
         OutputBinding.syncDebounced(inst);
         close();
       }
@@ -1879,6 +1880,7 @@
       applyStyles(area, WCfg.Style.area);
       area.innerHTML=Breaks.serialize(inst.el);
       Breaks.ensurePlaceholders(area);
+      HistoryManager.init(inst, area);
       rightWrap.appendChild(area);
       const ctx={
         area,
@@ -1890,6 +1892,7 @@
           Breaks.ensurePlaceholders(inst.el);
           area.innerHTML = clean;
           Breaks.ensurePlaceholders(area);
+          HistoryManager.record(inst, inst ? inst.el : null, { label:"Apply Fullscreen Changes", repeatable:false });
           OutputBinding.sync(inst);
           return true;
         },
@@ -1912,7 +1915,8 @@
       window.setTimeout(function(){ area.focus(); },0);
       layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensurePlaceholders(area); }, 0); });
-      let t=null; area.addEventListener("input", function(){ Breaks.ensurePlaceholders(area); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
+      let t=null; area.addEventListener("input", function(ev){ Breaks.ensurePlaceholders(area); HistoryManager.handleInput(inst, area, ev); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
+      area.addEventListener("keydown", function(ev){ HistoryManager.handleKeydown(inst, area, ev, ctx); });
       render();
       function render(attempt){
         attempt = attempt || 0;
@@ -1987,6 +1991,7 @@
         bg.style.opacity = "0";
         window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
         bg.removeAttribute("data-weditor-modal");
+        HistoryManager.detach(area);
       }
       bg.__weditorClose = cleanup;
     }
@@ -2465,6 +2470,613 @@
       outdentList
     };
   })();
+  const HistoryManager=(function(){
+    const MAX_ENTRIES=200;
+    const states=new WeakMap();
+    function makeCtx(inst, target){
+      if(!inst || !target || target===inst.el) return null;
+      return { area:target };
+    }
+    function repeatSimple(inst, target, command){
+      Formatting.applySimple(inst, makeCtx(inst, target), command);
+      return true;
+    }
+    const RepeatHandlers={
+      formatBold:function(inst, target){ return repeatSimple(inst, target, "bold"); },
+      formatItalic:function(inst, target){ return repeatSimple(inst, target, "italic"); },
+      formatUnderline:function(inst, target){ Formatting.applyUnderline(inst, makeCtx(inst, target)); return true; },
+      formatStrikeThrough:function(inst, target){ return repeatSimple(inst, target, "strikeThrough"); },
+      formatSuperscript:function(inst, target){ return repeatSimple(inst, target, "superscript"); },
+      formatSubscript:function(inst, target){ return repeatSimple(inst, target, "subscript"); },
+      formatJustifyLeft:function(inst, target){ return Formatting.applyAlign(inst, makeCtx(inst, target), "left"); },
+      formatJustifyCenter:function(inst, target){ return Formatting.applyAlign(inst, makeCtx(inst, target), "center"); },
+      formatJustifyRight:function(inst, target){ return Formatting.applyAlign(inst, makeCtx(inst, target), "right"); },
+      formatJustifyFull:function(inst, target){ return Formatting.applyAlign(inst, makeCtx(inst, target), "justify"); },
+      insertOrderedList:function(inst, target){ return Formatting.toggleList(inst, makeCtx(inst, target), "ordered"); },
+      insertUnorderedList:function(inst, target){ return Formatting.toggleList(inst, makeCtx(inst, target), "unordered"); },
+      indent:function(inst, target){ return Formatting.indentList(inst, makeCtx(inst, target)); },
+      outdent:function(inst, target){ return Formatting.outdentList(inst, makeCtx(inst, target)); },
+      highlight:function(inst, target, args){
+        if(args && Object.prototype.hasOwnProperty.call(args, "color")){
+          if(args.color){ return Formatting.applyHighlight(inst, makeCtx(inst, target), args.color); }
+          return Formatting.clearHighlight(inst, makeCtx(inst, target));
+        }
+        return Formatting.clearHighlight(inst, makeCtx(inst, target));
+      },
+      fontColor:function(inst, target, args){
+        if(args && Object.prototype.hasOwnProperty.call(args, "color")){
+          if(args.color){ return Formatting.applyFontColor(inst, makeCtx(inst, target), args.color); }
+          return Formatting.clearFontColor(inst, makeCtx(inst, target));
+        }
+        return Formatting.clearFontColor(inst, makeCtx(inst, target));
+      },
+      underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
+      fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
+      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
+    };
+    function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function cloneInstState(inst){
+      if(!inst) return null;
+      return {
+        headerEnabled: !!inst.headerEnabled,
+        footerEnabled: !!inst.footerEnabled,
+        headerHTML: inst.headerHTML,
+        footerHTML: inst.footerHTML,
+        headerAlign: inst.headerAlign,
+        footerAlign: inst.footerAlign,
+        underlineStyle: inst.underlineStyle,
+        highlightColor: inst.highlightColor,
+        fontColor: inst.fontColor
+      };
+    }
+    function applyInstState(inst, state){
+      if(!inst || !state) return;
+      inst.headerEnabled = !!state.headerEnabled;
+      inst.footerEnabled = !!state.footerEnabled;
+      inst.headerHTML = state.headerHTML;
+      inst.footerHTML = state.footerHTML;
+      inst.headerAlign = state.headerAlign;
+      inst.footerAlign = state.footerAlign;
+      inst.underlineStyle = state.underlineStyle;
+      inst.highlightColor = state.highlightColor;
+      inst.fontColor = state.fontColor;
+    }
+    function instStateEqual(a, b){
+      if(!a && !b) return true;
+      if(!a || !b) return false;
+      return a.headerEnabled===b.headerEnabled &&
+        a.footerEnabled===b.footerEnabled &&
+        a.headerHTML===b.headerHTML &&
+        a.footerHTML===b.footerHTML &&
+        a.headerAlign===b.headerAlign &&
+        a.footerAlign===b.footerAlign &&
+        a.underlineStyle===b.underlineStyle &&
+        a.highlightColor===b.highlightColor &&
+        a.fontColor===b.fontColor;
+    }
+    function sameSnapshot(a, b){
+      if(!a || !b) return false;
+      return a.html===b.html && instStateEqual(a.instState, b.instState);
+    }
+    function pathFor(root, node){
+      if(node===root) return [];
+      const path=[];
+      let current=node;
+      while(current && current!==root){
+        const parent=current.parentNode;
+        if(!parent) return null;
+        path.push(Array.prototype.indexOf.call(parent.childNodes, current));
+        current=parent;
+      }
+      if(current!==root) return null;
+      path.reverse();
+      return path;
+    }
+    function captureSelection(target){
+      if(!target || !target.ownerDocument) return null;
+      const sel=target.ownerDocument.getSelection ? target.ownerDocument.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.startContainer) || !target.contains(range.endContainer)) return null;
+      return {
+        start:{ path:pathFor(target, range.startContainer), offset:range.startOffset },
+        end:{ path:pathFor(target, range.endContainer), offset:range.endOffset }
+      };
+    }
+    function resolvePosition(root, pos){
+      if(!root || !pos) return null;
+      let node=root;
+      const path=pos.path || [];
+      for(let i=0;i<path.length;i++){
+        if(!node.childNodes || !node.childNodes[path[i]]) return null;
+        node=node.childNodes[path[i]];
+      }
+      let offset=pos.offset;
+      if(node.nodeType===3){
+        const len=node.nodeValue!=null?node.nodeValue.length:0;
+        if(offset>len) offset=len;
+        if(offset<0) offset=0;
+      } else {
+        const len=node.childNodes?node.childNodes.length:0;
+        if(offset>len) offset=len;
+        if(offset<0) offset=0;
+      }
+      return { node, offset };
+    }
+    function restoreSelection(target, stored){
+      if(!target || !stored || !target.ownerDocument || !target.ownerDocument.createRange) return;
+      const doc=target.ownerDocument;
+      const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel) return;
+      const start=resolvePosition(target, stored.start);
+      const end=resolvePosition(target, stored.end || stored.start);
+      if(!start || !end) return;
+      const range=doc.createRange();
+      try{
+        range.setStart(start.node, start.offset);
+        range.setEnd(end.node, end.offset);
+      }catch(err){ return; }
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    function createSnapshot(inst, target, label, meta){
+      const snapshot={
+        html:Breaks.serialize(target),
+        selection:captureSelection(target),
+        label:label || "Edit",
+        instState:cloneInstState(inst),
+        repeatable:null,
+        timestamp:Date.now()
+      };
+      if(meta && meta.repeatable){
+        const repeatId=meta.repeatId || meta.inputType || null;
+        if(repeatId && RepeatHandlers[repeatId]){
+          snapshot.repeatable={
+            id:repeatId,
+            args:meta.repeatArgs || null,
+            label:meta.repeatLabel || snapshot.label
+          };
+        }
+      }
+      return snapshot;
+    }
+    function ensure(target){
+      if(!target) return null;
+      let state=states.get(target);
+      if(!state){
+        state={ past:[], future:[], applying:false, ui:[], lastRepeatable:null };
+        states.set(target, state);
+      }
+      return state;
+    }
+    function getUndoItems(state){
+      const items=[];
+      if(!state || state.past.length<=1) return items;
+      for(let i=state.past.length-1;i>0;i--){
+        const snap=state.past[i];
+        items.push({ label:snap.label || "Edit", depth:state.past.length-1-i });
+      }
+      return items;
+    }
+    function closeMenu(watcher){
+      if(!watcher || !watcher.menuOpen) return;
+      watcher.menuOpen=false;
+      if(watcher.menu){
+        watcher.menu.style.display="none";
+        watcher.menu.setAttribute("aria-hidden","true");
+        watcher.menu.innerHTML="";
+      }
+      const doc=watcher.menu ? watcher.menu.ownerDocument || document : document;
+      if(watcher.docClick){ doc.removeEventListener("mousedown", watcher.docClick, true); watcher.docClick=null; }
+      if(watcher.docKey){ doc.removeEventListener("keydown", watcher.docKey); watcher.docKey=null; }
+    }
+    function renderUndoMenu(inst, target, watcher, state){
+      if(!watcher || !watcher.menu) return;
+      const menu=watcher.menu;
+      menu.innerHTML="";
+      const items=getUndoItems(state);
+      if(!items.length){
+        const empty=document.createElement("div");
+        empty.textContent="Nothing to undo";
+        empty.style.padding="6px 12px";
+        empty.style.font="12px/1.4 Segoe UI,system-ui";
+        empty.style.color=WCfg.UI.textDim;
+        menu.appendChild(empty);
+        return;
+      }
+      const max=Math.min(items.length, 20);
+      for(let i=0;i<max;i++){
+        const item=items[i];
+        const btn=document.createElement("button");
+        btn.type="button";
+        btn.setAttribute("role","menuitem");
+        btn.textContent="Undo "+item.label;
+        btn.style.display="block";
+        btn.style.width="100%";
+        btn.style.textAlign="left";
+        btn.style.padding="6px 12px";
+        btn.style.border="0";
+        btn.style.background="transparent";
+        btn.style.font="12px/1.4 Segoe UI,system-ui";
+        btn.style.color=WCfg.UI.text;
+        btn.style.cursor="pointer";
+        btn.onmouseenter=function(){ btn.style.background=WCfg.UI.canvas; };
+        btn.onmouseleave=function(){ btn.style.background="transparent"; };
+        btn.addEventListener("click", function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          const changed=undo(inst, target, item.depth+1);
+          closeMenu(watcher);
+          if(changed && watcher.ctx && watcher.ctx.refreshPreview) watcher.ctx.refreshPreview();
+        });
+        btn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); closeMenu(watcher); if(watcher.dropdown) watcher.dropdown.focus(); } });
+        menu.appendChild(btn);
+      }
+    }
+    function openMenu(inst, target, watcher, state){
+      if(!watcher || !watcher.menu || watcher.menuOpen) return;
+      renderUndoMenu(inst, target, watcher, state);
+      watcher.menuOpen=true;
+      watcher.menu.style.display="flex";
+      watcher.menu.style.flexDirection="column";
+      watcher.menu.setAttribute("aria-hidden","false");
+      const doc=watcher.menu.ownerDocument || document;
+      watcher.docClick=function(e){ if(!watcher.container || !watcher.container.contains(e.target)){ closeMenu(watcher); } };
+      watcher.docKey=function(e){ if(e.key==="Escape"){ closeMenu(watcher); if(watcher.dropdown) watcher.dropdown.focus(); } };
+      doc.addEventListener("mousedown", watcher.docClick, true);
+      doc.addEventListener("keydown", watcher.docKey);
+      window.setTimeout(function(){ const first=watcher.menu.querySelector("button"); if(first) first.focus(); },0);
+    }
+    function updateUI(target){
+      const state=ensure(target);
+      if(!state) return;
+      const canUndo=state.past.length>1;
+      const canRedo=state.future.length>0;
+      const repeatable=(!canRedo && state.lastRepeatable && RepeatHandlers[state.lastRepeatable.id]) ? state.lastRepeatable : null;
+      for(let i=0;i<state.ui.length;i++){
+        const watcher=state.ui[i];
+        if(watcher.type==="undo"){
+          if(watcher.primary){
+            watcher.primary.disabled=!canUndo;
+            watcher.primary.setAttribute("aria-disabled", canUndo?"false":"true");
+            watcher.primary.style.opacity=canUndo?"1":"0.5";
+          }
+          if(watcher.dropdown){
+            watcher.dropdown.disabled=!canUndo;
+            watcher.dropdown.setAttribute("aria-disabled", canUndo?"false":"true");
+            watcher.dropdown.style.opacity=canUndo?"1":"0.5";
+          }
+          if(!canUndo) closeMenu(watcher);
+          if(watcher.menuOpen) renderUndoMenu(watcher.inst, watcher.target, watcher, state);
+        } else if(watcher.type==="redo" && watcher.button){
+          const mode=canRedo ? "redo" : (repeatable ? "repeat" : "redo");
+          watcher.mode=mode;
+          watcher.button.disabled=!(canRedo || repeatable);
+          watcher.button.setAttribute("aria-disabled", watcher.button.disabled?"true":"false");
+          watcher.button.style.opacity=watcher.button.disabled?"0.5":"1";
+          if(watcher.icon && watcher.label){
+            watcher.icon.textContent = mode==="redo" ? "↷" : "⟳";
+            watcher.label.textContent = mode==="redo" ? "Redo" : "Repeat";
+          }
+          if(mode==="redo") watcher.button.title="Redo (Ctrl+Y / Cmd+Y)";
+          else if(repeatable) watcher.button.title="Repeat last command (F4)";
+          else watcher.button.title="Redo (Ctrl+Y / Cmd+Y)";
+        }
+      }
+    }
+    const INPUT_LABELS={
+      insertText:{ label:"Typing" },
+      insertParagraph:{ label:"Insert Paragraph" },
+      insertLineBreak:{ label:"Insert Line Break" },
+      insertFromPaste:{ label:"Paste" },
+      insertFromDrop:{ label:"Drop" },
+      deleteContentBackward:{ label:"Delete Backward" },
+      deleteContentForward:{ label:"Delete Forward" },
+      deleteByCut:{ label:"Cut" },
+      formatBold:{ label:"Bold", repeatable:true, repeatId:"formatBold" },
+      formatItalic:{ label:"Italic", repeatable:true, repeatId:"formatItalic" },
+      formatUnderline:{ label:"Underline", repeatable:true, repeatId:"formatUnderline" },
+      formatStrikeThrough:{ label:"Strikethrough", repeatable:true, repeatId:"formatStrikeThrough" },
+      formatSuperscript:{ label:"Superscript", repeatable:true, repeatId:"formatSuperscript" },
+      formatSubscript:{ label:"Subscript", repeatable:true, repeatId:"formatSubscript" },
+      formatJustifyFull:{ label:"Justify", repeatable:true, repeatId:"formatJustifyFull" },
+      formatJustifyCenter:{ label:"Align Center", repeatable:true, repeatId:"formatJustifyCenter" },
+      formatJustifyLeft:{ label:"Align Left", repeatable:true, repeatId:"formatJustifyLeft" },
+      formatJustifyRight:{ label:"Align Right", repeatable:true, repeatId:"formatJustifyRight" },
+      insertOrderedList:{ label:"Numbered List", repeatable:true, repeatId:"insertOrderedList" },
+      insertUnorderedList:{ label:"Bulleted List", repeatable:true, repeatId:"insertUnorderedList" },
+      indent:{ label:"Increase Indent", repeatable:true, repeatId:"indent" },
+      outdent:{ label:"Decrease Indent", repeatable:true, repeatId:"outdent" },
+      removeFormat:{ label:"Clear Formatting" }
+    };
+    function fallbackLabelFromInput(type){
+      if(!type) return { label:"Edit" };
+      if(type.indexOf("delete")==0) return { label:"Delete" };
+      if(type.indexOf("insert")==0) return { label:"Insert" };
+      if(type.indexOf("format")==0){
+        const friendly=type.replace(/^format/, "").replace(/([A-Z])/g, " $1").trim();
+        return { label:friendly?friendly:"Format" };
+      }
+      return { label:"Edit" };
+    }
+    function metaFromInput(ev){
+      const type=ev && ev.inputType ? ev.inputType : "";
+      const base=INPUT_LABELS[type] || fallbackLabelFromInput(type);
+      const meta={
+        label:base.label,
+        repeatable:!!base.repeatable,
+        repeatId:base.repeatId || (base.repeatable ? type : null)
+      };
+      if(!RepeatHandlers[meta.repeatId]){ meta.repeatable=false; meta.repeatId=null; }
+      return meta;
+    }
+    function init(inst, target){
+      const state=ensure(target);
+      if(!state) return;
+      state.past=[];
+      state.future=[];
+      state.lastRepeatable=null;
+      const snapshot=createSnapshot(inst, target, "Initial State", { repeatable:false });
+      state.past.push(snapshot);
+      updateUI(target);
+    }
+    function detach(target){
+      const state=states.get(target);
+      if(!state) return;
+      for(let i=0;i<state.ui.length;i++){ closeMenu(state.ui[i]); }
+      states.delete(target);
+    }
+    function record(inst, target, meta){
+      const state=ensure(target);
+      if(!state || state.applying) return false;
+      const snapshot=createSnapshot(inst, target, meta && meta.label ? meta.label : "Edit", meta);
+      const last=state.past[state.past.length-1];
+      if(last && sameSnapshot(last, snapshot)){
+        if(meta && meta.repeatable && meta.repeatId && RepeatHandlers[meta.repeatId]){
+          state.lastRepeatable={ id:meta.repeatId, args:meta.repeatArgs||null, label:meta.repeatLabel || snapshot.label };
+        } else if(meta && meta.repeatable===false){
+          state.lastRepeatable=null;
+        }
+        updateUI(target);
+        return false;
+      }
+      state.past.push(snapshot);
+      if(state.past.length>MAX_ENTRIES) state.past.shift();
+      state.future=[];
+      state.lastRepeatable = snapshot.repeatable ? { id:snapshot.repeatable.id, args:snapshot.repeatable.args, label:snapshot.repeatable.label } : null;
+      updateUI(target);
+      return true;
+    }
+    function applySnapshot(inst, target, snapshot){
+      const state=ensure(target);
+      if(!state || !snapshot) return;
+      state.applying=true;
+      target.innerHTML=snapshot.html;
+      Breaks.ensurePlaceholders(target);
+      state.applying=false;
+      applyInstState(inst, snapshot.instState);
+      if(inst && target===inst.el) OutputBinding.syncDebounced(inst);
+      window.requestAnimationFrame(function(){
+        if(target && typeof target.focus==="function"){
+          try{ target.focus({ preventScroll:true }); }
+          catch(err){ target.focus(); }
+        }
+        restoreSelection(target, snapshot.selection);
+      });
+    }
+    function undo(inst, target, steps){
+      const state=states.get(target);
+      if(!state || state.past.length<=1) return false;
+      const count=Math.max(1, Math.min(steps||1, state.past.length-1));
+      for(let i=0;i<count;i++){
+        const current=state.past.pop();
+        state.future.push(current);
+        if(state.future.length>MAX_ENTRIES) state.future.shift();
+      }
+      const snapshot=state.past[state.past.length-1];
+      applySnapshot(inst, target, snapshot);
+      state.lastRepeatable = snapshot && snapshot.repeatable ? { id:snapshot.repeatable.id, args:snapshot.repeatable.args, label:snapshot.repeatable.label } : null;
+      updateUI(target);
+      return true;
+    }
+    function redo(inst, target){
+      const state=states.get(target);
+      if(!state || !state.future.length) return false;
+      const snapshot=state.future.pop();
+      state.past.push(snapshot);
+      applySnapshot(inst, target, snapshot);
+      state.lastRepeatable = snapshot && snapshot.repeatable ? { id:snapshot.repeatable.id, args:snapshot.repeatable.args, label:snapshot.repeatable.label } : null;
+      updateUI(target);
+      return true;
+    }
+    function repeat(inst, target){
+      const state=states.get(target);
+      if(!state || !state.lastRepeatable) return false;
+      const handler=RepeatHandlers[state.lastRepeatable.id];
+      if(!handler) return false;
+      const result=handler(inst, target, state.lastRepeatable.args);
+      if(result===false) return false;
+      return true;
+    }
+    function handleInput(inst, target, ev){
+      const state=ensure(target);
+      if(!state || state.applying) return;
+      if(ev && (ev.inputType==="historyUndo" || ev.inputType==="historyRedo")) return;
+      const meta=metaFromInput(ev);
+      record(inst, target, meta);
+    }
+    function handleKeydown(inst, target, ev, ctx){
+      if(!ev) return false;
+      const isMod=ev.ctrlKey || ev.metaKey;
+      if(isMod && !ev.altKey){
+        const key=String(ev.key||"").toLowerCase();
+        if(key==="z"){
+          ev.preventDefault();
+          const changed=ev.shiftKey ? redo(inst, target) : undo(inst, target);
+          if(changed && ctx && ctx.refreshPreview) ctx.refreshPreview();
+          return changed;
+        }
+        if(key==="y"){
+          ev.preventDefault();
+          const changed=redo(inst, target);
+          if(changed && ctx && ctx.refreshPreview) ctx.refreshPreview();
+          return changed;
+        }
+      }
+      if(ev.key==="F4"){
+        const ok=repeat(inst, target);
+        if(ok){
+          ev.preventDefault();
+          if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+        }
+        return ok;
+      }
+      return false;
+    }
+    function registerUndo(inst, target, refs){
+      const state=ensure(target);
+      if(!state) return null;
+      const watcher={
+        type:"undo",
+        inst,
+        target,
+        ctx:refs && refs.ctx ? refs.ctx : null,
+        container:refs && refs.container ? refs.container : null,
+        primary:refs && refs.primary ? refs.primary : null,
+        dropdown:refs && refs.dropdown ? refs.dropdown : null,
+        menu:refs && refs.menu ? refs.menu : null,
+        menuOpen:false,
+        docClick:null,
+        docKey:null
+      };
+      state.ui.push(watcher);
+      updateUI(target);
+      return watcher;
+    }
+    function registerRedo(inst, target, refs){
+      const state=ensure(target);
+      if(!state) return null;
+      const watcher={
+        type:"redo",
+        inst,
+        target,
+        ctx:refs && refs.ctx ? refs.ctx : null,
+        button:refs && refs.button ? refs.button : null,
+        icon:refs && refs.icon ? refs.icon : null,
+        label:refs && refs.label ? refs.label : null,
+        mode:"redo"
+      };
+      state.ui.push(watcher);
+      updateUI(target);
+      return watcher;
+    }
+    function toggleUndoMenu(inst, target, watcher){
+      const state=states.get(target);
+      if(!state || !watcher) return;
+      if(watcher.menuOpen) closeMenu(watcher);
+      else openMenu(inst, target, watcher, state);
+    }
+    function getUndoHistory(target){
+      const state=states.get(target);
+      if(!state) return [];
+      return getUndoItems(state);
+    }
+    return { resolveTarget, init, detach, record, undo, redo, repeat, handleInput, handleKeydown, registerUndo, registerRedo, toggleUndoMenu, getUndoHistory };
+  })();
+  const HistoryUI=(function(){
+    function createUndo(inst, ctx){
+      const target=HistoryManager.resolveTarget(inst, ctx);
+      const wrap=document.createElement("div");
+      wrap.style.position="relative";
+      wrap.style.display="inline-flex";
+      wrap.style.alignItems="stretch";
+      wrap.style.gap="0";
+      const primary=WDom.btn("", false, "Undo (Ctrl+Z / Cmd+Z)");
+      primary.textContent="";
+      primary.style.display="inline-flex";
+      primary.style.alignItems="center";
+      primary.style.gap="6px";
+      primary.style.borderTopRightRadius="0";
+      primary.style.borderBottomRightRadius="0";
+      const icon=document.createElement("span");
+      icon.setAttribute("aria-hidden","true");
+      icon.textContent="↶";
+      icon.style.fontSize="16px";
+      const label=document.createElement("span");
+      label.textContent="Undo";
+      label.style.fontWeight="600";
+      primary.appendChild(icon);
+      primary.appendChild(label);
+      const dropdown=WDom.btn("▼", false, "Undo history");
+      dropdown.style.borderTopLeftRadius="0";
+      dropdown.style.borderBottomLeftRadius="0";
+      dropdown.style.borderLeft="0";
+      dropdown.style.minWidth="34px";
+      dropdown.style.padding="0 10px";
+      dropdown.style.display="inline-flex";
+      dropdown.style.alignItems="center";
+      dropdown.style.justifyContent="center";
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 4px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 12px 24px rgba(0,0,0,.12)";
+      menu.style.minWidth="180px";
+      menu.style.padding="6px 0";
+      menu.style.zIndex="30";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      wrap.appendChild(primary);
+      wrap.appendChild(dropdown);
+      wrap.appendChild(menu);
+      const watcher=HistoryManager.registerUndo(inst, target, { container:wrap, primary, dropdown, menu, ctx });
+      primary.addEventListener("click", function(e){
+        e.preventDefault();
+        const changed=HistoryManager.undo(inst, target);
+        if(changed && ctx && ctx.refreshPreview) ctx.refreshPreview();
+      });
+      dropdown.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        HistoryManager.toggleUndoMenu(inst, target, watcher);
+      });
+      menu.addEventListener("click", function(e){ e.stopPropagation(); });
+      return wrap;
+    }
+    function createRedo(inst, ctx){
+      const target=HistoryManager.resolveTarget(inst, ctx);
+      const btn=WDom.btn("", false, "Redo (Ctrl+Y / Cmd+Y)");
+      btn.style.display="inline-flex";
+      btn.style.alignItems="center";
+      btn.style.gap="6px";
+      const icon=document.createElement("span");
+      icon.setAttribute("aria-hidden","true");
+      icon.textContent="↷";
+      icon.style.fontSize="16px";
+      const label=document.createElement("span");
+      label.textContent="Redo";
+      label.style.fontWeight="600";
+      btn.appendChild(icon);
+      btn.appendChild(label);
+      const watcher=HistoryManager.registerRedo(inst, target, { button:btn, icon, label, ctx });
+      btn.addEventListener("click", function(e){
+        e.preventDefault();
+        if(watcher.mode==="redo"){
+          const changed=HistoryManager.redo(inst, target);
+          if(changed && ctx && ctx.refreshPreview) ctx.refreshPreview();
+        } else if(watcher.mode==="repeat"){
+          const ok=HistoryManager.repeat(inst, target);
+          if(ok && ctx && ctx.refreshPreview) ctx.refreshPreview();
+        }
+      });
+      return btn;
+    }
+    return { createUndo, createRedo };
+  })();
   const ListUI=(function(){
     function createSplitButton(options){
       const container=document.createElement("div");
@@ -2856,6 +3468,14 @@
           updatePreview(currentColor);
           updateSelectionUI(currentColor);
           updateAutomaticState(currentColor);
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, {
+            label:value ? "Font Color" : "Clear Font Color",
+            repeatable:true,
+            repeatId:"fontColor",
+            repeatArgs:{ color:value || null },
+            repeatLabel:value ? "Font Color" : "Clear Font Color"
+          });
           if(inst) OutputBinding.syncDebounced(inst);
         }
       }
@@ -3086,6 +3706,14 @@
           updatePreview(currentColor);
           updateSelectionUI(currentColor);
           updateNoColorState(currentColor);
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, {
+            label:value ? "Highlight" : "Remove Highlight",
+            repeatable:true,
+            repeatId:"highlight",
+            repeatArgs:{ color:value || null },
+            repeatLabel:value ? "Highlight" : "Remove Highlight"
+          });
           if(inst) OutputBinding.syncDebounced(inst);
         }
       }
@@ -3197,6 +3825,16 @@
     btn.appendChild(icon);
   }
   const Commands={
+    "history.undo":{
+      kind:"custom",
+      ariaLabel:"Undo (Ctrl+Z / Cmd+Z)",
+      render:function(inst, ctx){ return HistoryUI.createUndo(inst, ctx); }
+    },
+    "history.redo":{
+      kind:"custom",
+      ariaLabel:"Redo or Repeat (Ctrl+Y / Cmd+Y / F4)",
+      render:function(inst, ctx){ return HistoryUI.createRedo(inst, ctx); }
+    },
     "format.fontFamily":{
       label:"Font",
       kind:"select",
@@ -3207,6 +3845,14 @@
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
         if(!value) return;
         Formatting.applyFontFamily(inst, arg && arg.ctx, value);
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Font Family",
+          repeatable:true,
+          repeatId:"fontFamily",
+          repeatArgs:{ value:value },
+          repeatLabel:"Font Family"
+        });
         OutputBinding.syncDebounced(inst);
       }
     },
@@ -3220,6 +3866,14 @@
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
         if(!value) return;
         Formatting.applyFontSize(inst, arg && arg.ctx, value);
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Font Size",
+          repeatable:true,
+          repeatId:"fontSize",
+          repeatArgs:{ value:value },
+          repeatLabel:"Font Size"
+        });
         OutputBinding.syncDebounced(inst);
       }
     },
@@ -3264,6 +3918,14 @@
         if(!value) return;
         inst.underlineStyle = value;
         Formatting.applyDecorationStyle(inst, arg && arg.ctx, value);
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Underline Style",
+          repeatable:true,
+          repeatId:"underlineStyle",
+          repeatArgs:{ style:value },
+          repeatLabel:"Underline Style"
+        });
         OutputBinding.syncDebounced(inst);
       }
     },
@@ -3348,15 +4010,36 @@
     },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
-      run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
+      run:function(inst, arg){
+        const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
+        Breaks.insert(target);
+        HistoryManager.record(inst, target, { label:"Insert Page Break", repeatable:false });
+        if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview();
+        OutputBinding.syncDebounced(inst);
+      } },
     "break.remove":{ label:"Remove Break", kind:"button", ariaLabel:"Remove page break",
-      run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; if(Breaks.remove(target)){ if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } } },
+      run:function(inst, arg){
+        const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
+        if(Breaks.remove(target)){
+          HistoryManager.record(inst, target, { label:"Remove Page Break", repeatable:false });
+          if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview();
+          OutputBinding.syncDebounced(inst);
+        }
+      } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
-      run:function(inst){ inst.headerEnabled = !inst.headerEnabled; OutputBinding.syncDebounced(inst); } },
+      run:function(inst){
+        inst.headerEnabled = !inst.headerEnabled;
+        HistoryManager.record(inst, inst ? inst.el : null, { label:inst.headerEnabled ? "Enable Header" : "Disable Header", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      } },
     "toggle.footer":{ label:"Footer", kind:"toggle", ariaLabel:"Toggle footer", getActive:function(inst){ return !!inst.footerEnabled; },
-      run:function(inst){ inst.footerEnabled = !inst.footerEnabled; OutputBinding.syncDebounced(inst); } },
+      run:function(inst){
+        inst.footerEnabled = !inst.footerEnabled;
+        HistoryManager.record(inst, inst ? inst.el : null, { label:inst.footerEnabled ? "Enable Footer" : "Disable Footer", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
     "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
@@ -3367,7 +4050,7 @@
     idPrefix:"weditor-page",
     tabs:[
       { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
-      { id:"editing", label:"Editing", items:["break.insert","break.remove","hf.edit"] },
+      { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
     ],
@@ -3377,7 +4060,7 @@
     idPrefix:"weditor-fs",
     tabs:[
       { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
-      { id:"editing", label:"Editing", items:["hf.edit","break.insert","break.remove","reflow"] },
+      { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
@@ -3412,7 +4095,9 @@
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
-    this.el.addEventListener("input", (function(self){ return function(){ Breaks.ensurePlaceholders(self.el); OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
+    HistoryManager.init(this, this.el);
     this.el.__winst = this;
   };
   const WEditor=(function(){
