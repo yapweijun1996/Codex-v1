@@ -1686,7 +1686,427 @@
     }
     return { resolve, sync, syncDebounced };
   })();
+  const History=(function(){
+    const MAX_ENTRIES=200;
+    const store=new WeakMap();
+    function ensureState(target){
+      if(!target) return null;
+      let state=store.get(target);
+      if(!state){
+        state={
+          stack:[],
+          index:-1,
+          applying:false,
+          pending:null,
+          lastCommand:null,
+          initialized:false,
+          listeners:new Set(),
+          inst:null,
+          ctx:null,
+          onBeforeSnapshot:null,
+          onAfterApply:null
+        };
+        store.set(target, state);
+      }
+      return state;
+    }
+    function captureSelection(target){
+      const selection=window.getSelection();
+      if(!selection || selection.rangeCount===0) return null;
+      const range=selection.getRangeAt(0);
+      if(!target.contains(range.startContainer) || !target.contains(range.endContainer)) return null;
+      const startRange=range.cloneRange();
+      startRange.selectNodeContents(target);
+      startRange.setEnd(range.startContainer, range.startOffset);
+      const endRange=range.cloneRange();
+      endRange.selectNodeContents(target);
+      endRange.setEnd(range.endContainer, range.endOffset);
+      return { start:startRange.toString().length, end:endRange.toString().length };
+    }
+    function restoreSelection(target, saved){
+      if(!saved) return;
+      const doc=target.ownerDocument || document;
+      const range=doc.createRange();
+      const selection=window.getSelection();
+      function locate(offset){
+        let remaining=Math.max(0, offset);
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_TEXT, null, false);
+        let node=null;
+        while((node=walker.nextNode())){
+          const len=node.textContent.length;
+          if(remaining<=len){
+            return { node, offset:remaining };
+          }
+          remaining-=len;
+        }
+        return { node:target, offset:target.childNodes.length };
+      }
+      const startPos=locate(saved.start);
+      const endPos=locate(saved.end);
+      if(startPos.node){
+        range.setStart(startPos.node, Math.min(startPos.offset, startPos.node.textContent.length));
+      } else {
+        range.setStart(target, target.childNodes.length);
+      }
+      if(endPos.node){
+        range.setEnd(endPos.node, Math.min(endPos.offset, endPos.node.textContent.length));
+      } else {
+        range.setEnd(target, target.childNodes.length);
+      }
+      if(selection){
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+    function applyDefaults(state){
+      if(!state.onBeforeSnapshot){ state.onBeforeSnapshot=function(target){ Breaks.ensurePlaceholders(target); }; }
+      if(!state.onAfterApply){
+        state.onAfterApply=function(target){
+          Breaks.ensurePlaceholders(target);
+          if(state.ctx && typeof state.ctx.refreshPreview==="function"){ state.ctx.refreshPreview(); }
+          if(state.inst){ OutputBinding.syncDebounced(state.inst); }
+        };
+      }
+    }
+    function createSnapshot(target, state){
+      if(state.onBeforeSnapshot){ state.onBeforeSnapshot(target); }
+      return { html:target.innerHTML, selection:captureSelection(target) };
+    }
+    function applySnapshot(target, state, snapshot){
+      state.applying=true;
+      target.innerHTML=snapshot.html;
+      if(state.onBeforeSnapshot){ state.onBeforeSnapshot(target); }
+      if(snapshot.selection) restoreSelection(target, snapshot.selection);
+      state.applying=false;
+      if(state.onAfterApply){ state.onAfterApply(target); }
+    }
+    function trimHistory(state){
+      if(state.stack.length>MAX_ENTRIES){
+        state.stack.shift();
+        if(state.index>0) state.index--;
+      }
+    }
+    function getStatus(target){
+      const state=ensureState(target);
+      if(!state){ return { canUndo:false, canRedo:false, undoItems:[], redoLabel:"Redo", redoEnabled:false, redoHint:"" }; }
+      const canUndo=state.index>0;
+      const canRedo=state.index < state.stack.length-1;
+      const undoItems=[];
+      if(canUndo){
+        for(let i=state.index; i>0; i--){
+          const entry=state.stack[i];
+          const steps=state.index - (i-1);
+          undoItems.push({ steps, label:entry && entry.label ? entry.label : "Change" });
+          if(undoItems.length>=20) break;
+        }
+      }
+      const redoLabel=canRedo ? "Redo" : "Repeat";
+      const redoEnabled=canRedo || !!(state.lastCommand && typeof state.lastCommand.repeat==="function");
+      const redoHint=canRedo ? ((state.stack[state.index+1] && state.stack[state.index+1].label) || "") : (state.lastCommand ? state.lastCommand.label : "");
+      return { canUndo, canRedo, undoItems, redoLabel, redoEnabled, redoHint };
+    }
+    function emit(target){
+      const state=ensureState(target); if(!state) return;
+      const status=getStatus(target);
+      state.listeners.forEach(function(listener){ try{ listener(status); } catch(err){} });
+    }
+    function init(target, options){
+      const state=ensureState(target); if(!state) return;
+      if(options){
+        if(options.inst) state.inst=options.inst;
+        if(typeof options.ctx!=='undefined') state.ctx=options.ctx;
+        if(typeof options.onBeforeSnapshot==="function") state.onBeforeSnapshot=options.onBeforeSnapshot;
+        if(typeof options.onAfterApply==="function") state.onAfterApply=options.onAfterApply;
+      }
+      applyDefaults(state);
+      if(state.initialized) return;
+      state.initialized=true;
+      const snapshot=createSnapshot(target, state);
+      state.stack=[{ snapshot, label:"Initial", repeatable:false, repeat:null, mergeKey:null, ts:Date.now() }];
+      state.index=0;
+      emit(target);
+    }
+    function capture(target, options){
+      const state=ensureState(target); if(!state) return;
+      if(!state.initialized) init(target, options && options.initOptions ? options.initOptions : {});
+      if(state.applying) return;
+      if(state.pending){ window.clearTimeout(state.pending); state.pending=null; }
+      applyDefaults(state);
+      const now=Date.now();
+      const label=(options && options.label) || "Change";
+      const mergeKey=options && options.mergeKey;
+      const mergeMs=typeof options!=="undefined" && options && typeof options.mergeMs==="number" ? options.mergeMs : 1200;
+      const repeatable=!!(options && typeof options.repeat==="function" && options.repeatable!==false);
+      const repeatFn=(options && typeof options.repeat==="function") ? options.repeat : null;
+      if(state.index < state.stack.length-1){ state.stack=state.stack.slice(0, state.index+1); }
+      const snapshot=createSnapshot(target, state);
+      const current=state.stack[state.index];
+      if(current && current.snapshot && current.snapshot.html===snapshot.html){
+        if(repeatable){ state.lastCommand = { label, repeat:repeatFn }; }
+        emit(target);
+        return;
+      }
+      if(mergeKey && current && current.mergeKey===mergeKey && now - current.ts <= mergeMs){
+        current.snapshot=snapshot;
+        current.label=label;
+        current.ts=now;
+        current.repeatable=repeatable;
+        current.repeat=repeatFn;
+      } else {
+        state.stack.push({ snapshot, label, repeatable, repeat:repeatFn, mergeKey, ts:now });
+        trimHistory(state);
+        state.index=state.stack.length-1;
+      }
+      state.lastCommand = repeatable ? { label, repeat:repeatFn } : null;
+      emit(target);
+    }
+    function scheduleInputCapture(target, label){
+      const state=ensureState(target); if(!state) return;
+      if(state.applying) return;
+      if(state.pending){ window.clearTimeout(state.pending); }
+      state.pending=window.setTimeout(function(){ state.pending=null; capture(target, { label:label||"Typing", mergeKey:"typing" }); }, 360);
+    }
+    function handleInput(target, event){
+      if(event && event.inputType && /^history/i.test(event.inputType)) return;
+      scheduleInputCapture(target, event && /^delete/i.test(event.inputType||"") ? "Delete" : "Typing");
+    }
+    function setIndex(target, index){
+      const state=ensureState(target); if(!state) return false;
+      if(index<0) index=0;
+      if(index>=state.stack.length) index=state.stack.length-1;
+      if(index===state.index) return false;
+      state.index=index;
+      const entry=state.stack[state.index];
+      applySnapshot(target, state, entry.snapshot);
+      state.lastCommand=null;
+      emit(target);
+      return true;
+    }
+    function undo(target, steps){
+      const state=ensureState(target); if(!state || state.index<=0) return false;
+      const nextIndex=Math.max(0, state.index - (steps||1));
+      return setIndex(target, nextIndex);
+    }
+    function redo(target){
+      const state=ensureState(target); if(!state || state.index>=state.stack.length-1) return false;
+      const newIndex=state.index+1;
+      const success=setIndex(target, newIndex);
+      if(success){
+        const entry=state.stack[newIndex];
+        state.lastCommand = (entry && entry.repeatable && typeof entry.repeat==="function") ? { label:entry.label, repeat:entry.repeat } : null;
+      }
+      return success;
+    }
+    function repeat(target){
+      const state=ensureState(target); if(!state) return false;
+      if(state.index < state.stack.length-1){
+        return redo(target);
+      }
+      if(state.lastCommand && typeof state.lastCommand.repeat==="function"){
+        state.lastCommand.repeat({ target, inst:state.inst, ctx:state.ctx });
+        capture(target, { label:state.lastCommand.label, repeatable:true, repeat:state.lastCommand.repeat });
+        return true;
+      }
+      return false;
+    }
+    function subscribe(target, listener){
+      const state=ensureState(target); if(!state || typeof listener!=="function") return function(){};
+      state.listeners.add(listener);
+      listener(getStatus(target));
+      return function(){ state.listeners.delete(listener); };
+    }
+    return { init, capture, handleInput, undo, redo, repeat, subscribe, getStatus, ensureState };
+  })();
+  const HistoryUI=(function(){
+    function getTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function createUndo(inst, ctx){
+      const target=getTarget(inst, ctx);
+      if(!target) return null;
+      History.init(target);
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      container.style.gap="0";
+      const main=WDom.btn("Undo", false, "Undo (Ctrl+Z / Cmd+Z)");
+      main.setAttribute("aria-label","Undo (Ctrl+Z / Cmd+Z)");
+      main.style.display="inline-flex";
+      main.style.alignItems="center";
+      main.style.justifyContent="center";
+      main.style.gap="6px";
+      main.style.borderTopRightRadius="0";
+      main.style.borderBottomRightRadius="0";
+      const mainIcon=document.createElement("span");
+      mainIcon.textContent="↶";
+      mainIcon.style.fontSize="16px";
+      mainIcon.style.lineHeight="1";
+      mainIcon.setAttribute("aria-hidden","true");
+      const mainLabel=document.createElement("span");
+      mainLabel.textContent="Undo";
+      mainLabel.style.fontSize="13px";
+      main.textContent="";
+      main.appendChild(mainIcon);
+      main.appendChild(mainLabel);
+      const caret=document.createElement("button"); caret.type="button";
+      applyStyles(caret, WCfg.Style.btn);
+      caret.textContent="▼";
+      caret.style.fontSize="11px";
+      caret.style.lineHeight="1";
+      caret.style.minWidth="28px";
+      caret.style.padding="0 10px";
+      caret.style.borderTopLeftRadius="0";
+      caret.style.borderBottomLeftRadius="0";
+      caret.style.marginLeft="-1px";
+      caret.setAttribute("aria-label","Undo history");
+      caret.setAttribute("title","Undo history");
+      caret.setAttribute("aria-haspopup","true");
+      caret.setAttribute("aria-expanded","false");
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 4px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.minWidth="200px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="6px";
+      menu.style.zIndex="40";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const doc=container.ownerDocument || document;
+      let open=false;
+      let currentStatus=null;
+      function buildMenu(){
+        menu.innerHTML="";
+        if(!currentStatus || !currentStatus.undoItems.length){
+          const empty=document.createElement("div");
+          empty.textContent="No actions";
+          empty.style.padding="8px 12px";
+          empty.style.font="12px/1.4 Segoe UI,system-ui";
+          empty.style.color=WCfg.UI.textDim;
+          menu.appendChild(empty);
+          return;
+        }
+        for(let i=0;i<currentStatus.undoItems.length;i++){
+          const item=currentStatus.undoItems[i];
+          const btn=document.createElement("button");
+          btn.type="button";
+          btn.setAttribute("role","menuitem");
+          btn.textContent=item.label || "Change";
+          btn.style.display="block";
+          btn.style.width="100%";
+          btn.style.textAlign="left";
+          btn.style.padding="8px 12px";
+          btn.style.border="0";
+          btn.style.background="transparent";
+          btn.style.cursor="pointer";
+          btn.style.font="13px/1.3 Segoe UI,system-ui";
+          btn.style.color=WCfg.UI.text;
+          btn.addEventListener("mouseenter", function(){ btn.style.background="#f3f2f1"; });
+          btn.addEventListener("mouseleave", function(){ btn.style.background="transparent"; });
+          btn.addEventListener("click", function(e){ e.preventDefault(); History.undo(target, item.steps); setOpen(false); });
+          btn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); caret.focus(); } });
+          menu.appendChild(btn);
+        }
+      }
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        menu.style.display=open?"flex":"none";
+        menu.setAttribute("aria-hidden", open?"false":"true");
+        caret.setAttribute("aria-expanded", open?"true":"false");
+        if(open){
+          buildMenu();
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){ const first=menu.querySelector("button"); if(first) first.focus(); }, 0);
+        } else {
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); caret.focus(); } }
+      main.addEventListener("click", function(e){ e.preventDefault(); if(main.disabled) return; History.undo(target, 1); setOpen(false); });
+      caret.addEventListener("click", function(e){ e.preventDefault(); if(caret.disabled) return; setOpen(!open); });
+      caret.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); if(caret.disabled) return; setOpen(true); } });
+      History.subscribe(target, function(status){
+        currentStatus=status;
+        const hasUndo=!!(status && status.canUndo);
+        main.disabled=!hasUndo;
+        caret.disabled=!hasUndo;
+        if(!hasUndo){ setOpen(false); }
+        const hint=(status && status.undoItems && status.undoItems.length) ? status.undoItems[0].label : "";
+        const tooltip=hint ? "Undo "+hint+" (Ctrl+Z / Cmd+Z)" : "Undo (Ctrl+Z / Cmd+Z)";
+        main.title=tooltip;
+        main.setAttribute("aria-label", tooltip);
+      });
+      container.appendChild(main);
+      container.appendChild(caret);
+      container.appendChild(menu);
+      return container;
+    }
+    function createRedo(inst, ctx){
+      const target=getTarget(inst, ctx);
+      if(!target) return null;
+      History.init(target);
+      const btn=WDom.btn("Redo", false, "Redo (Ctrl+Y / Cmd+Y)");
+      btn.style.display="inline-flex";
+      btn.style.alignItems="center";
+      btn.style.justifyContent="center";
+      btn.style.gap="6px";
+      const icon=document.createElement("span");
+      icon.textContent="↷";
+      icon.style.fontSize="16px";
+      icon.style.lineHeight="1";
+      icon.setAttribute("aria-hidden","true");
+      const label=document.createElement("span");
+      label.textContent="Redo";
+      label.style.fontSize="13px";
+      btn.textContent="";
+      btn.appendChild(icon);
+      btn.appendChild(label);
+      let currentStatus=null;
+      History.subscribe(target, function(status){
+        currentStatus=status;
+        label.textContent=status.redoLabel;
+        const hint=status.redoHint ? ": "+status.redoHint : "";
+        if(status.redoLabel==="Redo"){
+          const tooltip="Redo"+hint+" (Ctrl+Y / Cmd+Y)";
+          btn.title=tooltip; btn.setAttribute("aria-label", tooltip);
+        } else {
+          const tooltip="Repeat"+hint+" (F4)";
+          btn.title=tooltip; btn.setAttribute("aria-label", tooltip);
+        }
+        btn.disabled=!status.redoEnabled;
+      });
+      btn.addEventListener("click", function(e){
+        e.preventDefault();
+        if(!currentStatus || !currentStatus.redoEnabled) return;
+        if(currentStatus.canRedo){ History.redo(target); }
+        else { History.repeat(target); }
+      });
+      return btn;
+    }
+    return { createUndo, createRedo };
+  })();
   const ToolbarFactory=(function(){
+    function historyTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function triggerHistory(meta, inst, ctx, payload, result){
+      if(!meta || typeof meta.history!=="function") return;
+      const target=historyTarget(inst, ctx);
+      if(!target) return;
+      const arg={ ctx };
+      if(payload && typeof payload==="object"){
+        for(const key in payload){ if(Object.prototype.hasOwnProperty.call(payload, key)){ arg[key]=payload[key]; } }
+      }
+      arg.result=result;
+      const config=meta.history(inst, arg);
+      if(config){ History.init(target); History.capture(target, config); }
+    }
     function createCommandButton(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
       if(typeof meta.render==="function"){ return meta.render(inst, ctx); }
@@ -1710,7 +2130,9 @@
           if(current){ select.value=current; }
         }
         select.onchange=function(e){
-          if(meta.run) meta.run(inst, { event:e, ctx, value:select.value });
+          const args={ event:e, ctx, value:select.value };
+          const res=meta.run ? meta.run(inst, args) : undefined;
+          triggerHistory(meta, inst, ctx, args, res);
         };
         wrap.appendChild(select);
         return wrap;
@@ -1720,7 +2142,8 @@
       btn.setAttribute("data-command", id);
       btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
       btn.onclick = function(e){
-        meta.run(inst, { event:e, ctx });
+        const args={ event:e, ctx };
+        const res=meta.run(inst, args);
         if(isToggle){
           const active = !!meta.getActive(inst);
           btn.setAttribute("data-active", active?"1":"0");
@@ -1728,6 +2151,7 @@
           btn.style.background = active ? "#e6f2fb" : "#fff";
           btn.style.borderColor = active ? WCfg.UI.brand : "#c8c6c4";
         }
+        triggerHistory(meta, inst, ctx, args, res);
       };
       if(typeof meta.decorate==="function"){ meta.decorate(btn); }
       return btn;
@@ -1891,11 +2315,19 @@
           area.innerHTML = clean;
           Breaks.ensurePlaceholders(area);
           OutputBinding.sync(inst);
+          History.capture(inst.el, { label:"Fullscreen Update" });
+          History.capture(area, { label:"Fullscreen Update", repeatable:false });
           return true;
         },
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
+      History.init(area, {
+        inst,
+        ctx,
+        onBeforeSnapshot:function(target){ Breaks.ensurePlaceholders(target); },
+        onAfterApply:function(target){ Breaks.ensurePlaceholders(target); if(ctx && ctx.refreshPreview) ctx.refreshPreview(); }
+      });
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
       const saveCloseWrap=document.createElement("div"); applyStyles(saveCloseWrap, WCfg.Style.fsSaveCloseWrap);
       const saveCloseBtn=WDom.btn("Close", true, "Save changes and close fullscreen");
@@ -1912,7 +2344,14 @@
       window.setTimeout(function(){ area.focus(); },0);
       layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensurePlaceholders(area); }, 0); });
-      let t=null; area.addEventListener("input", function(){ Breaks.ensurePlaceholders(area); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
+      let t=null; area.addEventListener("input", function(e){ Breaks.ensurePlaceholders(area); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); History.handleInput(area, e); });
+      area.addEventListener("keydown", function(e){
+        const key=(e.key||"").toLowerCase();
+        const isCtrl=e.ctrlKey || e.metaKey;
+        if(isCtrl && !e.shiftKey && key==="z"){ e.preventDefault(); History.undo(area); return; }
+        if(isCtrl && (key==="y" || (e.shiftKey && key==="z"))){ e.preventDefault(); History.redo(area); return; }
+        if(!e.ctrlKey && !e.metaKey && key==="f4"){ e.preventDefault(); History.repeat(area); }
+      });
       render();
       function render(attempt){
         attempt = attempt || 0;
@@ -2466,6 +2905,11 @@
     };
   })();
   const ListUI=(function(){
+    function captureListHistory(inst, ctx, label){
+      const target=(ctx && ctx.area) ? ctx.area : inst ? inst.el : null;
+      if(!target) return;
+      History.capture(target, { label:label || "List Change" });
+    }
     function createSplitButton(options){
       const container=document.createElement("div");
       container.style.position="relative";
@@ -2581,7 +3025,7 @@
         currentPreview=preview;
         icon.textContent=preview;
       }
-      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "unordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "unordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); captureListHistory(inst, ctx, "Bulleted List"); } });
       const options=[
         { label:"• Disc", style:"disc", preview:"•" },
         { label:"○ Circle", style:"circle", preview:"○" },
@@ -2609,7 +3053,7 @@
             changed=Formatting.applyListStyle(inst, ctx, opt.style, "unordered");
             if(changed){ currentStyle=opt.style; updatePreview(opt.preview); }
           }
-          if(changed){ OutputBinding.syncDebounced(inst); }
+          if(changed){ OutputBinding.syncDebounced(inst); captureListHistory(inst, ctx, opt.custom ? "Custom Bullet" : "Bulleted List"); }
           setOpen(false);
         });
         menu.appendChild(btn);
@@ -2642,7 +3086,7 @@
         const text=preview.length>6 ? preview.slice(0,6)+"…" : preview;
         icon.textContent=text;
       }
-      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); captureListHistory(inst, ctx, "Numbered List"); } });
       const options=[
         { label:"1. 2. 3.", style:"decimal", preview:"1." },
         { label:"a. b. c.", style:"lower-alpha", preview:"a." },
@@ -2672,7 +3116,7 @@
             changed=Formatting.applyListStyle(inst, ctx, opt.style, "ordered");
             if(changed){ currentStyle=opt.style; updatePreview(opt.preview); }
           }
-          if(changed){ OutputBinding.syncDebounced(inst); }
+          if(changed){ OutputBinding.syncDebounced(inst); captureListHistory(inst, ctx, opt.custom ? "Custom Number" : "Numbered List"); }
           setOpen(false);
         });
         menu.appendChild(btn);
@@ -2700,7 +3144,7 @@
       primary.appendChild(icon);
       primary.appendChild(label);
       let currentStyle="decimal";
-      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); captureListHistory(inst, ctx, "Multilevel List"); } });
       const controls=[
         { label:"Increase level (升階)", action:function(){ return Formatting.indentList(inst, ctx); } },
         { label:"Decrease level (降階)", action:function(){ return Formatting.outdentList(inst, ctx); } },
@@ -2714,7 +3158,7 @@
           e.preventDefault();
           e.stopPropagation();
           const changed=!!item.action();
-          if(changed){ OutputBinding.syncDebounced(inst); }
+          if(changed){ OutputBinding.syncDebounced(inst); captureListHistory(inst, ctx, item.label); }
           setOpen(false);
         });
         menu.appendChild(btn);
@@ -2857,6 +3301,19 @@
           updateSelectionUI(currentColor);
           updateAutomaticState(currentColor);
           if(inst) OutputBinding.syncDebounced(inst);
+          const target=(ctx && ctx.area) ? ctx.area : inst && inst.el;
+          if(target){
+            const label=value ? "Font Color" : "Clear Font Color";
+            History.capture(target, {
+              label,
+              repeatable:true,
+              repeat:function(env){
+                if(value){ Formatting.applyFontColor(inst, env.ctx, value); }
+                else { Formatting.clearFontColor(inst, env.ctx); }
+                if(inst) OutputBinding.syncDebounced(inst);
+              }
+            });
+          }
         }
       }
       function createSwatch(color){
@@ -3087,6 +3544,19 @@
           updateSelectionUI(currentColor);
           updateNoColorState(currentColor);
           if(inst) OutputBinding.syncDebounced(inst);
+          const target=(ctx && ctx.area) ? ctx.area : inst && inst.el;
+          if(target){
+            const label=value ? "Highlight Color" : "Clear Highlight";
+            History.capture(target, {
+              label,
+              repeatable:true,
+              repeat:function(env){
+                if(value){ Formatting.applyHighlight(inst, env.ctx, value); }
+                else { Formatting.clearHighlight(inst, env.ctx); }
+                if(inst) OutputBinding.syncDebounced(inst);
+              }
+            });
+          }
         }
       }
       for(let i=0;i<colors.length;i++){
@@ -3197,6 +3667,16 @@
     btn.appendChild(icon);
   }
   const Commands={
+    "history.undo":{
+      kind:"custom",
+      ariaLabel:"Undo (Ctrl+Z / Cmd+Z)",
+      render:function(inst, ctx){ return HistoryUI.createUndo(inst, ctx); }
+    },
+    "history.redo":{
+      kind:"custom",
+      ariaLabel:"Redo or Repeat",
+      render:function(inst, ctx){ return HistoryUI.createRedo(inst, ctx); }
+    },
     "format.fontFamily":{
       label:"Font",
       kind:"select",
@@ -3208,6 +3688,15 @@
         if(!value) return;
         Formatting.applyFontFamily(inst, arg && arg.ctx, value);
         OutputBinding.syncDebounced(inst);
+      },
+      history:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return null;
+        return {
+          label:"Font Family",
+          repeatable:true,
+          repeat:function(env){ Formatting.applyFontFamily(inst, env.ctx, value); OutputBinding.syncDebounced(inst); }
+        };
       }
     },
     "format.fontSize":{
@@ -3221,6 +3710,15 @@
         if(!value) return;
         Formatting.applyFontSize(inst, arg && arg.ctx, value);
         OutputBinding.syncDebounced(inst);
+      },
+      history:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return null;
+        return {
+          label:"Font Size",
+          repeatable:true,
+          repeat:function(env){ Formatting.applyFontSize(inst, env.ctx, value); OutputBinding.syncDebounced(inst); }
+        };
       }
     },
     "format.bold":{
@@ -3229,7 +3727,14 @@
       ariaLabel:"Bold",
       title:"Bold (Ctrl+B)",
       decorate:function(btn){ btn.style.fontWeight="700"; },
-      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "bold"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "bold"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Bold",
+          repeatable:true,
+          repeat:function(env){ Formatting.applySimple(inst, env.ctx, "bold"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.italic":{
       label:"I",
@@ -3237,7 +3742,14 @@
       ariaLabel:"Italic",
       title:"Italic (Ctrl+I)",
       decorate:function(btn){ btn.style.fontStyle="italic"; },
-      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "italic"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "italic"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Italic",
+          repeatable:true,
+          repeat:function(env){ Formatting.applySimple(inst, env.ctx, "italic"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.underline":{
       label:"U",
@@ -3245,7 +3757,14 @@
       ariaLabel:"Underline",
       title:"Underline (Ctrl+U)",
       decorate:function(btn){ btn.style.textDecoration="underline"; btn.style.textDecorationThickness="2px"; },
-      run:function(inst, arg){ Formatting.applyUnderline(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applyUnderline(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Underline",
+          repeatable:true,
+          repeat:function(env){ Formatting.applyUnderline(inst, env.ctx); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.underlineStyle":{
       label:"Style",
@@ -3265,6 +3784,15 @@
         inst.underlineStyle = value;
         Formatting.applyDecorationStyle(inst, arg && arg.ctx, value);
         OutputBinding.syncDebounced(inst);
+      },
+      history:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return null;
+        return {
+          label:"Underline Style",
+          repeatable:true,
+          repeat:function(env){ inst.underlineStyle = value; Formatting.applyDecorationStyle(inst, env.ctx, value); OutputBinding.syncDebounced(inst); }
+        };
       }
     },
     "format.bulletedList":{
@@ -3298,7 +3826,14 @@
       ariaLabel:"Align Left (靠左對齊)",
       title:"Align Left (靠左對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "left"); },
-      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "left"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "left"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Align Left",
+          repeatable:true,
+          repeat:function(env){ Formatting.applyAlign(inst, env.ctx, "left"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.alignCenter":{
       label:"Center",
@@ -3306,7 +3841,14 @@
       ariaLabel:"Align Center (置中對齊)",
       title:"Align Center (置中對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "center"); },
-      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "center"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "center"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Align Center",
+          repeatable:true,
+          repeat:function(env){ Formatting.applyAlign(inst, env.ctx, "center"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.alignRight":{
       label:"Right",
@@ -3314,7 +3856,14 @@
       ariaLabel:"Align Right (靠右對齊)",
       title:"Align Right (靠右對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "right"); },
-      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "right"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "right"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Align Right",
+          repeatable:true,
+          repeat:function(env){ Formatting.applyAlign(inst, env.ctx, "right"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.alignJustify":{
       label:"Justify",
@@ -3322,7 +3871,14 @@
       ariaLabel:"Justify (左右對齊)",
       title:"Justify (左右對齊)",
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
-      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Align Justify",
+          repeatable:true,
+          repeat:function(env){ Formatting.applyAlign(inst, env.ctx, "justify"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.strike":{
       label:"ab",
@@ -3330,27 +3886,64 @@
       ariaLabel:"Strikethrough",
       title:"Strikethrough",
       decorate:function(btn){ btn.style.textDecoration="line-through"; btn.style.textDecorationThickness="2px"; },
-      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "strikeThrough"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "strikeThrough"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Strikethrough",
+          repeatable:true,
+          repeat:function(env){ Formatting.applySimple(inst, env.ctx, "strikeThrough"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.subscript":{
       label:"x₂",
       kind:"button",
       ariaLabel:"Subscript",
       title:"Subscript",
-      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "subscript"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "subscript"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Subscript",
+          repeatable:true,
+          repeat:function(env){ Formatting.applySimple(inst, env.ctx, "subscript"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "format.superscript":{
       label:"x²",
       kind:"button",
       ariaLabel:"Superscript",
       title:"Superscript",
-      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
+      run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Superscript",
+          repeatable:true,
+          repeat:function(env){ Formatting.applySimple(inst, env.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
+        };
+      }
     },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
-      run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
+      run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); },
+      history:function(inst){
+        return {
+          label:"Insert Break",
+          repeatable:true,
+          repeat:function(env){ const target=(env && env.ctx && env.ctx.area) ? env.ctx.area : inst.el; Breaks.insert(target); if(env && env.ctx && env.ctx.refreshPreview) env.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); }
+        };
+      }
+    },
     "break.remove":{ label:"Remove Break", kind:"button", ariaLabel:"Remove page break",
-      run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; if(Breaks.remove(target)){ if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } } },
+      run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; if(Breaks.remove(target)){ if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
+      history:function(inst){
+        return {
+          label:"Remove Break",
+          repeatable:true,
+          repeat:function(env){ const target=(env && env.ctx && env.ctx.area) ? env.ctx.area : inst.el; Breaks.remove(target); if(env && env.ctx && env.ctx.refreshPreview) env.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); }
+        };
+      }
+    },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
@@ -3371,7 +3964,7 @@
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
     ],
-    quickActions:["fullscreen.open"]
+    quickActions:["history.undo","history.redo","fullscreen.open"]
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
@@ -3381,7 +3974,8 @@
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
-    ]
+    ],
+    quickActions:["history.undo","history.redo"]
   };
   let INSTANCE_SEQ=0;
   function WEditorInstance(editorEl){
@@ -3403,16 +3997,30 @@
     OutputBinding.syncDebounced(this);
   }
   WEditorInstance.prototype._mount=function(){
+    const self=this;
+    Breaks.ensurePlaceholders(this.el);
+    History.init(this.el, {
+      inst:this,
+      ctx:null,
+      onBeforeSnapshot:function(target){ Breaks.ensurePlaceholders(target); },
+      onAfterApply:function(target){ Breaks.ensurePlaceholders(target); OutputBinding.syncDebounced(self); }
+    });
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
-    Breaks.ensurePlaceholders(this.el);
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
-    this.el.addEventListener("input", (function(self){ return function(){ Breaks.ensurePlaceholders(self.el); OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("input", function(e){ Breaks.ensurePlaceholders(self.el); OutputBinding.syncDebounced(self); History.handleInput(self.el, e); });
+    this.el.addEventListener("keydown", function(e){
+      const key=(e.key||"").toLowerCase();
+      const isCtrl=e.ctrlKey || e.metaKey;
+      if(isCtrl && !e.shiftKey && key==="z"){ e.preventDefault(); History.undo(self.el); return; }
+      if(isCtrl && (key==="y" || (e.shiftKey && key==="z"))){ e.preventDefault(); History.redo(self.el); return; }
+      if(!e.ctrlKey && !e.metaKey && key==="f4"){ e.preventDefault(); History.repeat(self.el); }
+    });
     this.el.__winst = this;
   };
   const WEditor=(function(){
