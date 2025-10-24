@@ -1705,6 +1705,87 @@
     }
     return { open };
   })();
+  const StateBinding=(function(){
+    function parse(json){
+      if(!json) return null;
+      let data=json;
+      if(typeof json==="string"){
+        const trimmed=json.trim();
+        if(!trimmed) return null;
+        try { data=JSON.parse(trimmed); }
+        catch(err){ return null; }
+      }
+      if(!data || typeof data!=="object") return null;
+      return data;
+    }
+    function sanitizeHTML(html){
+      if(typeof html!=="string") return "";
+      return Sanitizer.clean(html);
+    }
+    function apply(inst, state){
+      if(!inst || !inst.el) return false;
+      const data=parse(state);
+      if(!data) return false;
+      const header=data.header || {};
+      const footer=data.footer || {};
+      if(typeof data.html==="string"){
+        inst.el.innerHTML=sanitizeHTML(data.html);
+        Breaks.ensurePlaceholders(inst.el);
+      }
+      if(typeof data.outputMode==="string"){
+        inst.outputMode=data.outputMode.toLowerCase()==="paged"?"paged":"raw";
+      }
+      if(typeof header.enabled==="boolean") inst.headerEnabled=header.enabled;
+      else if(typeof data.headerEnabled==="boolean") inst.headerEnabled=data.headerEnabled;
+      if(typeof footer.enabled==="boolean") inst.footerEnabled=footer.enabled;
+      else if(typeof data.footerEnabled==="boolean") inst.footerEnabled=data.footerEnabled;
+      if(typeof header.html==="string") inst.headerHTML=sanitizeHTML(header.html);
+      else if(typeof data.headerHTML==="string") inst.headerHTML=sanitizeHTML(data.headerHTML);
+      if(typeof footer.html==="string") inst.footerHTML=sanitizeHTML(footer.html);
+      else if(typeof data.footerHTML==="string") inst.footerHTML=sanitizeHTML(data.footerHTML);
+      if(header.align) inst.headerAlign=HFAlign.normalize(header.align);
+      else if(data.headerAlign) inst.headerAlign=HFAlign.normalize(data.headerAlign);
+      if(footer.align) inst.footerAlign=HFAlign.normalize(footer.align);
+      else if(data.footerAlign) inst.footerAlign=HFAlign.normalize(data.footerAlign);
+      inst.el.classList.toggle("weditor--no-header", !inst.headerEnabled);
+      inst.el.classList.toggle("weditor--no-footer", !inst.footerEnabled);
+      inst.el.classList.toggle("weditor--paged", inst.outputMode==="paged");
+      return true;
+    }
+    function capture(inst){
+      if(!inst || !inst.el) return null;
+      const state={
+        version:"1.0",
+        outputMode:inst.outputMode,
+        html:Breaks.serialize(inst.el),
+        header:{
+          enabled:!!inst.headerEnabled,
+          html:inst.headerHTML,
+          align:inst.headerAlign
+        },
+        footer:{
+          enabled:!!inst.footerEnabled,
+          html:inst.footerHTML,
+          align:inst.footerAlign
+        }
+      };
+      return state;
+    }
+    function stringify(state){
+      if(!state) return "";
+      try { return JSON.stringify(state); }
+      catch(err){ return ""; }
+    }
+    function consumeInitial(el){
+      if(!el) return null;
+      const attr=el.getAttribute("data-weditor-state");
+      if(!attr) return null;
+      const data=parse(attr);
+      if(data) el.removeAttribute("data-weditor-state");
+      return data;
+    }
+    return { parse, apply, capture, stringify, consumeInitial };
+  })();
   const OutputBinding=(function(){
     function isOut(el){
       return el && el.tagName === "TEXTAREA" &&
@@ -1732,10 +1813,30 @@
       }
       return null;
     }
+    function resolveFormat(inst){
+      if(!inst || !inst.outputEl) return inst && inst.outputMode==="paged" ? "paged" : "raw";
+      const attr=inst.outputEl.getAttribute("data-weditor-output");
+      if(attr){
+        const value=String(attr).toLowerCase();
+        if(value==="state" || value==="json") return "state";
+        if(value==="raw" || value==="raw-html") return "raw";
+        if(value==="paged" || value==="paged-html") return "paged";
+      }
+      return inst.outputMode==="paged" ? "paged" : "raw";
+    }
     function sync(inst){
-      if(!inst.outputEl) return;
-      if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
-      else { inst.outputEl.value = Breaks.serialize(inst.el); }
+      if(!inst || !inst.outputEl) return;
+      const format=resolveFormat(inst);
+      if(format==="state"){
+        const state=StateBinding.capture(inst);
+        inst.outputEl.value = StateBinding.stringify(state);
+        return;
+      }
+      if(format==="paged"){
+        inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst);
+        return;
+      }
+      inst.outputEl.value = Breaks.serialize(inst.el);
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
@@ -4214,6 +4315,7 @@
     this.uid = ++INSTANCE_SEQ;
     this.el = editorEl;
     this.el.setAttribute("data-weditor-instance", String(this.uid));
+    const initialState=StateBinding.consumeInitial(editorEl);
     this.headerHTML = "Demo Header — {{date}} · Page {{page}} / {{total}}";
     this.footerHTML = "Confidential · {{date}}";
     this.headerAlign = HFAlign.normalize(editorEl.getAttribute("data-header-align"));
@@ -4225,6 +4327,10 @@
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
+    if(initialState){ StateBinding.apply(this, initialState); }
+    this.el.classList.toggle("weditor--no-header", !this.headerEnabled);
+    this.el.classList.toggle("weditor--no-footer", !this.footerEnabled);
+    this.el.classList.toggle("weditor--paged", this.outputMode==="paged");
     this._mount();
     OutputBinding.syncDebounced(this);
   }
@@ -4246,13 +4352,31 @@
     HistoryManager.init(this, this.el);
     this.el.__winst = this;
   };
+  WEditorInstance.prototype.loadState=function(state){
+    const applied=StateBinding.apply(this, state);
+    if(applied){
+      Breaks.ensurePlaceholders(this.el);
+      OutputBinding.syncDebounced(this);
+    }
+    return applied;
+  };
   const WEditor=(function(){
     function initAll(selectors){ selectors = selectors || [".weditor", ".w-editor"]; const nodes=[];
       for(let i=0;i<selectors.length;i++){ const list=document.querySelectorAll(selectors[i]); for(let j=0;j<list.length;j++){ if(nodes.indexOf(list[j])<0) nodes.push(list[j]); } }
       const instances=[]; for(let k=0;k<nodes.length;k++){ instances.push(new WEditorInstance(nodes[k])); } return instances;
     }
     function from(el){ return new WEditorInstance(el); }
-    return { initAll, from, version:"1.7.0" };
+    function applyState(target, state){
+      if(!target) return null;
+      let inst=null;
+      if(target instanceof WEditorInstance){ inst=target; }
+      else if(target.__winst){ inst=target.__winst; }
+      else if(target.el && target.el.__winst){ inst=target.el.__winst; }
+      if(!inst) return null;
+      inst.loadState(state);
+      return inst;
+    }
+    return { initAll, from, applyState, version:"1.7.0" };
   })();
   window.WEditor=WEditor;
   document.addEventListener("DOMContentLoaded", function(){ WEditor.initAll(); });

@@ -10,23 +10,42 @@
 		<script src="weditor.js" defer></script>
 	</head>
 	<body>
-		<div style="overflow: auto; height: 500px; width: 600px;">
-			<div class="weditor weditor--paged">
-				<h2>Editor A (Paged Output)</h2>
-				<p>
-					Try pasting complex Word/Docs content, place the caret, then click
-					<em>Insert Break</em>. The break will land where your caret is
-					(between top-level blocks), not at the end.
-				</p>
-			</div>
-			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
-		</div>
-		<div style="overflow: auto; height: 300px; width: 400px;">
-			<div class="weditor weditor--paged">
-				<h2>Editor B (Raw Output)</h2>
-				<p>Raw HTML mirrored below.</p>
-			</div>
-			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
-		</div>
-	</body>
+                <div style="overflow: auto; height: 500px; width: 600px;">
+                        <div class="weditor weditor--paged" id="editorA">
+                                <h2>Editor A (Paged Output)</h2>
+                                <p>
+                                        Try pasting complex Word/Docs content, place the caret, then click
+                                        <em>Insert Break</em>. The break will land where your caret is
+                                        (between top-level blocks), not at the end.
+                                </p>
+                        </div>
+                        <textarea class="weditor_output" aria-label="Editor A paged HTML" data-weditor-output="paged-html"></textarea>
+                </div>
+                <div style="overflow: auto; height: 300px; width: 400px;">
+                        <div class="weditor weditor--paged" id="editorB">
+                                <h2>Editor B (Raw Output)</h2>
+                                <p>Raw HTML mirrored below.</p>
+                        </div>
+                        <textarea class="weditor_output" aria-label="Editor B stored state" data-weditor-output="state"></textarea>
+                        <button type="button" id="reload-editor-b">Reload Editor B from stored JSON</button>
+                </div>
+                <script>
+                        document.addEventListener("DOMContentLoaded", function () {
+                                var reloadBtn = document.getElementById("reload-editor-b");
+                                if (!reloadBtn) return;
+                                reloadBtn.addEventListener("click", function () {
+                                        var output = document.querySelector("textarea[data-weditor-output='state']");
+                                        var editor = document.getElementById("editorB");
+                                        if (!output || !editor || !window.WEditor || !output.value.trim()) {
+                                                return;
+                                        }
+                                        try {
+                                                window.WEditor.applyState(editor, output.value);
+                                        } catch (err) {
+                                                console.warn("Unable to reload editor state", err);
+                                        }
+                                });
+                        });
+                </script>
+        </body>
 </html>
