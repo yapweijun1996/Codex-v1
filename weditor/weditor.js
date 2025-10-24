@@ -16,7 +16,10 @@
       fsSaveCloseWrap:{ position:"fixed", top:"18px", right:"24px", zIndex:"2147483200", display:"flex" },
       tabButton:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#f6f6f6", color:UI.textDim, cursor:"pointer", font:"13px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
       tabPanels:{ display:"flex", flexDirection:"column", gap:"12px" },
-      tabPanel:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      tabPanel:{ display:"flex", flexDirection:"column", gap:"12px", alignItems:"stretch" },
+      tabPanelRow:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      tabPanelGroup:{ display:"flex", flexDirection:"column", gap:"8px", padding:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"8px", background:"#faf9f8" },
+      tabPanelGroupTitle:{ font:"11px/1.4 Segoe UI,system-ui", textTransform:"uppercase", letterSpacing:".08em", color:UI.textDim },
       btn:{ padding:"8px 12px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       btnPri:{ padding:"8px 12px", border:"1px solid "+UI.brand, background:UI.brand, color:"#fff", borderRadius:"4px", cursor:"pointer", font:"14px/1.2 Segoe UI,system-ui" },
       toggle:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.text, borderRadius:"999px", cursor:"pointer", font:"12px/1.2 Segoe UI,system-ui" },
@@ -1745,6 +1748,62 @@
       const tabButtons=[]; const tabPanels=[];
       const quickActionIds = Array.isArray(config && config.quickActions) ? config.quickActions.slice() : [];
       let quickWrap=null;
+      function createRow(target){
+        const row=document.createElement("div");
+        applyStyles(row, WCfg.Style.tabPanelRow);
+        target.appendChild(row);
+        return row;
+      }
+      function renderEntries(target, entries){
+        if(!Array.isArray(entries)){ return; }
+        let currentRow=null;
+        function ensureRow(){
+          if(!currentRow || !currentRow.parentNode){
+            currentRow=createRow(target);
+          }
+          return currentRow;
+        }
+        for(let idx=0; idx<entries.length; idx++){
+          const entry=entries[idx];
+          if(typeof entry==="string"){
+            const cmdBtn=createCommandButton(entry, inst, ctx);
+            if(cmdBtn){ ensureRow().appendChild(cmdBtn); }
+            continue;
+          }
+          if(Array.isArray(entry)){
+            if(currentRow && !currentRow.childNodes.length && currentRow.parentNode===target){
+              target.removeChild(currentRow);
+            }
+            currentRow=createRow(target);
+            for(let k=0;k<entry.length;k++){
+              const btn=createCommandButton(entry[k], inst, ctx);
+              if(btn){ currentRow.appendChild(btn); }
+            }
+            currentRow=null;
+            continue;
+          }
+          if(entry && typeof entry==="object" && Array.isArray(entry.items)){
+            if(currentRow && !currentRow.childNodes.length && currentRow.parentNode===target){
+              target.removeChild(currentRow);
+            }
+            currentRow=null;
+            const group=document.createElement("div");
+            applyStyles(group, WCfg.Style.tabPanelGroup);
+            if(entry.title){
+              const heading=document.createElement("div");
+              heading.textContent=entry.title;
+              applyStyles(heading, WCfg.Style.tabPanelGroupTitle);
+              group.appendChild(heading);
+            }
+            renderEntries(group, entry.items);
+            target.appendChild(group);
+            continue;
+          }
+        }
+        if(currentRow && !currentRow.childNodes.length && currentRow.parentNode===target){
+          target.removeChild(currentRow);
+        }
+      }
       function setActive(index){
         if(index<0 || index>=tabButtons.length){ return; }
         for(let i=0;i<tabButtons.length;i++){
@@ -1800,10 +1859,7 @@
         panel.setAttribute("role","tabpanel");
         panel.setAttribute("aria-hidden","true");
         const items=tab.items || [];
-        for(let j=0;j<items.length;j++){
-          const cmdBtn=createCommandButton(items[j], inst, ctx);
-          if(cmdBtn) panel.appendChild(cmdBtn);
-        }
+        renderEntries(panel, items);
         tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
         tabBtn.onkeydown=(function(idx){
           return function(e){
@@ -4056,7 +4112,14 @@
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:[
+        { title:"Font", items:["format.fontFamily","format.fontSize"] },
+        { title:"Style", items:["format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { title:"Lists", items:["format.bulletedList","format.numberedList","format.multilevelList"] },
+        { title:"Alignment", items:["format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { title:"Color", items:["format.fontColor","format.highlight"] },
+        { title:"Scripts", items:["format.subscript","format.superscript"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
@@ -4066,7 +4129,14 @@
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
     tabs:[
-      { id:"format", label:"Format", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.bulletedList","format.numberedList","format.multilevelList","format.fontColor","format.highlight","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.strike","format.subscript","format.superscript"] },
+      { id:"format", label:"Format", items:[
+        { title:"Font", items:["format.fontFamily","format.fontSize"] },
+        { title:"Style", items:["format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { title:"Lists", items:["format.bulletedList","format.numberedList","format.multilevelList"] },
+        { title:"Alignment", items:["format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { title:"Color", items:["format.fontColor","format.highlight"] },
+        { title:"Scripts", items:["format.subscript","format.superscript"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
