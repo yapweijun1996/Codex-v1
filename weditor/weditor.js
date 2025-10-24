@@ -1686,6 +1686,138 @@
     }
     return { resolve, sync, syncDebounced };
   })();
+  const SessionHistory=(function(){
+    const MAX_STACK=200;
+    const store=new WeakMap();
+    function ensure(inst){
+      if(!inst) return null;
+      let data=store.get(inst);
+      if(!data){
+        data={ stack:[], index:-1, suspend:false, inputTimer:null, listeners:new Set(), lastRepeat:null };
+        store.set(inst, data);
+      }
+      return data;
+    }
+    function notify(inst){
+      const data=store.get(inst);
+      if(!data || !data.listeners) return;
+      data.listeners.forEach(function(listener){ try{ listener(); } catch(err){} });
+    }
+    function trimStack(data){
+      if(data.stack.length<=MAX_STACK) return;
+      const remove=data.stack.length-MAX_STACK;
+      data.stack=data.stack.slice(remove);
+      data.index=Math.max(0, data.index-remove);
+    }
+    function capture(inst, label, force){
+      const data=ensure(inst); if(!data) return;
+      if(data.suspend && !force) return;
+      const html=Breaks.serialize(inst.el);
+      const current=(data.index>=0 && data.index<data.stack.length)?data.stack[data.index]:null;
+      if(!force && current && current.html===html){
+        if(label && current.label!==label){ current.label=label; notify(inst); }
+        return;
+      }
+      if(data.index < data.stack.length-1){ data.stack=data.stack.slice(0, data.index+1); }
+      data.stack.push({ html, label:label||"Edit", time:Date.now() });
+      trimStack(data);
+      data.index=data.stack.length-1;
+      notify(inst);
+    }
+    function applyState(inst, index){
+      const data=ensure(inst); if(!data) return false;
+      if(index<0) index=0;
+      if(index>=data.stack.length) index=data.stack.length-1;
+      if(index<0 || index>=data.stack.length) return false;
+      if(index===data.index) return false;
+      const state=data.stack[index]; if(!state) return false;
+      data.suspend=true;
+      inst.el.innerHTML=state.html;
+      Breaks.ensurePlaceholders(inst.el);
+      WDom.placeCaretAtEnd(inst.el);
+      data.index=index;
+      data.suspend=false;
+      OutputBinding.syncDebounced(inst);
+      clearRepeat(inst);
+      notify(inst);
+      return true;
+    }
+    function init(inst){
+      const data=ensure(inst); if(!data) return;
+      if(data.inputTimer){ window.clearTimeout(data.inputTimer); data.inputTimer=null; }
+      data.stack=[]; data.index=-1; data.lastRepeat=null;
+      capture(inst, "Initial", true);
+    }
+    function canUndo(inst){ const data=store.get(inst); return !!(data && data.index>0); }
+    function canRedo(inst){ const data=store.get(inst); return !!(data && data.index>=0 && data.index<data.stack.length-1); }
+    function undo(inst){ const data=ensure(inst); if(!data || data.index<=0) return false; return applyState(inst, data.index-1); }
+    function redo(inst){ const data=ensure(inst); if(!data || data.index>=data.stack.length-1) return false; return applyState(inst, data.index+1); }
+    function jumpTo(inst, index){ return applyState(inst, index); }
+    function queueInput(inst){
+      const data=ensure(inst); if(!data || data.suspend) return;
+      if(data.inputTimer){ window.clearTimeout(data.inputTimer); }
+      data.inputTimer=window.setTimeout(function(){ data.inputTimer=null; clearRepeat(inst); capture(inst, "Typing"); }, 360);
+    }
+    function attach(inst, listener){
+      const data=ensure(inst); if(!data || !listener) return function(){};
+      data.listeners.add(listener);
+      return function(){ data.listeners.delete(listener); };
+    }
+    function clearRepeat(inst){
+      const data=store.get(inst); if(!data) return;
+      if(data.lastRepeat){ data.lastRepeat=null; notify(inst); }
+    }
+    function setRepeat(inst, meta, options){
+      const data=ensure(inst); if(!data) return;
+      if(!meta || meta.repeatable===false){ clearRepeat(inst); return; }
+      data.lastRepeat={ meta, options:Object.assign({}, options||{}) };
+      notify(inst);
+    }
+    function hasRepeat(inst){
+      const data=store.get(inst);
+      return !!(data && data.lastRepeat && data.lastRepeat.meta && data.lastRepeat.meta.repeatable!==false);
+    }
+    function repeat(inst){
+      const data=store.get(inst); if(!data || !data.lastRepeat) return false;
+      const info=data.lastRepeat; const meta=info.meta;
+      if(!meta || typeof meta.run!=="function") return false;
+      const options=info.options || {};
+      const arg={ ctx:options.ctx||null, value:options.value, extra:options.extra, fromRepeat:true };
+      const result=meta.run(inst, arg);
+      if(result===false){ return false; }
+      if(meta.history!==false){ capture(inst, meta.historyLabel || meta.label || "Repeat"); }
+      if(meta.repeatable!==false){ data.lastRepeat=info; }
+      OutputBinding.syncDebounced(inst);
+      notify(inst);
+      return true;
+    }
+    function onCommand(inst, meta, options){
+      const data=ensure(inst); if(!data || !meta) return;
+      const changed=(options && Object.prototype.hasOwnProperty.call(options, "changed")) ? options.changed!==false : true;
+      if(changed && meta.history!==false){ capture(inst, meta.historyLabel || meta.label || "Edit"); }
+      if(changed){
+        if(meta.repeatable===false){ clearRepeat(inst); }
+        else { setRepeat(inst, meta, options); }
+      } else { clearRepeat(inst); }
+    }
+    function record(inst, label){ capture(inst, label||"Edit"); clearRepeat(inst); }
+    function getUndoEntries(inst, limit){
+      const data=store.get(inst); if(!data || data.stack.length<=1) return [];
+      const max=typeof limit==="number"?limit:20;
+      const entries=[];
+      for(let i=data.index;i>0 && entries.length<max;i--){
+        const item=data.stack[i];
+        entries.push({ index:i, label:item && item.label ? item.label : "Edit" });
+      }
+      return entries;
+    }
+    function currentMode(inst){
+      if(canRedo(inst)) return "redo";
+      if(hasRepeat(inst)) return "repeat";
+      return "none";
+    }
+    return { init, undo, redo, jumpTo, queueInput, attach, onCommand, record, canUndo, canRedo, getUndoEntries, currentMode, repeat, hasRepeat, clearRepeat };
+  })();
   const ToolbarFactory=(function(){
     function createCommandButton(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
@@ -1710,7 +1842,12 @@
           if(current){ select.value=current; }
         }
         select.onchange=function(e){
-          if(meta.run) meta.run(inst, { event:e, ctx, value:select.value });
+          let changed=true;
+          if(meta.run){
+            const result=meta.run(inst, { event:e, ctx, value:select.value });
+            if(result===false) changed=false;
+          }
+          SessionHistory.onCommand(inst, meta, { event:e, ctx, value:select.value, changed });
         };
         wrap.appendChild(select);
         return wrap;
@@ -1720,7 +1857,12 @@
       btn.setAttribute("data-command", id);
       btn.setAttribute("aria-label", meta.ariaLabel || meta.label);
       btn.onclick = function(e){
-        meta.run(inst, { event:e, ctx });
+        let changed=true;
+        if(meta.run){
+          const result=meta.run(inst, { event:e, ctx });
+          if(result===false) changed=false;
+        }
+        SessionHistory.onCommand(inst, meta, { event:e, ctx, changed });
         if(isToggle){
           const active = !!meta.getActive(inst);
           btn.setAttribute("data-active", active?"1":"0");
@@ -2466,6 +2608,46 @@
     };
   })();
   const ListUI=(function(){
+    const BULLET_META={
+      label:"Bulleted List",
+      historyLabel:"Bulleted List",
+      repeatable:true,
+      history:true,
+      run:function(inst, arg){
+        const extra=(arg && arg.extra) || {};
+        const ctx=arg && arg.ctx;
+        if(extra.action==="style"){ return Formatting.applyListStyle(inst, ctx, extra.style, extra.type||"unordered", true); }
+        if(extra.action==="custom"){ return Formatting.applyCustomBullet(inst, ctx, extra.symbol); }
+        return Formatting.toggleList(inst, ctx, extra.type||"unordered", extra.style);
+      }
+    };
+    const NUMBER_META={
+      label:"Numbered List",
+      historyLabel:"Numbered List",
+      repeatable:true,
+      history:true,
+      run:function(inst, arg){
+        const extra=(arg && arg.extra) || {};
+        const ctx=arg && arg.ctx;
+        if(extra.action==="style"){ return Formatting.applyListStyle(inst, ctx, extra.style, extra.type||"ordered", true); }
+        if(extra.action==="custom"){ return Formatting.applyListStyle(inst, ctx, extra.style, extra.type||"ordered"); }
+        return Formatting.toggleList(inst, ctx, extra.type||"ordered", extra.style);
+      }
+    };
+    const MULTI_META={
+      label:"Multilevel List",
+      historyLabel:"Multilevel List",
+      repeatable:true,
+      history:true,
+      run:function(inst, arg){
+        const extra=(arg && arg.extra) || {};
+        const ctx=arg && arg.ctx;
+        if(extra.action==="indent"){ return Formatting.indentList(inst, ctx); }
+        if(extra.action==="outdent"){ return Formatting.outdentList(inst, ctx); }
+        if(extra.action==="style"){ return Formatting.applyListStyle(inst, ctx, extra.style, extra.type||"ordered", true); }
+        return Formatting.toggleList(inst, ctx, extra.type||"ordered", extra.style);
+      }
+    };
     function createSplitButton(options){
       const container=document.createElement("div");
       container.style.position="relative";
@@ -2581,7 +2763,12 @@
         currentPreview=preview;
         icon.textContent=preview;
       }
-      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "unordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      split.setPrimaryHandler(function(e){
+        e.preventDefault();
+        const ok=Formatting.toggleList(inst, ctx, "unordered", currentStyle);
+        if(ok){ OutputBinding.syncDebounced(inst); }
+        SessionHistory.onCommand(inst, BULLET_META, { ctx, changed:ok, extra:{ action:"toggle", type:"unordered", style:currentStyle } });
+      });
       const options=[
         { label:"• Disc", style:"disc", preview:"•" },
         { label:"○ Circle", style:"circle", preview:"○" },
@@ -2596,6 +2783,7 @@
           e.preventDefault();
           e.stopPropagation();
           let changed=false;
+          let cleanedSymbol=null;
           if(opt.custom){
             const input=window.prompt("Enter custom bullet symbol", currentPreview);
             if(input){
@@ -2603,6 +2791,7 @@
               if(cleaned){
                 changed=Formatting.applyCustomBullet(inst, ctx, cleaned);
                 if(changed){ currentStyle='"'+cleaned.replace(/"/g,'\\"')+'"'; updatePreview(cleaned); }
+                cleanedSymbol=cleaned;
               }
             }
           } else {
@@ -2610,6 +2799,8 @@
             if(changed){ currentStyle=opt.style; updatePreview(opt.preview); }
           }
           if(changed){ OutputBinding.syncDebounced(inst); }
+          const extra=opt.custom ? { action:"custom", type:"unordered", symbol:cleanedSymbol } : { action:"style", type:"unordered", style:opt.style, preview:opt.preview };
+          SessionHistory.onCommand(inst, BULLET_META, { ctx, changed, extra });
           setOpen(false);
         });
         menu.appendChild(btn);
@@ -2642,7 +2833,12 @@
         const text=preview.length>6 ? preview.slice(0,6)+"…" : preview;
         icon.textContent=text;
       }
-      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      split.setPrimaryHandler(function(e){
+        e.preventDefault();
+        const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle);
+        if(ok){ OutputBinding.syncDebounced(inst); }
+        SessionHistory.onCommand(inst, NUMBER_META, { ctx, changed:ok, extra:{ action:"toggle", type:"ordered", style:currentStyle } });
+      });
       const options=[
         { label:"1. 2. 3.", style:"decimal", preview:"1." },
         { label:"a. b. c.", style:"lower-alpha", preview:"a." },
@@ -2659,13 +2855,14 @@
           e.preventDefault();
           e.stopPropagation();
           let changed=false;
+          let cleanedStyle=null;
           if(opt.custom){
             const value=window.prompt("Enter CSS list-style-type", currentStyle);
             if(value){
-              const cleaned=value.trim();
-              if(cleaned){
-                changed=Formatting.applyListStyle(inst, ctx, cleaned, "ordered");
-                if(changed){ currentStyle=cleaned; updatePreview(cleaned); }
+              cleanedStyle=value.trim();
+              if(cleanedStyle){
+                changed=Formatting.applyListStyle(inst, ctx, cleanedStyle, "ordered");
+                if(changed){ currentStyle=cleanedStyle; updatePreview(cleanedStyle); }
               }
             }
           } else {
@@ -2673,6 +2870,8 @@
             if(changed){ currentStyle=opt.style; updatePreview(opt.preview); }
           }
           if(changed){ OutputBinding.syncDebounced(inst); }
+          const extra=opt.custom ? { action:"custom", type:"ordered", style:cleanedStyle || currentStyle } : { action:"style", type:"ordered", style:opt.style, preview:opt.preview };
+          SessionHistory.onCommand(inst, NUMBER_META, { ctx, changed, extra });
           setOpen(false);
         });
         menu.appendChild(btn);
@@ -2700,7 +2899,12 @@
       primary.appendChild(icon);
       primary.appendChild(label);
       let currentStyle="decimal";
-      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      split.setPrimaryHandler(function(e){
+        e.preventDefault();
+        const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle);
+        if(ok){ OutputBinding.syncDebounced(inst); }
+        SessionHistory.onCommand(inst, MULTI_META, { ctx, changed:ok, extra:{ action:"toggle", type:"ordered", style:currentStyle } });
+      });
       const controls=[
         { label:"Increase level (升階)", action:function(){ return Formatting.indentList(inst, ctx); } },
         { label:"Decrease level (降階)", action:function(){ return Formatting.outdentList(inst, ctx); } },
@@ -2715,6 +2919,10 @@
           e.stopPropagation();
           const changed=!!item.action();
           if(changed){ OutputBinding.syncDebounced(inst); }
+          let actionType="style";
+          if(item.label.indexOf("Increase")===0) actionType="indent";
+          else if(item.label.indexOf("Decrease")===0) actionType="outdent";
+          SessionHistory.onCommand(inst, MULTI_META, { ctx, changed, extra:{ action:actionType, type:"ordered", style:currentStyle } });
           setOpen(false);
         });
         menu.appendChild(btn);
@@ -2725,6 +2933,18 @@
   })();
   const FontColorUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
+    const META={
+      label:"Font Color",
+      historyLabel:"Font Color",
+      repeatable:true,
+      history:true,
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        const value=(arg && Object.prototype.hasOwnProperty.call(arg,"value")) ? arg.value : (arg && arg.extra ? arg.extra.color : undefined);
+        if(value===null){ return Formatting.clearFontColor(inst, ctx); }
+        return Formatting.applyFontColor(inst, ctx, value);
+      }
+    };
     function normalizeCustomColor(input){
       if(!input) return null;
       let value=input.trim();
@@ -2845,7 +3065,7 @@
       function pickColor(value){
         setOpen(false);
         let changed=false;
-        if(value){
+        if(value!==null){
           changed=!!Formatting.applyFontColor(inst, ctx, value);
           if(changed) currentColor=value;
         } else {
@@ -2858,6 +3078,8 @@
           updateAutomaticState(currentColor);
           if(inst) OutputBinding.syncDebounced(inst);
         }
+        const applied=value!==null ? value : null;
+        SessionHistory.onCommand(inst, META, { ctx, changed, value:applied, extra:{ color:applied } });
       }
       function createSwatch(color){
         const swatch=doc.createElement("button");
@@ -2986,7 +3208,190 @@
     }
     return { create };
   })();
+  const HistoryUI=(function(){
+    function createUndo(inst){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      container.style.gap="0";
+      const primary=WDom.btn("Undo", false, "Undo (Ctrl+Z)");
+      primary.style.display="inline-flex";
+      primary.style.alignItems="center";
+      primary.style.justifyContent="center";
+      primary.style.gap="6px";
+      primary.style.borderTopRightRadius="0";
+      primary.style.borderBottomRightRadius="0";
+      const icon=document.createElement("span"); icon.textContent="↶"; icon.setAttribute("aria-hidden","true");
+      const label=document.createElement("span"); label.textContent="Undo";
+      primary.textContent="";
+      primary.appendChild(icon);
+      primary.appendChild(label);
+      const arrow=WDom.btn("▼", false, "Undo history");
+      arrow.style.fontSize="11px";
+      arrow.style.padding="0 10px";
+      arrow.style.minWidth="32px";
+      arrow.style.borderTopLeftRadius="0";
+      arrow.style.borderBottomLeftRadius="0";
+      arrow.style.borderLeft="1px solid "+WCfg.UI.borderSubtle;
+      arrow.setAttribute("aria-haspopup","true");
+      arrow.setAttribute("aria-expanded","false");
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="6px";
+      menu.style.minWidth="220px";
+      menu.style.zIndex="40";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      let open=false;
+      function closeMenu(){
+        if(!open) return;
+        open=false;
+        menu.style.display="none";
+        menu.setAttribute("aria-hidden","true");
+        arrow.setAttribute("aria-expanded","false");
+        document.removeEventListener("mousedown", onDocPointer, true);
+        document.removeEventListener("keydown", onDocKey);
+      }
+      function populate(){
+        menu.innerHTML="";
+        const entries=SessionHistory.getUndoEntries(inst, 20);
+        if(!entries.length){
+          const empty=document.createElement("div");
+          empty.textContent="No undo history";
+          empty.style.padding="6px";
+          empty.style.font="12px/1.4 Segoe UI,system-ui";
+          empty.style.color=WCfg.UI.textDim;
+          menu.appendChild(empty);
+          return;
+        }
+        entries.forEach(function(entry){
+          const btn=document.createElement("button");
+          btn.type="button";
+          btn.textContent=entry.label;
+          btn.setAttribute("role","menuitem");
+          btn.style.display="flex";
+          btn.style.justifyContent="space-between";
+          btn.style.alignItems="center";
+          btn.style.gap="12px";
+          btn.style.padding="6px 10px";
+          btn.style.background="transparent";
+          btn.style.border="0";
+          btn.style.borderRadius="6px";
+          btn.style.cursor="pointer";
+          btn.style.font="12px/1.4 Segoe UI,system-ui";
+          const count=document.createElement("span");
+          count.textContent="#"+entry.index;
+          count.style.color=WCfg.UI.textDim;
+          count.style.fontSize="11px";
+          btn.appendChild(count);
+          btn.addEventListener("mouseenter", function(){ btn.style.background="#f3f2f1"; });
+          btn.addEventListener("mouseleave", function(){ btn.style.background="transparent"; });
+          btn.addEventListener("click", function(e){
+            e.preventDefault();
+            SessionHistory.jumpTo(inst, entry.index-1);
+            closeMenu();
+          });
+          menu.appendChild(btn);
+        });
+      }
+      function onDocPointer(ev){ if(!container.contains(ev.target)){ closeMenu(); } }
+      function onDocKey(ev){ if(ev.key==="Escape"){ ev.preventDefault(); closeMenu(); arrow.focus(); } }
+      function toggleMenu(){
+        if(arrow.disabled) return;
+        if(open){ closeMenu(); return; }
+        populate();
+        open=true;
+        menu.style.display="flex";
+        menu.setAttribute("aria-hidden","false");
+        arrow.setAttribute("aria-expanded","true");
+        document.addEventListener("mousedown", onDocPointer, true);
+        document.addEventListener("keydown", onDocKey);
+        window.setTimeout(function(){ const first=menu.querySelector("button"); if(first) first.focus(); },0);
+      }
+      primary.addEventListener("click", function(e){ e.preventDefault(); SessionHistory.undo(inst); closeMenu(); });
+      arrow.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); toggleMenu(); });
+      arrow.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); toggleMenu(); } });
+      container.appendChild(primary);
+      container.appendChild(arrow);
+      container.appendChild(menu);
+      function refresh(){
+        const canUndo=SessionHistory.canUndo(inst);
+        primary.disabled=!canUndo;
+        arrow.disabled=!canUndo;
+        primary.style.opacity=canUndo?"1":"0.5";
+        arrow.style.opacity=canUndo?"1":"0.5";
+        primary.setAttribute("aria-disabled", canUndo?"false":"true");
+        arrow.setAttribute("aria-disabled", canUndo?"false":"true");
+        if(!canUndo){ closeMenu(); }
+      }
+      SessionHistory.attach(inst, refresh);
+      refresh();
+      return container;
+    }
+    function createRedo(inst){
+      const btn=WDom.btn("Redo", false, "Redo (Ctrl+Y) / Repeat (F4)");
+      btn.style.display="inline-flex";
+      btn.style.alignItems="center";
+      btn.style.justifyContent="center";
+      btn.style.gap="6px";
+      const icon=document.createElement("span"); icon.textContent="↷"; icon.setAttribute("aria-hidden","true");
+      const label=document.createElement("span"); label.textContent="Redo";
+      btn.textContent="";
+      btn.appendChild(icon);
+      btn.appendChild(label);
+      function refresh(){
+        const mode=SessionHistory.currentMode(inst);
+        if(mode==="redo"){
+          label.textContent="Redo";
+          btn.disabled=false;
+          btn.style.opacity="1";
+          btn.title="Redo (Ctrl+Y)";
+        } else if(mode==="repeat"){
+          label.textContent="Repeat";
+          btn.disabled=false;
+          btn.style.opacity="1";
+          btn.title="Repeat last action (F4)";
+        } else {
+          label.textContent="Redo";
+          btn.disabled=true;
+          btn.style.opacity="0.5";
+          btn.title="Redo / Repeat";
+        }
+      }
+      btn.addEventListener("click", function(e){
+        e.preventDefault();
+        const mode=SessionHistory.currentMode(inst);
+        if(mode==="redo"){ SessionHistory.redo(inst); }
+        else if(mode==="repeat"){ SessionHistory.repeat(inst); }
+      });
+      SessionHistory.attach(inst, refresh);
+      refresh();
+      return btn;
+    }
+    return { createUndo, createRedo };
+  })();
   const HighlightUI=(function(){
+    const META={
+      label:"Text Highlight",
+      historyLabel:"Text Highlight",
+      repeatable:true,
+      history:true,
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        const value=(arg && Object.prototype.hasOwnProperty.call(arg,"value")) ? arg.value : (arg && arg.extra ? arg.extra.color : undefined);
+        if(value===null){ return Formatting.clearHighlight(inst, ctx); }
+        return Formatting.applyHighlight(inst, ctx, value);
+      }
+    };
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
     function create(inst, ctx){
       const container=document.createElement("div");
@@ -3075,7 +3480,7 @@
       function pickColor(value){
         setOpen(false);
         let changed=false;
-        if(value){
+        if(value!==null){
           changed=!!Formatting.applyHighlight(inst, ctx, value);
           if(changed) currentColor=value;
         } else {
@@ -3088,6 +3493,8 @@
           updateNoColorState(currentColor);
           if(inst) OutputBinding.syncDebounced(inst);
         }
+        const applied=value!==null ? value : null;
+        SessionHistory.onCommand(inst, META, { ctx, changed, value:applied, extra:{ color:applied } });
       }
       for(let i=0;i<colors.length;i++){
         const swatch=doc.createElement("button");
@@ -3197,12 +3604,25 @@
     btn.appendChild(icon);
   }
   const Commands={
+    "history.undo":{
+      kind:"custom",
+      history:false,
+      repeatable:false,
+      render:function(inst){ return HistoryUI.createUndo(inst); }
+    },
+    "history.redo":{
+      kind:"custom",
+      history:false,
+      repeatable:false,
+      render:function(inst){ return HistoryUI.createRedo(inst); }
+    },
     "format.fontFamily":{
       label:"Font",
       kind:"select",
       ariaLabel:"Select font family",
       placeholder:"Font",
       options:Formatting.FONT_FAMILIES.map(function(item){ return { label:item.label, value:item.value }; }),
+      historyLabel:"Font Family",
       run:function(inst, arg){
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
         if(!value) return;
@@ -3216,6 +3636,7 @@
       ariaLabel:"Select font size",
       placeholder:"Size",
       options:Formatting.FONT_SIZES.map(function(item){ return { label:item.label, value:item.label }; }),
+      historyLabel:"Font Size",
       run:function(inst, arg){
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
         if(!value) return;
@@ -3228,6 +3649,7 @@
       kind:"button",
       ariaLabel:"Bold",
       title:"Bold (Ctrl+B)",
+      historyLabel:"Bold",
       decorate:function(btn){ btn.style.fontWeight="700"; },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "bold"); OutputBinding.syncDebounced(inst); }
     },
@@ -3236,6 +3658,7 @@
       kind:"button",
       ariaLabel:"Italic",
       title:"Italic (Ctrl+I)",
+      historyLabel:"Italic",
       decorate:function(btn){ btn.style.fontStyle="italic"; },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "italic"); OutputBinding.syncDebounced(inst); }
     },
@@ -3244,6 +3667,7 @@
       kind:"button",
       ariaLabel:"Underline",
       title:"Underline (Ctrl+U)",
+      historyLabel:"Underline",
       decorate:function(btn){ btn.style.textDecoration="underline"; btn.style.textDecorationThickness="2px"; },
       run:function(inst, arg){ Formatting.applyUnderline(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
     },
@@ -3259,6 +3683,7 @@
         { label:"Wavy", value:"wavy" }
       ],
       getValue:function(inst){ return inst && inst.underlineStyle ? inst.underlineStyle : "solid"; },
+      historyLabel:"Underline Style",
       run:function(inst, arg){
         const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
         if(!value) return;
@@ -3297,6 +3722,7 @@
       kind:"button",
       ariaLabel:"Align Left (靠左對齊)",
       title:"Align Left (靠左對齊)",
+      historyLabel:"Align Left",
       decorate:function(btn){ decorateAlignButton(btn, "left"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "left"); OutputBinding.syncDebounced(inst); }
     },
@@ -3305,6 +3731,7 @@
       kind:"button",
       ariaLabel:"Align Center (置中對齊)",
       title:"Align Center (置中對齊)",
+      historyLabel:"Align Center",
       decorate:function(btn){ decorateAlignButton(btn, "center"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "center"); OutputBinding.syncDebounced(inst); }
     },
@@ -3313,6 +3740,7 @@
       kind:"button",
       ariaLabel:"Align Right (靠右對齊)",
       title:"Align Right (靠右對齊)",
+      historyLabel:"Align Right",
       decorate:function(btn){ decorateAlignButton(btn, "right"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "right"); OutputBinding.syncDebounced(inst); }
     },
@@ -3321,6 +3749,7 @@
       kind:"button",
       ariaLabel:"Justify (左右對齊)",
       title:"Justify (左右對齊)",
+      historyLabel:"Justify",
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
@@ -3329,6 +3758,7 @@
       kind:"button",
       ariaLabel:"Strikethrough",
       title:"Strikethrough",
+      historyLabel:"Strikethrough",
       decorate:function(btn){ btn.style.textDecoration="line-through"; btn.style.textDecorationThickness="2px"; },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "strikeThrough"); OutputBinding.syncDebounced(inst); }
     },
@@ -3337,6 +3767,7 @@
       kind:"button",
       ariaLabel:"Subscript",
       title:"Subscript",
+      historyLabel:"Subscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "subscript"); OutputBinding.syncDebounced(inst); }
     },
     "format.superscript":{
@@ -3344,24 +3775,25 @@
       kind:"button",
       ariaLabel:"Superscript",
       title:"Superscript",
+      historyLabel:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
-    "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
+    "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", history:false, repeatable:false, run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; Breaks.insert(target); if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } },
     "break.remove":{ label:"Remove Break", kind:"button", ariaLabel:"Remove page break",
       run:function(inst, arg){ const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el; if(Breaks.remove(target)){ if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview(); OutputBinding.syncDebounced(inst); } } },
-    "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
+    "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer", history:false, repeatable:false,
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
       run:function(inst){ inst.headerEnabled = !inst.headerEnabled; OutputBinding.syncDebounced(inst); } },
     "toggle.footer":{ label:"Footer", kind:"toggle", ariaLabel:"Toggle footer", getActive:function(inst){ return !!inst.footerEnabled; },
       run:function(inst){ inst.footerEnabled = !inst.footerEnabled; OutputBinding.syncDebounced(inst); } },
-    "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
-    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
-    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
-    "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
-    "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
+    "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", historyLabel:"Reflow", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
+    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", history:false, repeatable:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
+    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", history:false, repeatable:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
+    "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", history:false, repeatable:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
+    "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", history:false, repeatable:false, run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
@@ -3371,7 +3803,7 @@
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] }
     ],
-    quickActions:["fullscreen.open"]
+    quickActions:["history.undo","history.redo","fullscreen.open"]
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
@@ -3381,7 +3813,8 @@
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
-    ]
+    ],
+    quickActions:["history.undo","history.redo"]
   };
   let INSTANCE_SEQ=0;
   function WEditorInstance(editorEl){
@@ -3409,10 +3842,18 @@
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
     Breaks.ensurePlaceholders(this.el);
+    SessionHistory.init(this);
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
-    this.el.addEventListener("input", (function(self){ return function(){ Breaks.ensurePlaceholders(self.el); OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("input", (function(self){ return function(){ Breaks.ensurePlaceholders(self.el); OutputBinding.syncDebounced(self); SessionHistory.queueInput(self); }; })(this));
+    this.el.addEventListener("keydown", (function(self){ return function(e){
+      const key=(e.key||"").toLowerCase();
+      const mod=e.ctrlKey || e.metaKey;
+      if(mod && key==="z"){ e.preventDefault(); if(e.shiftKey){ if(!SessionHistory.redo(self)){ SessionHistory.repeat(self); } } else { SessionHistory.undo(self); } return; }
+      if(mod && key==="y"){ e.preventDefault(); if(!SessionHistory.redo(self)){ SessionHistory.repeat(self); } return; }
+      if(!mod && !e.altKey && (e.key||"")==="F4"){ e.preventDefault(); SessionHistory.repeat(self); }
+    }; })(this));
     this.el.__winst = this;
   };
   const WEditor=(function(){
