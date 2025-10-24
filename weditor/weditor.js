@@ -73,7 +73,12 @@
       hfPreviewHeader:{ minHeight:"58px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderBottom:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewFooter:{ minHeight:"52px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderTop:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
-      hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
+      hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" },
+      addonCard:{ display:"grid", gap:"12px", padding:"14px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#fafafa", color:UI.text },
+      addonSection:{ display:"grid", gap:"6px" },
+      addonSectionTitle:{ font:"14px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      addonSectionBody:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.text },
+      addonSectionNote:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
   })();
@@ -4143,6 +4148,96 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "addon.listBreakdown":{
+      kind:"custom",
+      ariaLabel:"List command breakdown (清單按鈕說明)",
+      render:function(){
+        const wrap=document.createElement("div");
+        applyStyles(wrap, WCfg.Style.addonCard);
+        const sections=[
+          {
+            title:"Bulleted List (項目符號清單)",
+            points:[
+              "Adds bullet points (•, ○, ▪ etc.) before each paragraph or line.",
+              "Useful for unordered lists — e.g., listing features, tasks, or points without sequence."
+            ],
+            note:"The small arrow ▼ next to it opens a bullet style gallery where you can choose different symbols or define a custom bullet."
+          },
+          {
+            title:"Numbered List (編號清單)",
+            points:[
+              "Adds sequential numbers (1., 2., 3.) or letters (a., b., c.) before each item.",
+              "Best for ordered lists — e.g., step-by-step instructions or processes."
+            ],
+            note:"The arrow ▼ opens options for different numbering formats (1, 2, 3 / i, ii, iii / A, B, C)."
+          },
+          {
+            title:"Multilevel List (多層次清單)",
+            points:[
+              { text:"Creates hierarchical lists — for example:", children:["Main item","1.1 Sub-item","1.1.1 Sub-sub-item"] },
+              "Ideal for outlines, policies, or technical documents that need nested numbering or bullets."
+            ],
+            note:"The arrow ▼ opens presets or allows you to define custom outline styles."
+          }
+        ];
+        sections.forEach(function(section, index){
+          const sec=document.createElement("div");
+          applyStyles(sec, WCfg.Style.addonSection);
+          const title=document.createElement("div");
+          title.textContent=section.title;
+          applyStyles(title, WCfg.Style.addonSectionTitle);
+          sec.appendChild(title);
+          if(section.points && section.points.length){
+            const list=document.createElement("ul");
+            list.style.margin="0";
+            list.style.paddingLeft="18px";
+            list.style.listStyleType="disc";
+            for(let i=0;i<section.points.length;i++){
+              const content=section.points[i];
+              const li=document.createElement("li");
+              applyStyles(li, WCfg.Style.addonSectionBody);
+              if(typeof content==="string"){
+                li.textContent=content;
+              } else if(content && typeof content.text==="string"){
+                const text=document.createElement("div");
+                text.textContent=content.text;
+                applyStyles(text, WCfg.Style.addonSectionBody);
+                li.appendChild(text);
+                if(Array.isArray(content.children) && content.children.length){
+                  const nested=document.createElement("ul");
+                  nested.style.margin="6px 0 0";
+                  nested.style.paddingLeft="18px";
+                  nested.style.listStyleType="circle";
+                  for(let j=0;j<content.children.length;j++){
+                    const child=document.createElement("li");
+                    child.textContent=content.children[j];
+                    applyStyles(child, WCfg.Style.addonSectionBody);
+                    nested.appendChild(child);
+                  }
+                  li.appendChild(nested);
+                }
+              }
+              list.appendChild(li);
+            }
+            sec.appendChild(list);
+          }
+          if(section.note){
+            const note=document.createElement("div");
+            note.textContent=section.note;
+            applyStyles(note, WCfg.Style.addonSectionNote);
+            sec.appendChild(note);
+          }
+          wrap.appendChild(sec);
+          if(index<sections.length-1){
+            const divider=document.createElement("div");
+            divider.style.height="1px";
+            divider.style.background=WCfg.UI.borderSubtle;
+            wrap.appendChild(divider);
+          }
+        });
+        return wrap;
+      }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -4191,7 +4286,8 @@
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] }
+      { id:"output", label:"Output", items:["print","export"] },
+      { id:"addon", label:"Addon", items:["addon.listBreakdown"] }
     ],
     quickActions:["fullscreen.open"]
   };
@@ -4206,6 +4302,7 @@
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:["print","export"] },
+      { id:"addon", label:"Addon", items:["addon.listBreakdown"] },
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
     ]
   };
