@@ -745,6 +745,10 @@
       }
       push(false);
       if(!pages.length){ pages.push(cur); }
+      const measurePagesHost=document.createElement("div");
+      measurePagesHost.style.cssText="position:absolute;left:-99999px;top:-99999px;width:"+A4W+"px;visibility:hidden;pointer-events:none;opacity:0;";
+      measWrap.appendChild(measurePagesHost);
+      for(let i=0;i<pages.length;i++){ measurePagesHost.appendChild(pages[i].page); }
       const total=pages.length, dateStr=(new Date()).toISOString().slice(0,10);
       function adjustPageOffsets(pg){
         if(!pg) return;
@@ -753,9 +757,13 @@
         let topOffset = pg.headerNode ? Math.max(WCfg.HDR_MIN, baseHeader) : 0;
         if(pg.headerNode){
           const rect=pg.headerNode.getBoundingClientRect();
-          const actual=Math.max(Math.ceil(rect.height||0), WCfg.HDR_MIN);
+          const measuredHeight=pg.headerNode.offsetHeight;
+          const rectHeight=Math.ceil(rect.height||0);
+          const actual=Math.max(measuredHeight||0, rectHeight, WCfg.HDR_MIN);
           topOffset=Math.max(topOffset, actual);
-          pg.headerNode.style.minHeight=Math.max(actual, WCfg.HDR_MIN)+"px";
+          const applied=Math.max(actual, WCfg.HDR_MIN);
+          pg.headerNode.style.minHeight=applied+"px";
+          pg.headerNode.setAttribute("data-offset-height", String(applied));
         }
         let bottomOffset = pg.footerNode ? Math.max(WCfg.FTR_MIN, baseFooter) : 0;
         if(pg.footerNode){
