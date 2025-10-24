@@ -1040,6 +1040,15 @@
     const TEMPLATE_LIBRARY={
       header:[
         {
+          id:"logo_only",
+          label:"🖼️ Letterhead Logo",
+          preview:'<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="height:48px;width:auto;display:block;margin:0 auto;object-fit:contain;">',
+          html:'<div style="width:100%;text-align:center;">'+
+            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="max-height:80px;width:auto;display:inline-block;object-fit:contain;">'+
+          '</div>',
+          align:"center"
+        },
+        {
           id:"letterhead",
           label:"🏢 Company Letterhead",
           preview:'<strong>Acme Corp</strong><span>123 Market St · {{date}}</span>',
