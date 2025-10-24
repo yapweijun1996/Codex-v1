@@ -1705,6 +1705,79 @@
     }
     return { open };
   })();
+  const StoragePayload=(function(){
+    const ATTR_STORAGE_MODE="data-weditor-storage";
+    const MODE_JSON="json";
+    const PAYLOAD_VERSION="1.0";
+    function usesJSON(outputEl){
+      return !!(outputEl && outputEl.getAttribute && outputEl.getAttribute(ATTR_STORAGE_MODE)===MODE_JSON);
+    }
+    function normalizeAlign(value){ return HFAlign.normalize(value); }
+    function build(inst, rawHTML, pagedHTML){
+      const payload={
+        version:PAYLOAD_VERSION,
+        type:"weditor-state",
+        outputMode:inst && inst.outputMode==="paged"?"paged":"raw",
+        rawHTML:typeof rawHTML==="string"?rawHTML:"",
+        header:{
+          enabled:!!(inst && inst.headerEnabled),
+          html:inst && typeof inst.headerHTML==="string"?inst.headerHTML:"",
+          align:inst?normalizeAlign(inst.headerAlign):normalizeAlign("left")
+        },
+        footer:{
+          enabled:!!(inst && inst.footerEnabled),
+          html:inst && typeof inst.footerHTML==="string"?inst.footerHTML:"",
+          align:inst?normalizeAlign(inst.footerAlign):normalizeAlign("left")
+        }
+      };
+      if(typeof pagedHTML==="string") payload.pagedHTML=pagedHTML;
+      return payload;
+    }
+    function serialize(inst, rawHTML, pagedHTML){
+      try {
+        return JSON.stringify(build(inst, rawHTML, pagedHTML));
+      } catch(err){
+        return "";
+      }
+    }
+    function apply(inst){
+      if(!inst || !inst.outputEl) return;
+      const outputEl=inst.outputEl;
+      if(!usesJSON(outputEl)) return;
+      const value=(outputEl.value||"").trim();
+      if(!value) return;
+      let payload=null;
+      try { payload=JSON.parse(value); }
+      catch(err){ return; }
+      if(!payload || typeof payload!=="object") return;
+      if(typeof payload.rawHTML==="string") inst.el.innerHTML=payload.rawHTML;
+      if(payload.header && typeof payload.header==="object"){
+        if(typeof payload.header.html==="string") inst.headerHTML=payload.header.html;
+        if(typeof payload.header.enabled==="boolean") inst.headerEnabled=payload.header.enabled;
+        if(typeof payload.header.align!=="undefined") inst.headerAlign=normalizeAlign(payload.header.align);
+      }
+      if(payload.footer && typeof payload.footer==="object"){
+        if(typeof payload.footer.html==="string") inst.footerHTML=payload.footer.html;
+        if(typeof payload.footer.enabled==="boolean") inst.footerEnabled=payload.footer.enabled;
+        if(typeof payload.footer.align!=="undefined") inst.footerAlign=normalizeAlign(payload.footer.align);
+      }
+      if(typeof payload.outputMode==="string"){
+        const mode=payload.outputMode.toLowerCase();
+        if(mode==="paged"||mode==="raw") inst.outputMode=mode;
+      }
+      inst.headerAlign=normalizeAlign(inst.headerAlign);
+      inst.footerAlign=normalizeAlign(inst.footerAlign);
+      if(inst.headerEnabled){ inst.el.classList.remove("weditor--no-header"); }
+      else { inst.el.classList.add("weditor--no-header"); }
+      if(inst.footerEnabled){ inst.el.classList.remove("weditor--no-footer"); }
+      else { inst.el.classList.add("weditor--no-footer"); }
+      if(inst.outputMode==="paged"){ inst.el.classList.add("weditor--paged"); }
+      else { inst.el.classList.remove("weditor--paged"); }
+      inst.el.setAttribute("data-header-align", inst.headerAlign);
+      inst.el.setAttribute("data-footer-align", inst.footerAlign);
+    }
+    return { usesJSON, serialize, apply };
+  })();
   const OutputBinding=(function(){
     function isOut(el){
       return el && el.tagName === "TEXTAREA" &&
@@ -1734,6 +1807,12 @@
     }
     function sync(inst){
       if(!inst.outputEl) return;
+      if(StoragePayload.usesJSON(inst.outputEl)){
+        const rawHTML=Breaks.serialize(inst.el);
+        const pagedHTML=inst.outputMode==="paged"?Paginator.pagesHTML(inst):null;
+        inst.outputEl.value=StoragePayload.serialize(inst, rawHTML, pagedHTML);
+        return;
+      }
       if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
       else { inst.outputEl.value = Breaks.serialize(inst.el); }
     }
@@ -4222,6 +4301,7 @@
     this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
     this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
+    StoragePayload.apply(this);
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
