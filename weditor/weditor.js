@@ -1060,6 +1060,15 @@
           align:"left"
         },
         {
+          id:"logoOnly",
+          label:"🖼️ Letterhead Logo",
+          preview:'<span>Logo preview</span><span>Image only header</span>',
+          html:'<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="max-height:72px;width:auto;object-fit:contain;">'+
+          '</div>',
+          align:"center"
+        },
+        {
           id:"report",
           label:"📊 Company Report",
           preview:'<span>Q4 Business Review</span><span>Confidential · {{date}}</span>',
