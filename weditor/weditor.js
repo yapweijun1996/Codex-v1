@@ -1,7 +1,7 @@
 (function(){
   "use strict";
   const WCfg=(function(){
-    const A4W=794, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
+    const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
     const HDR_MIN=24, FTR_MIN=20;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
     const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=1;
@@ -37,7 +37,7 @@
       breakMarker:{ display:"flex", alignItems:"center", justifyContent:"center", gap:"12px", margin:"18px 0", padding:"10px 12px", border:"1px dashed "+UI.borderSubtle, borderRadius:"6px", background:"#f8fbff", color:UI.brand, font:"12px/1.3 Segoe UI,system-ui", letterSpacing:".08em", textTransform:"uppercase", userSelect:"none", cursor:"default" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
-      pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden",
+      pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0 auto",
       hfModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
       hfHead:{ padding:"18px 22px", borderBottom:"1px solid "+UI.border, display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
@@ -1706,78 +1706,36 @@
     return { open };
   })();
   const OutputBinding=(function(){
-    function hasMatch(el, base){
-      if(!el || el.tagName !== "TEXTAREA") return false;
-      if(el.classList.contains(base)) return true;
-      if(base.indexOf("weditor")===0){
-        const alt = base.replace("weditor", "w-editor");
-        if(alt !== base && el.classList.contains(alt)) return true;
-      }
-      return false;
-    }
-    function collect(parent, selector){
-      if(!parent) return [];
-      return Array.prototype.slice.call(parent.querySelectorAll(selector));
+    function isOut(el){
+      return el && el.tagName === "TEXTAREA" &&
+        (el.classList.contains("weditor_output") || el.classList.contains("w-editor_output"));
     }
     function resolve(editorEl){
-      const result={ edit:null, preview:null, legacy:null };
-      if(!editorEl) return result;
-      function tryAssign(type, el){ if(el && !result[type]) result[type]=el; }
-      function scanSiblings(forward){
-        let sib = forward ? editorEl.nextElementSibling : editorEl.previousElementSibling;
-        while(sib){
-          if(hasMatch(sib, "weditor_edit")) tryAssign("edit", sib);
-          if(hasMatch(sib, "weditor_preview")) tryAssign("preview", sib);
-          if(hasMatch(sib, "weditor_output")) tryAssign("legacy", sib);
-          if(sib.classList && (sib.classList.contains("weditor") || sib.classList.contains("w-editor"))) break;
-          sib = forward ? sib.nextElementSibling : sib.previousElementSibling;
-        }
+      let sib = editorEl.nextElementSibling;
+      while(sib){
+        if(isOut(sib)) return sib;
+        if(sib.classList && sib.classList.contains("weditor")) break;
+        sib = sib.nextElementSibling;
       }
-      scanSiblings(true);
-      scanSiblings(false);
+      sib = editorEl.previousElementSibling;
+      while(sib){
+        if(isOut(sib)) return sib;
+        if(sib.classList && sib.classList.contains("weditor")) break;
+        sib = sib.previousElementSibling;
+      }
       const parent = editorEl.parentElement;
       if(parent){
-        const editors = collect(parent, ".weditor, .w-editor");
+        const editors = Array.prototype.slice.call(parent.querySelectorAll(".weditor, .w-editor"));
+        const outputs = Array.prototype.slice.call(parent.querySelectorAll("textarea.weditor_output, textarea.w-editor_output"));
         const idx = editors.indexOf(editorEl);
-        if(idx > -1){
-          const editList = collect(parent, "textarea.weditor_edit, textarea.w-editor_edit");
-          const previewList = collect(parent, "textarea.weditor_preview, textarea.w-editor_preview");
-          const legacyList = collect(parent, "textarea.weditor_output, textarea.w-editor_output");
-          if(editList[idx]) tryAssign("edit", editList[idx]);
-          if(previewList[idx]) tryAssign("preview", previewList[idx]);
-          if(legacyList[idx]) tryAssign("legacy", legacyList[idx]);
-        }
+        if(idx > -1 && outputs[idx]) return outputs[idx];
       }
-      return result;
-    }
-    function computePreview(inst){
-      return "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst);
+      return null;
     }
     function sync(inst){
-      if(!inst || !inst.el) return;
-      let rawHTML=null, previewHTML=null;
-      if(inst.editOutputEl){
-        rawHTML = rawHTML || Breaks.serialize(inst.el);
-        inst.editOutputEl.value = rawHTML;
-      }
-      if(inst.previewOutputEl){
-        if(inst.outputMode === "paged"){
-          previewHTML = computePreview(inst);
-          inst.previewOutputEl.value = previewHTML;
-        } else {
-          rawHTML = rawHTML || Breaks.serialize(inst.el);
-          inst.previewOutputEl.value = rawHTML;
-        }
-      }
-      if(inst.outputEl && inst.outputEl !== inst.editOutputEl && inst.outputEl !== inst.previewOutputEl){
-        if(inst.outputMode === "paged"){
-          previewHTML = previewHTML || computePreview(inst);
-          inst.outputEl.value = previewHTML;
-        } else {
-          rawHTML = rawHTML || Breaks.serialize(inst.el);
-          inst.outputEl.value = rawHTML;
-        }
-      }
+      if(!inst.outputEl) return;
+      if(inst.outputMode==="paged"){ inst.outputEl.value = "<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst); }
+      else { inst.outputEl.value = Breaks.serialize(inst.el); }
     }
     const timers=new WeakMap();
     function syncDebounced(inst){
@@ -4262,14 +4220,8 @@
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
     this.headerEnabled = !editorEl.classList.contains("weditor--no-header");
     this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
+    this.outputEl = OutputBinding.resolve(editorEl);
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
-    const outputs = OutputBinding.resolve(editorEl) || {};
-    this.editOutputEl = outputs.edit || null;
-    this.previewOutputEl = outputs.preview || null;
-    this.outputEl = outputs.legacy || null;
-    if(!this.outputEl){
-      this.outputEl = this.outputMode === "paged" ? this.previewOutputEl : this.editOutputEl;
-    }
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";

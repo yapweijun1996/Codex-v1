@@ -10,37 +10,23 @@
 		<script src="weditor.js" defer></script>
 	</head>
 	<body>
-                <div style="overflow: auto; height: 500px; width: 600px;">
-                        <div class="weditor weditor--paged">
-                                <h2>Editor A (Paged Output)</h2>
-                                <p>
-                                        Try pasting complex Word/Docs content, place the caret, then click
-                                        <em>Insert Break</em>. The break will land where your caret is
-                                        (between top-level blocks), not at the end.
-                                </p>
-                        </div>
-                        <label style="display:block; font:12px/1.4 Segoe UI, system-ui; color:#605e5c; margin-top:8px;">
-                                「編輯原始稿」
-                                <textarea class="weditor_edit" aria-label="Editor A raw HTML"></textarea>
-                        </label>
-                        <label style="display:block; font:12px/1.4 Segoe UI, system-ui; color:#605e5c; margin-top:8px;">
-                                「列印預覽」
-                                <textarea class="weditor_preview" aria-label="Editor A paged HTML"></textarea>
-                        </label>
-                </div>
-                <div style="overflow: auto; height: 300px; width: 400px;">
-                        <div class="weditor weditor--paged">
-                                <h2>Editor B (Raw Output)</h2>
-                                <p>Raw HTML mirrored below.</p>
-                        </div>
-                        <label style="display:block; font:12px/1.4 Segoe UI, system-ui; color:#605e5c; margin-top:8px;">
-                                「編輯原始稿」
-                                <textarea class="weditor_edit" aria-label="Editor B raw HTML"></textarea>
-                        </label>
-                        <label style="display:block; font:12px/1.4 Segoe UI, system-ui; color:#605e5c; margin-top:8px;">
-                                「列印預覽」
-                                <textarea class="weditor_preview" aria-label="Editor B paged HTML"></textarea>
-                        </label>
-                </div>
+		<div style="overflow: auto; height: 500px; width: 600px;">
+			<div class="weditor weditor--paged">
+				<h2>Editor A (Paged Output)</h2>
+				<p>
+					Try pasting complex Word/Docs content, place the caret, then click
+					<em>Insert Break</em>. The break will land where your caret is
+					(between top-level blocks), not at the end.
+				</p>
+			</div>
+			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
+		</div>
+		<div style="overflow: auto; height: 300px; width: 400px;">
+			<div class="weditor weditor--paged">
+				<h2>Editor B (Raw Output)</h2>
+				<p>Raw HTML mirrored below.</p>
+			</div>
+			<textarea class="weditor_output" aria-label="Editor A paged HTML"></textarea>
+		</div>
 	</body>
 </html>
