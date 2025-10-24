@@ -854,6 +854,27 @@
       readout.style.whiteSpace="nowrap";
       readout.style.pointerEvents="none";
       overlay.appendChild(readout);
+      const fullWidthBtn=document.createElement("button");
+      fullWidthBtn.setAttribute("data-weditor-overlay","1");
+      fullWidthBtn.type="button";
+      fullWidthBtn.textContent="Full width";
+      fullWidthBtn.setAttribute("aria-label","Set image to full header width");
+      fullWidthBtn.style.position="absolute";
+      fullWidthBtn.style.left="0";
+      fullWidthBtn.style.top="-34px";
+      fullWidthBtn.style.padding="4px 10px";
+      fullWidthBtn.style.font="11px/1.3 Segoe UI,system-ui";
+      fullWidthBtn.style.background=WCfg.UI.brand;
+      fullWidthBtn.style.color="#fff";
+      fullWidthBtn.style.border="0";
+      fullWidthBtn.style.borderRadius="6px";
+      fullWidthBtn.style.boxShadow="0 2px 6px rgba(0,0,0,.18)";
+      fullWidthBtn.style.pointerEvents="auto";
+      fullWidthBtn.style.cursor="pointer";
+      fullWidthBtn.style.transition="background .18s ease";
+      fullWidthBtn.addEventListener("mouseenter", function(){ fullWidthBtn.style.background=WCfg.UI.brandHover; });
+      fullWidthBtn.addEventListener("mouseleave", function(){ fullWidthBtn.style.background=WCfg.UI.brand; });
+      overlay.appendChild(fullWidthBtn);
       editor.appendChild(overlay);
       editor.__weditorImageOverlay = overlay;
       let activeImg=null;
@@ -862,6 +883,17 @@
         overlay.style.display="none";
         readout.textContent="";
         if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); activeImg=null; }
+      }
+      function setImageFullWidth(img){
+        if(!img) return;
+        img.style.width="100%";
+        img.style.height="auto";
+        img.style.maxWidth="100%";
+        img.style.maxHeight="";
+        if(!img.style.objectFit) img.style.objectFit="contain";
+        if(img.hasAttribute("width")) img.removeAttribute("width");
+        if(img.hasAttribute("height")) img.removeAttribute("height");
+        if(!img.style.display || img.style.display==="inline") img.style.display="block";
       }
       function updateOverlay(){
         if(!activeImg || !editor.contains(activeImg)){ hideOverlay(); return; }
@@ -896,6 +928,13 @@
           hideOverlay();
         }
       }
+      fullWidthBtn.addEventListener("click", function(ev){
+        if(!activeImg) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        setImageFullWidth(activeImg);
+        scheduleOverlay();
+      });
       editor.addEventListener("click", function(ev){
         const target=ev.target;
         if(target && target.tagName==="IMG"){ selectImage(target); }
@@ -1039,6 +1078,13 @@
     }
     const TEMPLATE_LIBRARY={
       header:[
+        {
+          id:"letterhead_image_banner",
+          label:"🖼️ Logo Banner",
+          preview:'<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;box-shadow:0 0 0 1px rgba(0,0,0,.08);">',
+          html:'<div style="width:100%;"><img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Company letterhead banner" style="width:100%;height:auto;display:block;object-fit:contain;max-width:100%;"></div>',
+          align:"center"
+        },
         {
           id:"letterhead",
           label:"🏢 Company Letterhead",
