@@ -546,6 +546,135 @@
     }
     return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize };
   })();
+  const TableTools=(function(){
+    const MAX_DIMENSION=12;
+    function clampDimension(value){
+      if(typeof value!=="number" || !isFinite(value)) return null;
+      const normalized=Math.floor(value);
+      if(normalized<1 || normalized>MAX_DIMENSION) return null;
+      return normalized;
+    }
+    function createTable(doc, rows, cols){
+      const table=doc.createElement("table");
+      table.style.width="100%";
+      table.style.maxWidth="100%";
+      table.style.borderCollapse="collapse";
+      table.style.tableLayout="fixed";
+      table.style.margin="12px 0";
+      table.style.background="#fff";
+      table.style.border="1px solid "+WCfg.UI.borderSubtle;
+      const colgroup=doc.createElement("colgroup");
+      const colWidth=(100/cols).toFixed(4).replace(/0+$/,'').replace(/\.$/,'');
+      for(let i=0;i<cols;i++){
+        const col=doc.createElement("col");
+        col.style.width=colWidth+"%";
+        colgroup.appendChild(col);
+      }
+      table.appendChild(colgroup);
+      const tbody=doc.createElement("tbody");
+      for(let r=0;r<rows;r++){
+        const tr=doc.createElement("tr");
+        for(let c=0;c<cols;c++){
+          const td=doc.createElement("td");
+          td.style.border="1px solid "+WCfg.UI.borderSubtle;
+          td.style.padding="12px";
+          td.style.verticalAlign="top";
+          td.style.minHeight="36px";
+          td.style.wordBreak="break-word";
+          const paragraph=doc.createElement("p");
+          paragraph.style.margin="0";
+          const text=doc.createTextNode("");
+          paragraph.appendChild(text);
+          td.appendChild(paragraph);
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      return table;
+    }
+    function ensureSelection(target){
+      if(!target) return null;
+      if(typeof target.focus==="function"){
+        try{ target.focus({ preventScroll:true }); }
+        catch(err){ target.focus(); }
+      }
+      let selection=window.getSelection ? window.getSelection() : null;
+      if(!selection || selection.rangeCount===0 || !target.contains(selection.anchorNode)){
+        WDom.placeCaretAtEnd(target);
+        selection=window.getSelection ? window.getSelection() : null;
+      }
+      if(!selection || selection.rangeCount===0) return null;
+      let range=selection.getRangeAt(0);
+      if(!target.contains(range.commonAncestorContainer)){
+        WDom.placeCaretAtEnd(target);
+        selection=window.getSelection ? window.getSelection() : null;
+        if(!selection || selection.rangeCount===0) return null;
+        range=selection.getRangeAt(0);
+        if(!target.contains(range.commonAncestorContainer)) return null;
+      }
+      return { selection, range:range.cloneRange() };
+    }
+    function insert(inst, ctx, rows, cols){
+      const target=HistoryManager.resolveTarget(inst, ctx);
+      if(!target) return null;
+      const normalizedRows=clampDimension(rows);
+      const normalizedCols=clampDimension(cols);
+      if(!normalizedRows || !normalizedCols) return null;
+      const doc=target.ownerDocument || document;
+      const info=ensureSelection(target);
+      if(!info) return null;
+      const { selection }=info;
+      const range=info.range;
+      range.deleteContents();
+      const table=createTable(doc, normalizedRows, normalizedCols);
+      range.insertNode(table);
+      if(table.parentNode){
+        const nextSibling=table.nextSibling;
+        let needsParagraph=true;
+        let checkNode=nextSibling;
+        while(checkNode){
+          if(checkNode.nodeType===3 && !checkNode.nodeValue.trim()){
+            checkNode=checkNode.nextSibling;
+            continue;
+          }
+          if(checkNode.nodeType===1){
+            needsParagraph=false;
+          }
+          break;
+        }
+        if(needsParagraph){
+          const paragraph=doc.createElement("p");
+          const text=doc.createTextNode("");
+          paragraph.appendChild(text);
+          table.parentNode.insertBefore(paragraph, table.nextSibling);
+        }
+      }
+      Normalizer.fixStructure(target);
+      Breaks.ensurePlaceholders(target);
+      const firstCell=table.querySelector("td");
+      if(firstCell){
+        const focusParagraph=firstCell.querySelector("p") || firstCell;
+        let focusNode=null;
+        let offset=0;
+        if(focusParagraph.firstChild){
+          focusNode=focusParagraph.firstChild;
+          offset=(focusNode.nodeType===3) ? focusNode.nodeValue.length : 0;
+        } else {
+          focusNode=focusParagraph;
+          offset=0;
+        }
+        const newRange=doc.createRange();
+        try{ newRange.setStart(focusNode, offset); }
+        catch(err){ newRange.setStart(focusParagraph, 0); }
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      }
+      return table;
+    }
+    return { insert, MAX_DIMENSION };
+  })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
     const FOOTER_BASE_STYLE="padding:0;border-top:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -4592,6 +4721,31 @@
           OutputBinding.syncDebounced(inst);
         }
       } },
+    "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        const max=TableTools.MAX_DIMENSION;
+        const colInput=window.prompt("Enter number of columns (1-"+max+") 列數:", "3");
+        if(colInput==null) return;
+        const cols=parseInt(colInput, 10);
+        if(!isFinite(cols) || cols<1 || cols>max){
+          alert("Please enter a valid column count between 1 and "+max+".");
+          return;
+        }
+        const rowInput=window.prompt("Enter number of rows (1-"+max+") 行數:", "2");
+        if(rowInput==null) return;
+        const rows=parseInt(rowInput, 10);
+        if(!isFinite(rows) || rows<1 || rows>max){
+          alert("Please enter a valid row count between 1 and "+max+".");
+          return;
+        }
+        const table=TableTools.insert(inst, ctx, rows, cols);
+        if(table){
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+          OutputBinding.syncDebounced(inst);
+        }
+      } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
@@ -4622,6 +4776,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4637,6 +4792,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
