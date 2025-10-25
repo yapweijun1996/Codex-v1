@@ -4058,6 +4058,47 @@
       }
       return { changed:changed, cell, table, color:normalized };
     }
+    function clearCellBorder(inst, ctx, sides){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const list=[];
+      if(Array.isArray(sides)){
+        for(let i=0;i<sides.length;i++){
+          const side=(sides[i]||"").toLowerCase();
+          if(side==="top"||side==="right"||side==="bottom"||side==="left"){
+            if(list.indexOf(side)===-1) list.push(side);
+          }
+        }
+      } else if(typeof sides==="string" && sides){
+        const side=sides.toLowerCase();
+        if(side==="top"||side==="right"||side==="bottom"||side==="left") list.push(side);
+      }
+      if(!list.length){
+        list.push("top","right","bottom","left");
+      }
+      let changed=false;
+      for(let i=0;i<list.length;i++){
+        const side=list[i];
+        const cap=side.charAt(0).toUpperCase()+side.slice(1);
+        const colorProp="border"+cap+"Color";
+        const widthProp="border"+cap+"Width";
+        const styleProp="border"+cap+"Style";
+        if(cell.style[colorProp]!=="transparent"){ cell.style[colorProp]="transparent"; changed=true; }
+        if(cell.style[widthProp]!=="0px"){ cell.style[widthProp]="0px"; changed=true; }
+        if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+      }
+      if(list.length===4){
+        if(cell.style.border!=="0"){ cell.style.border="0"; changed=true; }
+      }
+      const table=cell.closest ? cell.closest("table") : null;
+      if(table){
+        if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
+        TableResizer.ensureTable(table);
+      }
+      return { changed:changed, cell, table, hidden:true };
+    }
     function getState(inst, ctx){
       const target=resolveTarget(inst, ctx);
       if(!target) return null;
@@ -4065,7 +4106,7 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder };
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder };
   })();
   const ListUI=(function(){
     function createSplitButton(options){
@@ -4750,10 +4791,18 @@
       const colorButtons=[];
       const actionButtons={ hide:null, standard:null };
       const defaultColor=TableStyler.normalizeColor(WCfg.UI.borderSubtle || "#c8c6c4");
-      let cellColor=TableStyler.normalizeColor((inst && inst._tableCellBorderColor) || defaultColor) || defaultColor;
+      let cellColor=defaultColor;
+      if(inst && Object.prototype.hasOwnProperty.call(inst, "_tableCellBorderColor")){
+        if(inst._tableCellBorderColor===null){
+          cellColor=null;
+        } else {
+          cellColor=TableStyler.normalizeColor(inst._tableCellBorderColor) || defaultColor;
+        }
+      }
       const themeColors=Formatting.FONT_THEME_COLORS || [];
       const standardColors=Formatting.FONT_STANDARD_COLORS || [];
       const cellColorButtons=[];
+      let noBorderButton=null;
       let cellColorPreview=null;
       function registerCellColorButton(value, el){ cellColorButtons.push({ value, el }); }
       function updateCellColorSelection(selected){
@@ -4762,6 +4811,11 @@
           const active=selected && entry.value===selected;
           entry.el.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
           entry.el.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+        if(noBorderButton){
+          const active=!selected;
+          noBorderButton.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          noBorderButton.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
         }
       }
       function updateCellColorPreview(value){
@@ -4775,6 +4829,13 @@
         }
       }
       function setCellColor(value, persist){
+        if(value===null){
+          cellColor=null;
+          if(persist!==false && inst) inst._tableCellBorderColor=null;
+          updateCellColorSelection(null);
+          updateCellColorPreview(null);
+          return;
+        }
         const normalized=TableStyler.normalizeColor(value);
         if(!normalized) return;
         cellColor=normalized;
@@ -4838,7 +4899,10 @@
           }
           updatePreviewState(state);
           updateSelectionUI(state.color || null, !!state.hidden);
-          if(state && state.color){ setCellColor(state.color, false); }
+          if(state){
+            if(state.hidden){ setCellColor(null, false); }
+            else if(state.color){ setCellColor(state.color, false); }
+          }
           palette.style.display="flex";
           palette.setAttribute("aria-hidden","false");
           button.setAttribute("aria-expanded","true");
@@ -4909,6 +4973,25 @@
       cellColorPreview.setAttribute("aria-hidden","true");
       cellColorHeader.appendChild(cellColorLabel);
       cellColorHeader.appendChild(cellColorPreview);
+      noBorderButton=doc.createElement("button");
+      noBorderButton.type="button";
+      noBorderButton.style.width="24px";
+      noBorderButton.style.height="24px";
+      noBorderButton.style.border="1px solid "+WCfg.UI.borderSubtle;
+      noBorderButton.style.borderRadius="4px";
+      noBorderButton.style.background=NO_BORDER_PATTERN;
+      noBorderButton.style.cursor="pointer";
+      noBorderButton.setAttribute("title","Hide cell border");
+      noBorderButton.setAttribute("aria-label","Remove color from selected cell border");
+      noBorderButton.setAttribute("role","menuitem");
+      noBorderButton.addEventListener("click", function(ev){
+        ev.preventDefault();
+        setCellColor(null, true);
+      });
+      noBorderButton.addEventListener("keydown", function(ev){
+        if(ev.key==="Escape"){ ev.preventDefault(); closePalette(); button.focus(); }
+      });
+      cellColorHeader.appendChild(noBorderButton);
       const cellColorGrid=document.createElement("div");
       cellColorGrid.style.display="grid";
       cellColorGrid.style.gridTemplateColumns="repeat(auto-fill, minmax(24px, 1fr))";
@@ -4916,23 +4999,24 @@
       const cellColorList=themeColors.concat(standardColors);
       for(let i=0;i<cellColorList.length;i++){
         const entry=cellColorList[i];
+        const normalizedValue=TableStyler.normalizeColor(entry.value) || entry.value;
         const swatch=doc.createElement("button");
         swatch.type="button";
         swatch.style.width="24px";
         swatch.style.height="24px";
         swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
         swatch.style.borderRadius="4px";
-        swatch.style.background=entry.value;
+        swatch.style.background=normalizedValue;
         swatch.style.cursor="pointer";
         swatch.setAttribute("title", (entry.label||"Cell")+" border color");
         swatch.setAttribute("aria-label", "Use "+(entry.label||"cell")+" color for selected cell border");
         swatch.setAttribute("role","menuitem");
         swatch.addEventListener("click", function(ev){
           ev.preventDefault();
-          setCellColor(entry.value, true);
+          setCellColor(normalizedValue, true);
         });
         swatch.addEventListener("keydown", function(ev){ if(ev.key==="Escape"){ ev.preventDefault(); closePalette(); button.focus(); } });
-        registerCellColorButton(entry.value, swatch);
+        registerCellColorButton(normalizedValue, swatch);
         cellColorGrid.appendChild(swatch);
       }
       const cellApplyLabel=document.createElement("div");
@@ -4944,11 +5028,11 @@
       cellApplyRow.style.flexWrap="wrap";
       cellApplyRow.style.gap="6px";
       const cellActions=[
-        { label:"All", sides:["top","right","bottom","left"], history:"Set Cell Border Color", aria:"Apply color to all borders of the selected cell" },
-        { label:"Top", sides:["top"], history:"Set Cell Top Border Color", aria:"Apply color to the top border of the selected cell" },
-        { label:"Right", sides:["right"], history:"Set Cell Right Border Color", aria:"Apply color to the right border of the selected cell" },
-        { label:"Bottom", sides:["bottom"], history:"Set Cell Bottom Border Color", aria:"Apply color to the bottom border of the selected cell" },
-        { label:"Left", sides:["left"], history:"Set Cell Left Border Color", aria:"Apply color to the left border of the selected cell" }
+        { label:"All", sides:["top","right","bottom","left"], history:"Set Cell Border Color", historyClear:"Hide Cell Borders", aria:"Apply color to all borders of the selected cell" },
+        { label:"Top", sides:["top"], history:"Set Cell Top Border Color", historyClear:"Hide Cell Top Border", aria:"Apply color to the top border of the selected cell" },
+        { label:"Right", sides:["right"], history:"Set Cell Right Border Color", historyClear:"Hide Cell Right Border", aria:"Apply color to the right border of the selected cell" },
+        { label:"Bottom", sides:["bottom"], history:"Set Cell Bottom Border Color", historyClear:"Hide Cell Bottom Border", aria:"Apply color to the bottom border of the selected cell" },
+        { label:"Left", sides:["left"], history:"Set Cell Left Border Color", historyClear:"Hide Cell Left Border", aria:"Apply color to the left border of the selected cell" }
       ];
       for(let i=0;i<cellActions.length;i++){
         const action=cellActions[i];
@@ -4957,6 +5041,19 @@
         btn.setAttribute("aria-label", action.aria);
         btn.addEventListener("click", function(ev){
           ev.preventDefault();
+          if(cellColor===null){
+            const result=TableStyler.clearCellBorder(inst, ctx, action.sides);
+            if(!result || !result.cell){
+              window.alert("Place the caret inside a table cell to adjust its border.");
+              return;
+            }
+            if(!result.changed) return;
+            updatePreviewState(TableStyler.getState(inst, ctx));
+            const target=HistoryManager.resolveTarget(inst, ctx);
+            HistoryManager.record(inst, target, { label:action.historyClear || "Hide Cell Border", repeatable:false });
+            OutputBinding.syncDebounced(inst);
+            return;
+          }
           if(!cellColor){
             window.alert("Select a cell border color first.");
             return;
