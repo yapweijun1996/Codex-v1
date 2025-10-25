@@ -846,6 +846,39 @@
     }
     return { open };
   })();
+  const InsertDialogs=(function(){
+    const TABLE_EVENT="weditor:open-insert-table";
+    function createEvent(name, detail){
+      if(typeof window!=="undefined" && typeof window.CustomEvent==="function"){
+        return new window.CustomEvent(name, { detail });
+      }
+      if(typeof document!=="undefined" && document.createEvent){
+        const evt=document.createEvent("CustomEvent");
+        evt.initCustomEvent(name, false, false, detail);
+        return evt;
+      }
+      return null;
+    }
+    function openTable(inst, ctx){
+      if(typeof window==="undefined" || typeof window.dispatchEvent!=="function"){
+        return false;
+      }
+      const detail={ instance:inst||null, context:ctx||null, handled:false };
+      const evt=createEvent(TABLE_EVENT, detail);
+      if(!evt){
+        if(window.console && typeof console.warn==="function"){
+          console.warn("Insert Table dialog hook unavailable; CustomEvent unsupported.");
+        }
+        return false;
+      }
+      window.dispatchEvent(evt);
+      if(!detail.handled && window.console && typeof console.warn==="function"){
+        console.warn("No handler responded to '"+TABLE_EVENT+"'. Listen for the event and mark detail.handled = true once processed.");
+      }
+      return !!detail.handled;
+    }
+    return { openTable, TABLE_EVENT };
+  })();
   const HFEditor=(function(){
     function enableImageResizer(editor){
       if(!editor) return;
@@ -4482,6 +4515,18 @@
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
+    "insert.table":{
+      label:"Insert Table…",
+      kind:"button",
+      ariaLabel:"Insert table dialog",
+      title:"Insert a table",
+      run:function(inst, arg){
+        const handled=InsertDialogs.openTable(inst, arg && arg.ctx);
+        if(!handled && typeof window!=="undefined" && typeof window.alert==="function"){
+          window.alert("Insert Table dialog hook not implemented yet.");
+        }
+      }
+    },
     "format.alignLeft":{
       label:"Left",
       kind:"button",
@@ -4622,6 +4667,9 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:[
+        { label:"Tables", compact:true, items:["insert.table"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4636,6 +4684,9 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+      ] },
+      { id:"insert", label:"Insert", items:[
+        { label:"Tables", compact:true, items:["insert.table"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
