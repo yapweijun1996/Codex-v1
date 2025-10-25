@@ -3830,6 +3830,21 @@
       if(current && current.nodeType===1 && (current.tagName||"").toLowerCase()==="table") return current;
       return null;
     }
+    function ascendToCell(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="td" || tag==="th") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current && current.nodeType===1){
+        const tag=(current.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th") return current;
+      }
+      return null;
+    }
     function currentSelectionTable(target){
       if(!target || !target.ownerDocument) return null;
       const doc=target.ownerDocument;
@@ -3859,6 +3874,85 @@
         if(table) return table;
       }
       return null;
+    }
+    function collectSelectedCells(target, table){
+      if(!target || !table || !table.ownerDocument) return [];
+      const doc=table.ownerDocument;
+      const win=doc.defaultView || window;
+      let sel=null;
+      try{ sel=win.getSelection ? win.getSelection() : window.getSelection(); }
+      catch(err){ sel=null; }
+      const cells=[];
+      const seen=new Set();
+      const rows=table.rows || [];
+      let range=null;
+      if(sel && sel.rangeCount>0){ range=sel.getRangeAt(0); }
+      for(let r=0;r<rows.length;r++){
+        const row=rows[r];
+        if(!row || !row.cells) continue;
+        for(let c=0;c<row.cells.length;c++){
+          const cell=row.cells[c];
+          if(!cell || !target.contains(cell)) continue;
+          let intersects=false;
+          if(sel && sel.containsNode){
+            try{ intersects=sel.containsNode(cell, true); }
+            catch(err){ intersects=false; }
+          }
+          if(!intersects && range && range.intersectsNode){
+            try{ intersects=range.intersectsNode(cell); }
+            catch(err){ intersects=false; }
+          }
+          if(!intersects && range){
+            try{
+              const testRange=doc.createRange();
+              testRange.selectNodeContents(cell);
+              const RangeCtor=(win && win.Range) || window.Range || (doc.defaultView && doc.defaultView.Range) || null;
+              if(RangeCtor){
+                const END_TO_START = (typeof range.END_TO_START === "number" ? range.END_TO_START : RangeCtor.END_TO_START);
+                const START_TO_END = (typeof range.START_TO_END === "number" ? range.START_TO_END : RangeCtor.START_TO_END);
+                const before=range.compareBoundaryPoints(END_TO_START, testRange);
+                const after=range.compareBoundaryPoints(START_TO_END, testRange);
+                intersects=!(before<0 || after>0);
+              } else {
+                intersects=true;
+              }
+            }catch(err){ intersects=false; }
+          }
+          if(intersects){
+            if(!seen.has(cell)){
+              seen.add(cell);
+              cells.push(cell);
+            }
+          }
+        }
+      }
+      if(cells.length) return cells;
+      const fallbacks=[];
+      if(sel){
+        fallbacks.push(sel.anchorNode);
+        fallbacks.push(sel.focusNode);
+      }
+      if(doc.activeElement && target.contains(doc.activeElement)) fallbacks.push(doc.activeElement);
+      for(let i=0;i<fallbacks.length;i++){
+        const node=fallbacks[i];
+        if(!node) continue;
+        const cell=ascendToCell(node.nodeType===3?node.parentNode:node, target);
+        if(cell && !seen.has(cell)){
+          seen.add(cell);
+          cells.push(cell);
+        }
+      }
+      return cells;
+    }
+    function normalizeEdges(edges){
+      const map={ top:false, right:false, bottom:false, left:false };
+      if(Array.isArray(edges)){
+        for(let i=0;i<edges.length;i++){
+          const key=String(edges[i]||"").toLowerCase();
+          if(Object.prototype.hasOwnProperty.call(map, key)) map[key]=true;
+        }
+      }
+      return map;
     }
     function normalizeColor(input){
       if(!input) return null;
@@ -3950,6 +4044,71 @@
       applyColorToCells(table, normalized, false);
       return { changed:true, table, hidden:false, color:normalized };
     }
+    function applyCellBorderColor(inst, ctx, color, edges){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const table=currentSelectionTable(target);
+      if(!table) return { changed:false };
+      const cells=collectSelectedCells(target, table);
+      if(!cells || !cells.length) return { changed:false, table };
+      const normalized=normalizeColor(color);
+      if(!normalized) return { changed:false, table, cells };
+      const edgeMap=normalizeEdges(edges);
+      if(!edgeMap.top && !edgeMap.right && !edgeMap.bottom && !edgeMap.left) return { changed:false, table, cells };
+      const state=readTableState(table);
+      if(typeof TableResizer!=="undefined" && TableResizer && typeof TableResizer.ensureTable==="function"){ TableResizer.ensureTable(table); }
+      let changed=false;
+      if(state && state.hidden){
+        table.setAttribute("data-weditor-border-hidden","0");
+        const restore=state.color || normalized;
+        table.style.borderCollapse="collapse";
+        table.style.border="1px solid "+restore;
+        table.style.borderColor=restore;
+        table.style.borderWidth="1px";
+        table.style.borderStyle="solid";
+        changed=true;
+        table.setAttribute("data-weditor-border-color", restore);
+        table.setAttribute("data-weditor-border-last-color", restore);
+      } else {
+        table.style.borderCollapse="collapse";
+        const existingColor=state && state.color ? state.color : normalizeColor(table.getAttribute("data-weditor-border-color") || table.style.borderColor || "");
+        const effectiveColor=existingColor || normalized;
+        table.setAttribute("data-weditor-border-color", effectiveColor);
+        table.setAttribute("data-weditor-border-last-color", effectiveColor);
+      }
+      if(!state || !state.hidden){
+        table.setAttribute("data-weditor-border-hidden","0");
+      }
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(!cell || !cell.style) continue;
+        if(edgeMap.top){
+          if(cell.style.borderTopColor!==normalized) changed=true;
+          cell.style.borderTopColor=normalized;
+          if(cell.style.borderTopStyle!=="solid"){ cell.style.borderTopStyle="solid"; changed=true; }
+          if(!cell.style.borderTopWidth || parseFloat(cell.style.borderTopWidth)===0){ cell.style.borderTopWidth="1px"; changed=true; }
+        }
+        if(edgeMap.right){
+          if(cell.style.borderRightColor!==normalized) changed=true;
+          cell.style.borderRightColor=normalized;
+          if(cell.style.borderRightStyle!=="solid"){ cell.style.borderRightStyle="solid"; changed=true; }
+          if(!cell.style.borderRightWidth || parseFloat(cell.style.borderRightWidth)===0){ cell.style.borderRightWidth="1px"; changed=true; }
+        }
+        if(edgeMap.bottom){
+          if(cell.style.borderBottomColor!==normalized) changed=true;
+          cell.style.borderBottomColor=normalized;
+          if(cell.style.borderBottomStyle!=="solid"){ cell.style.borderBottomStyle="solid"; changed=true; }
+          if(!cell.style.borderBottomWidth || parseFloat(cell.style.borderBottomWidth)===0){ cell.style.borderBottomWidth="1px"; changed=true; }
+        }
+        if(edgeMap.left){
+          if(cell.style.borderLeftColor!==normalized) changed=true;
+          cell.style.borderLeftColor=normalized;
+          if(cell.style.borderLeftStyle!=="solid"){ cell.style.borderLeftStyle="solid"; changed=true; }
+          if(!cell.style.borderLeftWidth || parseFloat(cell.style.borderLeftWidth)===0){ cell.style.borderLeftWidth="1px"; changed=true; }
+        }
+      }
+      return { changed, table, cells, color:normalized, edges:edgeMap };
+    }
     function applyDefault(inst, ctx){
       return applyColor(inst, ctx, WCfg.UI.borderSubtle || "#c8c6c4");
     }
@@ -3979,7 +4138,7 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor };
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorderColor };
   })();
   const ListUI=(function(){
     function createSplitButton(options){
@@ -4664,6 +4823,12 @@
       const colorButtons=[];
       const actionButtons={ hide:null, standard:null };
       const defaultColor=TableStyler.normalizeColor(WCfg.UI.borderSubtle || "#c8c6c4");
+      let targetMode="table";
+      const edgeState={ top:true, right:true, bottom:true, left:true };
+      const edgeButtons={};
+      let tableTargetBtn=null;
+      let cellTargetBtn=null;
+      let edgesSection=null;
       function registerColorButton(value, el){ colorButtons.push({ value, el }); }
       function updateSelectionUI(selectedColor, hidden){
         for(let i=0;i<colorButtons.length;i++){
@@ -4675,6 +4840,24 @@
         setActionActive(actionButtons.hide, !!hidden);
         const isDefault=!hidden && selectedColor && defaultColor && selectedColor===defaultColor;
         setActionActive(actionButtons.standard, !!isDefault);
+      }
+      function getActiveEdges(){
+        const edges=[];
+        for(const key in edgeState){ if(edgeState[key]) edges.push(key); }
+        return edges;
+      }
+      function setEdgeButtonActive(btn, active){ setActionActive(btn, active); }
+      function updateEdgeButtons(){
+        for(const key in edgeButtons){
+          const btn=edgeButtons[key];
+          setEdgeButtonActive(btn, !!edgeState[key]);
+        }
+      }
+      function setTargetMode(mode){
+        targetMode=mode==="cell"?"cell":"table";
+        if(tableTargetBtn) setActionActive(tableTargetBtn, targetMode==="table");
+        if(cellTargetBtn) setActionActive(cellTargetBtn, targetMode==="cell");
+        if(edgesSection) edgesSection.style.display = targetMode==="cell" ? "flex" : "none";
       }
       function updatePreviewState(state){
         if(!state){
@@ -4704,8 +4887,10 @@
       }
       function applyResult(result, labelText){
         if(!result || !result.changed) return;
-        updatePreviewState(result);
-        updateSelectionUI(result.color || null, !!result.hidden);
+        const state=TableStyler.getState(inst, ctx);
+        updatePreviewState(state);
+        if(state){ updateSelectionUI(state.color || null, !!state.hidden); }
+        else { updateSelectionUI(null, false); }
         const target=HistoryManager.resolveTarget(inst, ctx);
         HistoryManager.record(inst, target, { label:labelText, repeatable:false });
         OutputBinding.syncDebounced(inst);
@@ -4720,6 +4905,8 @@
           }
           updatePreviewState(state);
           updateSelectionUI(state.color || null, !!state.hidden);
+          setTargetMode(targetMode);
+          updateEdgeButtons();
           palette.style.display="flex";
           palette.setAttribute("aria-hidden","false");
           button.setAttribute("aria-expanded","true");
@@ -4748,6 +4935,7 @@
       hideBtn.setAttribute("role","menuitem");
       hideBtn.addEventListener("click", function(e){
         e.preventDefault();
+        setTargetMode("table");
         const result=TableStyler.hideBorders(inst, ctx);
         closePalette();
         applyResult(result, "Hide Table Borders");
@@ -4756,6 +4944,7 @@
       defaultBtn.setAttribute("role","menuitem");
       defaultBtn.addEventListener("click", function(e){
         e.preventDefault();
+        setTargetMode("table");
         const result=TableStyler.applyDefault(inst, ctx);
         closePalette();
         applyResult(result, "Set Table Border Color");
@@ -4793,9 +4982,18 @@
           swatch.setAttribute("role","menuitem");
           swatch.addEventListener("click", function(ev){
             ev.preventDefault();
-            const result=TableStyler.applyColor(inst, ctx, colors[i].value);
+            let result=null;
+            let label="Set Table Border Color";
+            if(targetMode==="cell"){
+              const edges=getActiveEdges();
+              const effectiveEdges=edges.length?edges:["top","right","bottom","left"];
+              result=TableStyler.applyCellBorderColor(inst, ctx, colors[i].value, effectiveEdges);
+              label="Set Cell Border Color";
+            } else {
+              result=TableStyler.applyColor(inst, ctx, colors[i].value);
+            }
             closePalette();
-            applyResult(result, "Set Table Border Color");
+            applyResult(result, label);
           });
           swatch.addEventListener("keydown", function(ev){ if(ev.key==="Escape"){ ev.preventDefault(); closePalette(); button.focus(); } });
           registerColorButton(colors[i].value, swatch);
@@ -4807,13 +5005,82 @@
       }
       const themeSection=createColorSection("Theme colors", Formatting.FONT_THEME_COLORS || []);
       const standardSection=createColorSection("Standard colors", Formatting.FONT_STANDARD_COLORS || []);
+      const targetSection=document.createElement("div");
+      targetSection.style.display="flex";
+      targetSection.style.flexDirection="column";
+      targetSection.style.gap="6px";
+      const targetLabel=document.createElement("div");
+      targetLabel.textContent="Apply color to";
+      targetLabel.style.font="11px/1.4 Segoe UI,system-ui";
+      targetLabel.style.color=WCfg.UI.textDim;
+      const targetButtonsWrap=document.createElement("div");
+      targetButtonsWrap.style.display="flex";
+      targetButtonsWrap.style.gap="6px";
+      tableTargetBtn=createActionButton("Table");
+      tableTargetBtn.setAttribute("role","menuitem");
+      tableTargetBtn.addEventListener("click", function(e){ e.preventDefault(); setTargetMode("table"); });
+      cellTargetBtn=createActionButton("Cell");
+      cellTargetBtn.setAttribute("role","menuitem");
+      cellTargetBtn.addEventListener("click", function(e){ e.preventDefault(); setTargetMode("cell"); });
+      targetButtonsWrap.appendChild(tableTargetBtn);
+      targetButtonsWrap.appendChild(cellTargetBtn);
+      targetSection.appendChild(targetLabel);
+      targetSection.appendChild(targetButtonsWrap);
+      edgesSection=document.createElement("div");
+      edgesSection.style.display="none";
+      edgesSection.style.flexDirection="column";
+      edgesSection.style.gap="6px";
+      const edgesLabel=document.createElement("div");
+      edgesLabel.textContent="Cell border sides";
+      edgesLabel.style.font="11px/1.4 Segoe UI,system-ui";
+      edgesLabel.style.color=WCfg.UI.textDim;
+      const edgesGrid=document.createElement("div");
+      edgesGrid.style.display="grid";
+      edgesGrid.style.gridTemplateColumns="repeat(2, minmax(0, 1fr))";
+      edgesGrid.style.gap="6px";
+      function createEdgeButton(edge, labelText){
+        const btn=createActionButton(labelText);
+        btn.setAttribute("role","menuitem");
+        btn.addEventListener("click", function(ev){
+          ev.preventDefault();
+          const currentlyActive=!!edgeState[edge];
+          if(currentlyActive){
+            const activeEdges=getActiveEdges();
+            if(activeEdges.length<=1) return;
+          }
+          edgeState[edge]=!currentlyActive;
+          setEdgeButtonActive(btn, edgeState[edge]);
+        });
+        edgeButtons[edge]=btn;
+        return btn;
+      }
+      edgesGrid.appendChild(createEdgeButton("top","Top"));
+      edgesGrid.appendChild(createEdgeButton("right","Right"));
+      edgesGrid.appendChild(createEdgeButton("bottom","Bottom"));
+      edgesGrid.appendChild(createEdgeButton("left","Left"));
+      const allEdgesBtn=createActionButton("All sides");
+      allEdgesBtn.setAttribute("role","menuitem");
+      allEdgesBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        edgeState.top=edgeState.right=edgeState.bottom=edgeState.left=true;
+        updateEdgeButtons();
+      });
+      edgesSection.appendChild(edgesLabel);
+      edgesSection.appendChild(edgesGrid);
+      edgesSection.appendChild(allEdgesBtn);
       palette.appendChild(actions);
+      palette.appendChild(targetSection);
+      palette.appendChild(edgesSection);
       if(themeSection) palette.appendChild(themeSection);
       if(standardSection) palette.appendChild(standardSection);
       palette.addEventListener("click", function(e){ e.stopPropagation(); });
       container.appendChild(button);
       container.appendChild(palette);
-      updatePreviewState(TableStyler.getState(inst, ctx));
+      const initialState=TableStyler.getState(inst, ctx);
+      updatePreviewState(initialState);
+      if(initialState){ updateSelectionUI(initialState.color || null, !!initialState.hidden); }
+      setTargetMode(targetMode);
+      updateEdgeButtons();
       return container;
     }
     return { create };
