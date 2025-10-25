@@ -2411,6 +2411,7 @@
       { label:"Black", value:"#000000" }
     ];
     const FONT_COLOR_DEFAULT="#d13438";
+    const LINE_SPACING_BLOCK=/^(P|DIV|LI|UL|OL|H1|H2|H3|H4|H5|H6|BLOCKQUOTE|TD|TH|TABLE|PRE)$/i;
     const HIGHLIGHT_COLORS=[
       { label:"Yellow", value:"#ffff00" },
       { label:"Bright Green", value:"#00ff00" },
@@ -2796,6 +2797,102 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
+    function isLineSpacingBlock(node){
+      if(!node || node.nodeType!==1) return false;
+      return LINE_SPACING_BLOCK.test(node.tagName||"");
+    }
+    function applyLineSpacing(inst, ctx, value){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const normalized=value==null || value==="" ? null : String(value);
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      focusTarget(target);
+      const seen=new Set();
+      function setLineHeight(el){
+        if(!el || el.nodeType!==1) return false;
+        const tag=(el.tagName||"").toUpperCase();
+        if(tag==="UL" || tag==="OL"){
+          let listChanged=false;
+          const items=el.children||[];
+          for(let i=0;i<items.length;i++){
+            const child=items[i];
+            if(child && child.tagName && child.tagName.toUpperCase()==="LI"){
+              if(setLineHeight(child)) listChanged=true;
+            }
+          }
+          return listChanged;
+        }
+        if(tag==="TABLE"){
+          let tableChanged=false;
+          const cells=el.querySelectorAll ? el.querySelectorAll("td,th") : [];
+          if(cells && cells.length){
+            for(let i=0;i<cells.length;i++){
+              if(setLineHeight(cells[i])) tableChanged=true;
+            }
+            return tableChanged;
+          }
+        }
+        const before=el.style.lineHeight;
+        if(normalized){
+          if(before===normalized) return false;
+          el.style.lineHeight=normalized;
+          return true;
+        }
+        if(!before) return false;
+        el.style.removeProperty("line-height");
+        return true;
+      }
+      function findBlock(node){
+        if(!node) return null;
+        let current=node;
+        while(current && current!==target){
+          if(isLineSpacingBlock(current)) return current;
+          current=current.parentNode;
+        }
+        return null;
+      }
+      function applyToNode(node){
+        const block=(node && node.nodeType===1 && isLineSpacingBlock(node)) ? node : findBlock(node);
+        if(!block || seen.has(block)) return false;
+        seen.add(block);
+        return setLineHeight(block);
+      }
+      let changed=false;
+      const info=ensureSelectionInfo(target);
+      if(info && info.range && !info.range.collapsed){
+        const { range }=info;
+        if(applyToNode(range.startContainer)) changed=true;
+        if(applyToNode(range.endContainer)) changed=true;
+        if(doc.createTreeWalker){
+          const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+            acceptNode:function(node){
+              if(node===target) return NodeFilter.FILTER_SKIP;
+              if(!isLineSpacingBlock(node)) return NodeFilter.FILTER_SKIP;
+              return intersectsRange(range, node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+            }
+          });
+          let current;
+          while((current=walker.nextNode())){
+            if(seen.has(current)) continue;
+            if(setLineHeight(current)) changed=true;
+            seen.add(current);
+          }
+        }
+      } else {
+        const sel=win && typeof win.getSelection==="function" ? win.getSelection() : window.getSelection();
+        let focusNode=null;
+        if(sel && sel.rangeCount){
+          const range=sel.getRangeAt(0);
+          focusNode=range ? range.startContainer : null;
+        }
+        if(!focusNode){ focusNode=target.firstChild; }
+        if(applyToNode(focusNode)) changed=true;
+      }
+      if(changed && inst){
+        inst.lastLineSpacingValue = normalized;
+      }
+      return changed;
+    }
     function findListFromSelection(target){
       const info=ensureSelectionInfo(target);
       if(!info) return null;
@@ -2876,6 +2973,7 @@
       applyDecorationStyle,
       applySimple,
       applyAlign,
+      applyLineSpacing,
       toggleList,
       applyListStyle,
       applyCustomBullet,
@@ -2925,7 +3023,11 @@
       },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
-      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
+      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; },
+      lineSpacing:function(inst, target, args){
+        const value=args && Object.prototype.hasOwnProperty.call(args, "value") ? args.value : null;
+        return Formatting.applyLineSpacing(inst, makeCtx(inst, target), value);
+      }
     };
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function cloneInstState(inst){
@@ -2939,7 +3041,8 @@
         footerAlign: inst.footerAlign,
         underlineStyle: inst.underlineStyle,
         highlightColor: inst.highlightColor,
-        fontColor: inst.fontColor
+        fontColor: inst.fontColor,
+        lineSpacingValue: inst.lastLineSpacingValue
       };
     }
     function applyInstState(inst, state){
@@ -2953,6 +3056,7 @@
       inst.underlineStyle = state.underlineStyle;
       inst.highlightColor = state.highlightColor;
       inst.fontColor = state.fontColor;
+      inst.lastLineSpacingValue = state.lineSpacingValue;
     }
     function instStateEqual(a, b){
       if(!a && !b) return true;
@@ -2965,7 +3069,8 @@
         a.footerAlign===b.footerAlign &&
         a.underlineStyle===b.underlineStyle &&
         a.highlightColor===b.highlightColor &&
-        a.fontColor===b.fontColor;
+        a.fontColor===b.fontColor &&
+        a.lineSpacingValue===b.lineSpacingValue;
     }
     function sameSnapshot(a, b){
       if(!a || !b) return false;
@@ -5655,6 +5760,192 @@
     }
     return { create };
   })();
+  const LineSpacingUI=(function(){
+    const OPTIONS=[
+      { label:"Single", value:"1", description:"Line spacing set to single." },
+      { label:"1.15", value:"1.15", description:"Line spacing set to 1.15×." },
+      { label:"1.5", value:"1.5", description:"Line spacing set to 1.5×." },
+      { label:"Double", value:"2", description:"Line spacing set to double." },
+      { label:"Default", value:null, description:"Use theme default spacing." }
+    ];
+    function normalizeValue(value){ return value==null ? null : String(value); }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Line and Paragraph Spacing");
+      button.setAttribute("title","Line and Paragraph Spacing (行距與段落間距)");
+      button.setAttribute("data-command","format.lineSpacing");
+      button.setAttribute("aria-label","Line and Paragraph Spacing");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="44px";
+      button.style.padding="6px 12px";
+      const iconWrap=document.createElement("span");
+      iconWrap.setAttribute("aria-hidden","true");
+      iconWrap.style.display="grid";
+      iconWrap.style.justifyItems="center";
+      iconWrap.style.alignItems="center";
+      iconWrap.style.gap="4px";
+      iconWrap.style.lineHeight="1";
+      const arrow=document.createElement("span");
+      arrow.textContent="↕";
+      arrow.style.fontSize="16px";
+      arrow.style.color=WCfg.UI.brand;
+      arrow.style.display="flex";
+      arrow.style.alignItems="center";
+      arrow.style.justifyContent="center";
+      const lines=document.createElement("span");
+      lines.style.display="grid";
+      lines.style.gap="3px";
+      lines.style.width="20px";
+      lines.style.justifyItems="stretch";
+      for(let i=0;i<3;i++){
+        const bar=document.createElement("span");
+        bar.style.display="block";
+        bar.style.height="3px";
+        bar.style.borderRadius="999px";
+        bar.style.background=WCfg.UI.text;
+        lines.appendChild(bar);
+      }
+      iconWrap.appendChild(arrow);
+      iconWrap.appendChild(lines);
+      const caret=document.createElement("span");
+      caret.textContent="▼";
+      caret.setAttribute("aria-hidden","true");
+      caret.style.fontSize="11px";
+      caret.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(iconWrap);
+      button.appendChild(caret);
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.gap="4px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="8px";
+      menu.style.zIndex="20";
+      menu.style.minWidth="220px";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const optionButtons=[];
+      function registerOption(btn, value){ optionButtons.push({ button:btn, value:normalizeValue(value) }); }
+      function currentValue(){
+        if(!inst) return null;
+        const raw=inst.lastLineSpacingValue;
+        return raw==null ? null : String(raw);
+      }
+      function updateActive(){
+        const current=currentValue();
+        for(let i=0;i<optionButtons.length;i++){
+          const entry=optionButtons[i];
+          const isActive=(current===null && entry.value===null) || (current!==null && entry.value===current);
+          entry.button.style.background = isActive ? "#eef5ff" : "transparent";
+          entry.button.style.color = isActive ? WCfg.UI.brand : WCfg.UI.text;
+        }
+      }
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        button.setAttribute("aria-expanded", state?"true":"false");
+        if(state){
+          menu.style.display="flex";
+          menu.setAttribute("aria-hidden","false");
+          updateActive();
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            const first=menu.querySelector("button");
+            if(first) first.focus();
+          },0);
+        } else {
+          menu.style.display="none";
+          menu.setAttribute("aria-hidden","true");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      function chooseOption(option){
+        setOpen(false);
+        const changed=Formatting.applyLineSpacing(inst, ctx, option.value);
+        updateActive();
+        if(!changed) return;
+        const target=HistoryManager.resolveTarget(inst, ctx);
+        const repeatValue=option.value==null ? null : String(option.value);
+        const label=option.value==null ? "Line Spacing Default" : "Line Spacing "+option.label;
+        HistoryManager.record(inst, target, {
+          label:label,
+          repeatable:true,
+          repeatId:"lineSpacing",
+          repeatArgs:{ value:repeatValue },
+          repeatLabel:label
+        });
+        if(inst) OutputBinding.syncDebounced(inst);
+      }
+      for(let i=0;i<OPTIONS.length;i++){
+        const option=OPTIONS[i];
+        const optBtn=doc.createElement("button");
+        optBtn.type="button";
+        optBtn.setAttribute("role","menuitem");
+        optBtn.setAttribute("data-spacing", option.value==null?"default":String(option.value));
+        const ariaLabel=option.description ? option.label+" – "+option.description : option.label+" line spacing";
+        optBtn.setAttribute("aria-label", ariaLabel);
+        optBtn.style.display="flex";
+        optBtn.style.flexDirection="column";
+        optBtn.style.alignItems="flex-start";
+        optBtn.style.gap="2px";
+        optBtn.style.padding="8px 10px";
+        optBtn.style.background="transparent";
+        optBtn.style.border="0";
+        optBtn.style.borderRadius="6px";
+        optBtn.style.cursor="pointer";
+        optBtn.style.font="13px/1.4 Segoe UI,system-ui";
+        optBtn.style.color=WCfg.UI.text;
+        const label=document.createElement("span");
+        label.textContent=option.label;
+        label.style.fontWeight="600";
+        label.style.color="inherit";
+        optBtn.appendChild(label);
+        if(option.description){
+          const hint=document.createElement("span");
+          hint.textContent=option.description;
+          hint.style.fontSize="11px";
+          hint.style.color=WCfg.UI.textDim;
+          hint.style.lineHeight="1.3";
+          optBtn.appendChild(hint);
+        }
+        optBtn.addEventListener("mouseenter", function(){ optBtn.style.background="#f3f2f1"; });
+        optBtn.addEventListener("mouseleave", function(){ updateActive(); });
+        optBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); chooseOption(option); });
+        optBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+        menu.appendChild(optBtn);
+        registerOption(optBtn, option.value);
+      }
+      menu.addEventListener("click", function(e){ e.stopPropagation(); });
+      let open=false;
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      container.appendChild(button);
+      container.appendChild(menu);
+      updateActive();
+      return container;
+    }
+    return { create };
+  })();
   function decorateAlignButton(btn, align){
     if(!btn) return;
     const mode=(align||"").toLowerCase();
@@ -5892,6 +6183,11 @@
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
+    "format.lineSpacing":{
+      kind:"custom",
+      ariaLabel:"Line and Paragraph Spacing (行距與段落間距)",
+      render:function(inst, ctx){ return LineSpacingUI.create(inst, ctx); }
+    },
     "format.decreaseIndent":{
       label:"←",
       kind:"button",
@@ -6074,7 +6370,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -6091,7 +6387,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -6131,6 +6427,7 @@
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
+    this.lastLineSpacingValue = null;
     const initialState = initialStateAttr || OutputBinding.consumeInitialState(this);
     if(initialState){
       StateBinding.apply(this, initialState);
