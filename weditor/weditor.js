@@ -4475,6 +4475,40 @@
       applyColorToCells(table, "transparent", true);
       return { changed:true, table, hidden:true, lastColor:state?state.color:null };
     }
+    function setCellVerticalAlign(inst, ctx, align){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const normalized=(align||"").toLowerCase();
+      if(normalized!=="top" && normalized!=="middle" && normalized!=="bottom") return { changed:false };
+      const current=(cell.style.verticalAlign||"").toLowerCase();
+      if(current===normalized) return { changed:false, cell, align:normalized };
+      cell.style.verticalAlign=normalized;
+      const table=cell.closest ? cell.closest("table") : ascendToTable(cell, target);
+      if(table) TableResizer.ensureTable(table);
+      return { changed:true, cell, table, align:normalized };
+    }
+    function getCellVerticalAlign(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return null;
+      const cell=currentSelectionCell(target);
+      if(!cell) return null;
+      let value=(cell.style.verticalAlign||"").toLowerCase();
+      if(!value){
+        try {
+          const win=cell.ownerDocument ? cell.ownerDocument.defaultView : window;
+          if(win && win.getComputedStyle){
+            const computed=win.getComputedStyle(cell);
+            if(computed && computed.verticalAlign){
+              value=(computed.verticalAlign||"").toLowerCase();
+            }
+          }
+        } catch(err){ value=""; }
+      }
+      if(value!=="top" && value!=="middle" && value!=="bottom") return null;
+      return value;
+    }
     function applyCellBorder(inst, ctx, color, sides){
       const target=resolveTarget(inst, ctx);
       if(!target) return { changed:false };
@@ -4564,7 +4598,7 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder };
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellVerticalAlign, getCellVerticalAlign };
   })();
   const ListUI=(function(){
     function createSplitButton(options){
@@ -5590,6 +5624,98 @@
     }
     return { create };
   })();
+  const TableCellAlignUI=(function(){
+    const OPTIONS=[
+      { value:"top", label:"Top", history:"Align Cell Top" },
+      { value:"middle", label:"Middle", history:"Align Cell Middle" },
+      { value:"bottom", label:"Bottom", history:"Align Cell Bottom" }
+    ];
+    function setButtonActive(btn, active){
+      if(!btn) return;
+      btn.setAttribute("data-active", active?"1":"0");
+      if(active){
+        btn.style.background="#e6f2fb";
+        btn.style.color=WCfg.UI.brand;
+        btn.style.borderColor=WCfg.UI.brand;
+      } else {
+        btn.style.background="transparent";
+        btn.style.color=WCfg.UI.text;
+        btn.style.borderColor="transparent";
+      }
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      container.style.gap="8px";
+      const label=document.createElement("span");
+      label.textContent="Cell Align";
+      label.style.font="12px/1.3 Segoe UI,system-ui";
+      label.style.color=WCfg.UI.textDim;
+      label.setAttribute("aria-hidden","true");
+      const group=document.createElement("div");
+      group.style.display="inline-flex";
+      group.style.alignItems="stretch";
+      group.style.border="1px solid "+WCfg.UI.borderSubtle;
+      group.style.borderRadius="999px";
+      group.style.overflow="hidden";
+      group.style.background="#fff";
+      group.setAttribute("role","group");
+      group.setAttribute("aria-label","Set vertical alignment for the selected table cell");
+      const buttons=[];
+      function syncState(){
+        const current=TableStyler.getCellVerticalAlign(inst, ctx);
+        for(let i=0;i<buttons.length;i++){
+          const entry=buttons[i];
+          setButtonActive(entry.btn, entry.value===current);
+        }
+      }
+      OPTIONS.forEach(function(option, index){
+        const btn=document.createElement("button");
+        btn.type="button";
+        btn.textContent=option.label;
+        btn.style.padding="6px 12px";
+        btn.style.border="0";
+        btn.style.borderLeft = index===0 ? "0" : "1px solid "+WCfg.UI.borderSubtle;
+        btn.style.background="transparent";
+        btn.style.cursor="pointer";
+        btn.style.font="12px/1.3 Segoe UI,system-ui";
+        btn.style.minWidth="48px";
+        btn.style.transition="background .18s ease, color .18s ease";
+        btn.setAttribute("data-active","0");
+        btn.setAttribute("aria-label","Align cell content to the "+option.label.toLowerCase());
+        btn.addEventListener("mouseenter", function(){ if(btn.getAttribute("data-active")!="1") btn.style.background=WCfg.UI.canvas; });
+        btn.addEventListener("mouseleave", function(){ if(btn.getAttribute("data-active")!="1") btn.style.background="transparent"; });
+        btn.addEventListener("click", function(ev){
+          ev.preventDefault();
+          const result=TableStyler.setCellVerticalAlign(inst, ctx, option.value);
+          if(!result || !result.cell){
+            window.alert("Place the caret inside a table cell to change its vertical alignment.");
+            return;
+          }
+          setButtonActive(btn, true);
+          for(let i=0;i<buttons.length;i++){
+            const entry=buttons[i];
+            if(entry.btn!==btn) setButtonActive(entry.btn, false);
+          }
+          if(result.changed){
+            const target=HistoryManager.resolveTarget(inst, ctx);
+            HistoryManager.record(inst, target, { label:option.history, repeatable:false });
+            OutputBinding.syncDebounced(inst);
+          }
+        });
+        buttons.push({ value:option.value, btn:btn });
+        group.appendChild(btn);
+      });
+      container.addEventListener("mouseenter", syncState);
+      container.addEventListener("focusin", syncState);
+      syncState();
+      container.appendChild(label);
+      container.appendChild(group);
+      return container;
+    }
+    return { create };
+  })();
   const LineSpacingUI=(function(){
     function normalize(value){
       if(value===null || typeof value==="undefined") return null;
@@ -6381,6 +6507,11 @@
       ariaLabel:"Table border color or visibility",
       render:function(inst, ctx){ return TableBorderUI.create(inst, ctx); }
     },
+    "table.cellVerticalAlign":{
+      kind:"custom",
+      ariaLabel:"Set table cell vertical alignment",
+      render:function(inst, ctx){ return TableCellAlignUI.create(inst, ctx); }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -6428,7 +6559,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -6445,7 +6576,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
