@@ -1396,6 +1396,7 @@
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
       enableImageResizer(editor);
+      TableResizer.enable(editor);
       function reattachImageOverlay(){
         const overlay=editor.__weditorImageOverlay;
         if(overlay && !editor.contains(overlay)) editor.appendChild(overlay);
@@ -3398,6 +3399,327 @@
     }
     return { resolveTarget, init, detach, record, undo, redo, repeat, handleInput, handleKeydown, registerUndo, registerRedo, toggleUndoMenu, getUndoHistory };
   })();
+  const TableResizer=(function(){
+    const EDGE_TOLERANCE=6;
+    const MIN_COL_WIDTH=48;
+    const indicatorMap=new WeakMap();
+    function getDocument(el){ return (el && el.ownerDocument) || document; }
+    function getIndicator(doc){
+      let indicator=indicatorMap.get(doc);
+      if(indicator) return indicator;
+      indicator=doc.createElement("div");
+      indicator.setAttribute("data-weditor-overlay","table-resize");
+      indicator.style.position="absolute";
+      indicator.style.width="2px";
+      indicator.style.background=WCfg.UI.brand;
+      indicator.style.zIndex="2147483000";
+      indicator.style.pointerEvents="none";
+      indicator.style.display="none";
+      indicator.style.transform="translateX(-1px)";
+      indicator.style.borderRadius="1px";
+      doc.body.appendChild(indicator);
+      indicatorMap.set(doc, indicator);
+      return indicator;
+    }
+    function hideIndicator(doc){
+      const indicator=indicatorMap.get(doc);
+      if(indicator){ indicator.style.display="none"; }
+    }
+    function getColumnCount(table){
+      if(!table || !table.rows) return 0;
+      const rows=table.rows;
+      for(let i=0;i<rows.length;i++){
+        const row=rows[i];
+        if(!row || !row.cells || !row.cells.length) continue;
+        let count=0;
+        for(let j=0;j<row.cells.length;j++){
+          const cell=row.cells[j];
+          const span=parseInt(cell.getAttribute("colspan"),10)||1;
+          count+=span;
+        }
+        if(count>0) return count;
+      }
+      return 0;
+    }
+    function findExistingColGroup(table){
+      if(!table || !table.children) return null;
+      for(let i=0;i<table.children.length;i++){
+        const child=table.children[i];
+        if(child && child.tagName && child.tagName.toLowerCase()==="colgroup") return child;
+      }
+      return null;
+    }
+    function ensureColGroup(table, count){
+      if(!table || !count) return null;
+      const doc=getDocument(table);
+      let colgroup=findExistingColGroup(table);
+      if(!colgroup){
+        colgroup=doc.createElement("colgroup");
+        let insertBefore=null;
+        for(let i=0;i<table.childNodes.length;i++){
+          const node=table.childNodes[i];
+          if(node.nodeType!==1) continue;
+          const tag=(node.tagName||"").toLowerCase();
+          if(tag==="caption") continue;
+          insertBefore=node;
+          break;
+        }
+        if(insertBefore) table.insertBefore(colgroup, insertBefore);
+        else table.appendChild(colgroup);
+      }
+      while(colgroup.children.length>count){ colgroup.removeChild(colgroup.lastElementChild); }
+      while(colgroup.children.length<count){ colgroup.appendChild(doc.createElement("col")); }
+      return colgroup;
+    }
+    function measureColumnWidths(table, colgroup){
+      if(!table || !colgroup) return;
+      const cols=colgroup.children;
+      const total=cols.length;
+      if(!total) return;
+      const widths=new Array(total).fill(0);
+      const rows=table.rows||[];
+      for(let i=0;i<rows.length;i++){
+        const row=rows[i];
+        if(!row || !row.cells || !row.cells.length) continue;
+        let cursor=0;
+        for(let j=0;j<row.cells.length;j++){
+          const cell=row.cells[j];
+          const span=parseInt(cell.getAttribute("colspan"),10)||1;
+          if(span<=0) continue;
+          const rect=cell.getBoundingClientRect();
+          const cellWidth=rect && rect.width ? rect.width : 0;
+          const share=span>0 ? cellWidth/span : 0;
+          for(let s=0;s<span && cursor+s<widths.length;s++){
+            if(widths[cursor+s]<=0 && share>0){ widths[cursor+s]=share; }
+          }
+          cursor+=span;
+        }
+      }
+      const tableRect=table.getBoundingClientRect();
+      const fallback=tableRect && tableRect.width ? tableRect.width/total : 0;
+      for(let i=0;i<total;i++){
+        const col=cols[i];
+        const existing=parseFloat(col.style.width||"");
+        if(existing>0) continue;
+        let width=widths[i];
+        if(!(width>0) && fallback>0) width=fallback;
+        if(!(width>0)) width=MIN_COL_WIDTH;
+        col.style.width=Math.max(MIN_COL_WIDTH, Math.round(width))+"px";
+      }
+      table.style.tableLayout = table.style.tableLayout || "fixed";
+      if(!table.style.width) table.style.width="100%";
+      if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
+    }
+    function prepare(table){
+      if(!table) return;
+      const count=getColumnCount(table);
+      if(!count) return;
+      const colgroup=ensureColGroup(table, count);
+      measureColumnWidths(table, colgroup);
+    }
+    function prepareAll(root){
+      if(!root || !root.querySelectorAll) return;
+      const tables=root.querySelectorAll("table");
+      for(let i=0;i<tables.length;i++) prepare(tables[i]);
+    }
+    function getCellColumnIndex(cell){
+      if(!cell || !cell.parentNode) return -1;
+      const row=cell.parentNode;
+      let index=0;
+      for(let i=0;i<row.cells.length;i++){
+        const current=row.cells[i];
+        const span=parseInt(current.getAttribute("colspan"),10)||1;
+        if(current===cell) return index;
+        index+=span;
+      }
+      return -1;
+    }
+    function showIndicator(table, colIndex){
+      if(!table) return;
+      const colgroup=findExistingColGroup(table);
+      if(!colgroup) return;
+      const cols=colgroup.children;
+      if(!cols || !cols.length || colIndex<0 || colIndex>=cols.length) return;
+      const doc=getDocument(table);
+      const indicator=getIndicator(doc);
+      const tableRect=table.getBoundingClientRect();
+      let offset=0;
+      for(let i=0;i<=colIndex;i++){
+        const col=cols[i];
+        const width=parseFloat(col.style.width||"");
+        if(width>0) offset+=width;
+      }
+      const scrollX=doc.defaultView ? doc.defaultView.pageXOffset : window.pageXOffset;
+      const scrollY=doc.defaultView ? doc.defaultView.pageYOffset : window.pageYOffset;
+      indicator.style.left=Math.round(tableRect.left+scrollX+offset)+"px";
+      indicator.style.top=Math.round(tableRect.top+scrollY)+"px";
+      indicator.style.height=Math.round(tableRect.height)+"px";
+      indicator.style.display="block";
+    }
+    function findEditor(table){
+      if(!table || !table.closest) return null;
+      return table.closest('[contenteditable]');
+    }
+    function getInstance(table){
+      const editor=findEditor(table);
+      if(editor && editor.__winst) return editor.__winst;
+      return null;
+    }
+    function enable(editor){
+      if(!editor || editor.__weditorTableResizer) return;
+      prepareAll(editor);
+      const state={ hover:null, active:null, editor };
+      const doc=getDocument(editor);
+      function clearHover(){
+        state.hover=null;
+        editor.style.cursor="";
+        hideIndicator(doc);
+      }
+      function updateHover(next){
+        state.hover=next;
+        if(next){
+          editor.style.cursor="col-resize";
+          showIndicator(next.table, next.colIndex);
+        } else {
+          editor.style.cursor="";
+          hideIndicator(doc);
+        }
+      }
+      function onMouseMove(ev){
+        if(state.active) return;
+        const target=ev.target;
+        if(!target){ clearHover(); return; }
+        const cell=target.closest ? target.closest('td,th') : null;
+        if(!cell || cell.colSpan>1){ clearHover(); return; }
+        const table=cell.closest('table');
+        if(!table){ clearHover(); return; }
+        prepare(table);
+        const colgroup=findExistingColGroup(table);
+        if(!colgroup || colgroup.children.length<2){ clearHover(); return; }
+        const cellRect=cell.getBoundingClientRect();
+        if(!cellRect){ clearHover(); return; }
+        const offsetRight=cellRect.right-ev.clientX;
+        if(offsetRight<0 || Math.abs(offsetRight)>EDGE_TOLERANCE){ clearHover(); return; }
+        const colIndex=getCellColumnIndex(cell)+(cell.colSpan||1)-1;
+        if(colIndex<0){ clearHover(); return; }
+        const cols=colgroup.children;
+        const neighborIndex=colIndex<cols.length-1 ? colIndex+1 : colIndex-1;
+        if(neighborIndex<0 || neighborIndex>=cols.length){ clearHover(); return; }
+        updateHover({ table, colIndex, neighborIndex });
+      }
+      function stopResize(ev){
+        const active=state.active;
+        if(!active) return;
+        if(ev) ev.preventDefault();
+        const docActive=getDocument(active.table);
+        docActive.removeEventListener('mousemove', onDrag, true);
+        docActive.removeEventListener('mouseup', stopResize, true);
+        docActive.removeEventListener('mouseleave', stopResize, true);
+        if(docActive.body) docActive.body.style.cursor="";
+        if(editor) editor.style.cursor="";
+        hideIndicator(docActive);
+        let sizeChanged=false;
+        if(active.col){
+          const finalWidth=parseFloat(active.col.style.width||"");
+          if(isFinite(finalWidth) && Math.abs(finalWidth-active.startWidth)>0.5) sizeChanged=true;
+        }
+        if(!sizeChanged && active.neighbor){
+          const finalNeighbor=parseFloat(active.neighbor.style.width||"");
+          if(isFinite(finalNeighbor) && Math.abs(finalNeighbor-active.neighborWidth)>0.5) sizeChanged=true;
+        }
+        if(sizeChanged && active.table){
+          const inst=getInstance(active.table);
+          const editorEl=findEditor(active.table);
+          if(editorEl){
+            const changedInst=inst||null;
+            if(changedInst){
+              HistoryManager.record(changedInst, editorEl, { label:"Resize Table Column", repeatable:false });
+              OutputBinding.syncDebounced(changedInst);
+            }
+          }
+        }
+        state.active=null;
+        clearHover();
+      }
+      function onDrag(ev){
+        const active=state.active;
+        if(!active) return;
+        ev.preventDefault();
+        const delta=ev.clientX-active.startX;
+        const colEl=active.col;
+        const neighborEl=active.neighbor;
+        if(!colEl) return;
+        let minDelta=MIN_COL_WIDTH-active.startWidth;
+        let maxDelta=Infinity;
+        if(neighborEl){
+          maxDelta=active.neighborWidth-MIN_COL_WIDTH;
+        }
+        let appliedDelta=delta;
+        if(!isFinite(maxDelta)) maxDelta=1e6;
+        if(appliedDelta<minDelta) appliedDelta=minDelta;
+        if(appliedDelta>maxDelta) appliedDelta=maxDelta;
+        let newWidth=active.startWidth+appliedDelta;
+        if(!(newWidth>0)) newWidth=MIN_COL_WIDTH;
+        colEl.style.width=Math.max(MIN_COL_WIDTH, Math.round(newWidth))+"px";
+        if(neighborEl){
+          let neighborWidth=active.neighborWidth-appliedDelta;
+          if(!(neighborWidth>0)) neighborWidth=MIN_COL_WIDTH;
+          neighborEl.style.width=Math.max(MIN_COL_WIDTH, Math.round(neighborWidth))+"px";
+        }
+        showIndicator(active.table, active.colIndex);
+      }
+      function onMouseDown(ev){
+        if(ev.button!==0) return;
+        const hover=state.hover;
+        if(!hover || !hover.table.contains(ev.target)) return;
+        ev.preventDefault();
+        const table=hover.table;
+        prepare(table);
+        const colgroup=findExistingColGroup(table);
+        if(!colgroup) return;
+        const cols=colgroup.children;
+        const col=cols[hover.colIndex];
+        const neighbor=cols[hover.neighborIndex]||null;
+        if(!col) return;
+        const startWidth=parseFloat(col.style.width||"");
+        const neighborWidth=neighbor?parseFloat(neighbor.style.width||""):null;
+        const fallbackWidth=Math.max(MIN_COL_WIDTH, table.clientWidth/(cols.length||1));
+        const resolvedStartWidth=(startWidth&&startWidth>0)?startWidth:fallbackWidth;
+        const resolvedNeighborWidth=neighbor?((neighborWidth&&neighborWidth>0)?neighborWidth:fallbackWidth):0;
+        state.active={
+          table,
+          colIndex:hover.colIndex,
+          col,
+          neighbor,
+          neighborWidth:resolvedNeighborWidth,
+          startWidth:resolvedStartWidth,
+          startX:ev.clientX
+        };
+        const docActive=getDocument(table);
+        docActive.addEventListener('mousemove', onDrag, true);
+        docActive.addEventListener('mouseup', stopResize, true);
+        docActive.addEventListener('mouseleave', stopResize, true);
+        if(docActive.body) docActive.body.style.cursor="col-resize";
+        editor.style.cursor="col-resize";
+        showIndicator(table, hover.colIndex);
+      }
+      function onEditorLeave(ev){
+        if(!editor.contains(ev.relatedTarget)){ clearHover(); }
+      }
+      editor.addEventListener('mousemove', onMouseMove);
+      editor.addEventListener('mousedown', onMouseDown);
+      editor.addEventListener('mouseleave', onEditorLeave);
+      editor.__weditorTableResizer=true;
+      editor.__weditorTableResizerCleanup=function(){
+        editor.removeEventListener('mousemove', onMouseMove);
+        editor.removeEventListener('mousedown', onMouseDown);
+        editor.removeEventListener('mouseleave', onEditorLeave);
+        stopResize();
+        editor.__weditorTableResizer=false;
+      };
+    }
+    return { enable, prepare };
+  })();
   const HistoryUI=(function(){
     function createUndo(inst, ctx){
       const target=HistoryManager.resolveTarget(inst, ctx);
@@ -4631,6 +4953,7 @@
         }
         Normalizer.fixStructure(target);
         Breaks.ensurePlaceholders(target);
+        TableResizer.prepare(table);
         const selection=win.getSelection ? win.getSelection() : window.getSelection();
         const firstCell=table.querySelector("td");
         if(firstCell && selection && doc.createRange){
@@ -4771,6 +5094,7 @@
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
     Breaks.ensurePlaceholders(this.el);
+    TableResizer.enable(this.el);
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
