@@ -546,6 +546,263 @@
     }
     return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize };
   })();
+  const TableResizer=(function(){
+    const EDGE_THRESHOLD=14;
+    const MIN_TABLE_WIDTH=160;
+    const MIN_CELL_WIDTH=64;
+    const stateMap=new WeakMap();
+    const outlineMap=new WeakMap();
+    const outlineOffsetMap=new WeakMap();
+    function findTable(node){
+      while(node){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toLowerCase();
+          if(tag==="table") return node;
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function getDirectColGroup(table){
+      if(!table) return null;
+      let child=table.firstElementChild;
+      while(child){
+        const tag=(child.tagName||"").toLowerCase();
+        if(tag==="colgroup") return child;
+        if(tag!=="colgroup" && tag!=="thead" && tag!=="tbody" && tag!=="tfoot") break;
+        child=child.nextElementSibling;
+      }
+      return null;
+    }
+    function ensureColGroup(table){
+      if(!table) return null;
+      const doc=table.ownerDocument||document;
+      let colgroup=getDirectColGroup(table);
+      if(!colgroup){
+        colgroup=doc.createElement("colgroup");
+        if(table.firstChild){ table.insertBefore(colgroup, table.firstChild); }
+        else { table.appendChild(colgroup); }
+      }
+      const row=(table.rows && table.rows.length) ? table.rows[0] : null;
+      const count=row && row.cells ? row.cells.length : 0;
+      if(count<=0) return colgroup;
+      while(colgroup.children.length<count){ colgroup.appendChild(doc.createElement("col")); }
+      while(colgroup.children.length>count){ colgroup.removeChild(colgroup.lastElementChild); }
+      return colgroup;
+    }
+    function syncColumnWidths(table){
+      if(!table) return;
+      const colgroup=ensureColGroup(table);
+      if(!colgroup) return;
+      const cols=colgroup.children;
+      if(!cols || !cols.length) return;
+      const row=(table.rows && table.rows.length) ? table.rows[0] : null;
+      if(!row || !row.cells || !row.cells.length) return;
+      const cellCount=Math.min(row.cells.length, cols.length);
+      let totalWidth=0;
+      const widths=[];
+      for(let i=0;i<cellCount;i++){
+        const rect=row.cells[i].getBoundingClientRect();
+        const width=rect && rect.width ? rect.width : 0;
+        widths.push(width);
+        totalWidth+=width;
+      }
+      if(totalWidth<=0) return;
+      for(let i=0;i<cols.length;i++){
+        const col=cols[i];
+        if(i===cols.length-1){
+          col.style.width="";
+          col.removeAttribute("width");
+          continue;
+        }
+        const width=widths[i] || (totalWidth/cols.length);
+        const percent=Math.max(0, (width/totalWidth)*100);
+        col.style.width=percent.toFixed(2)+"%";
+        col.removeAttribute("width");
+      }
+    }
+    function prepareTable(table){
+      if(!table || table.nodeType!==1) return;
+      table.setAttribute("data-weditor-resizable","1");
+      if(!table.style.tableLayout) table.style.tableLayout="fixed";
+      if(!table.style.maxWidth) table.style.maxWidth="100%";
+      if(!table.style.width) table.style.width="100%";
+      ensureColGroup(table);
+    }
+    function refreshAll(root){
+      if(!root || !root.querySelectorAll) return;
+      const tables=root.querySelectorAll("table");
+      for(let i=0;i<tables.length;i++){
+        prepareTable(tables[i]);
+        syncColumnWidths(tables[i]);
+      }
+    }
+    function storeOutline(table){
+      if(!table) return;
+      if(!outlineMap.has(table)) outlineMap.set(table, table.style.outline||"");
+      if(!outlineOffsetMap.has(table)) outlineOffsetMap.set(table, table.style.outlineOffset||"");
+    }
+    function restoreOutline(table){
+      if(!table) return;
+      if(outlineMap.has(table)){ table.style.outline=outlineMap.get(table); outlineMap.delete(table); }
+      else table.style.removeProperty("outline");
+      if(outlineOffsetMap.has(table)){ table.style.outlineOffset=outlineOffsetMap.get(table); outlineOffsetMap.delete(table); }
+      else table.style.removeProperty("outline-offset");
+    }
+    function applyHoverStyle(state, table){
+      const inst=state && state.inst;
+      if(!inst || !inst.el) return;
+      if(state.hover===table) return;
+      if(state.hover){
+        restoreOutline(state.hover);
+        state.hover.style.cursor="";
+      }
+      state.hover=table;
+      if(table){
+        storeOutline(table);
+        table.style.outline="1px dashed "+WCfg.UI.brand;
+        table.style.outlineOffset="2px";
+        table.style.cursor="col-resize";
+        inst.el.style.cursor="col-resize";
+      }else{
+        inst.el.style.cursor="";
+      }
+    }
+    function calcMinWidth(table){
+      const row=(table.rows && table.rows.length) ? table.rows[0] : null;
+      const cols=row && row.cells ? row.cells.length : 1;
+      return Math.max(MIN_TABLE_WIDTH, cols*MIN_CELL_WIDTH);
+    }
+    function calcMaxWidth(inst, table, fallback){
+      let available=0;
+      const root=inst && inst.el ? inst.el : null;
+      if(root){
+        available=root.clientWidth || 0;
+        if(!available){
+          const rect=root.getBoundingClientRect();
+          available=rect && rect.width ? rect.width : 0;
+        }
+        const doc=table && table.ownerDocument ? table.ownerDocument : document;
+        const view=doc.defaultView || window;
+        if(view && view.getComputedStyle){
+          const styles=view.getComputedStyle(root);
+          if(styles){
+            const padL=parseFloat(styles.paddingLeft||"0")||0;
+            const padR=parseFloat(styles.paddingRight||"0")||0;
+            available=Math.max(0, available-padL-padR);
+          }
+        }
+      }
+      if(!available && table && table.parentElement){
+        available=table.parentElement.clientWidth||0;
+      }
+      if(!available){
+        available=fallback||0;
+      }
+      return available>0 ? available : fallback||MIN_TABLE_WIDTH;
+    }
+    function updateActive(state, pointerEvent){
+      const active=state.active;
+      if(!active) return;
+      const delta=pointerEvent.clientX-active.startX;
+      let width=active.startWidth+delta;
+      width=Math.max(active.minWidth, Math.min(width, active.maxWidth));
+      active.table.style.width=width+"px";
+      active.table.style.maxWidth="100%";
+      if(state.options && typeof state.options.onResizeChange==="function"){
+        state.options.onResizeChange(active.table, width);
+      }
+    }
+    function endResize(state){
+      if(!state || !state.active) return;
+      const active=state.active;
+      const table=active.table;
+      const doc=table.ownerDocument||document;
+      if(state.docMove){
+        doc.removeEventListener("pointermove", state.docMove, true);
+        doc.removeEventListener("pointerup", state.docUp, true);
+        doc.removeEventListener("pointercancel", state.docUp, true);
+        doc.removeEventListener("pointerleave", state.docUp, true);
+      }
+      state.docMove=null;
+      state.docUp=null;
+      state.active=null;
+      syncColumnWidths(table);
+      const rect=table.getBoundingClientRect();
+      const newWidth=rect && rect.width ? rect.width : active.startWidth;
+      const changed=Math.abs(newWidth - active.startWidth) >= 0.5;
+      if(state.options && typeof state.options.onResizeEnd==="function"){
+        state.options.onResizeEnd(table, changed, newWidth);
+      }
+      applyHoverStyle(state, null);
+    }
+    function pointerMove(state, ev){
+      if(!state) return;
+      if(state.active){
+        if(ev.pointerId===state.active.pointerId){
+          updateActive(state, ev);
+          ev.preventDefault();
+        }
+        return;
+      }
+      const table=findTable(ev.target);
+      if(!table){
+        if(state.hover) applyHoverStyle(state, null);
+        return;
+      }
+      prepareTable(table);
+      const rect=table.getBoundingClientRect();
+      if(!rect || !rect.width){
+        applyHoverStyle(state, null);
+        return;
+      }
+      const withinY=ev.clientY>=rect.top && ev.clientY<=rect.bottom;
+      const nearRight=Math.abs(ev.clientX-rect.right)<=EDGE_THRESHOLD;
+      if(withinY && nearRight){ applyHoverStyle(state, table); }
+      else if(state.hover===table){ applyHoverStyle(state, null); }
+      else if(!nearRight){ applyHoverStyle(state, null); }
+    }
+    function pointerDown(state, ev){
+      if(!state || !state.hover) return;
+      const table=state.hover;
+      const rect=table.getBoundingClientRect();
+      const withinY=ev.clientY>=rect.top && ev.clientY<=rect.bottom;
+      const nearRight=Math.abs(ev.clientX-rect.right)<=EDGE_THRESHOLD;
+      if(!withinY || !nearRight) return;
+      ensureColGroup(table);
+      syncColumnWidths(table);
+      const minWidth=calcMinWidth(table);
+      const maxWidth=Math.max(minWidth, calcMaxWidth(state.inst, table, rect.width));
+      state.active={
+        inst:state.inst,
+        table,
+        pointerId:ev.pointerId,
+        startX:ev.clientX,
+        startWidth:rect.width,
+        minWidth,
+        maxWidth
+      };
+      const doc=table.ownerDocument||document;
+      state.docMove=function(e){ if(!state.active || e.pointerId!==state.active.pointerId) return; updateActive(state, e); e.preventDefault(); };
+      state.docUp=function(e){ if(!state.active || e.pointerId!==state.active.pointerId) return; endResize(state); };
+      doc.addEventListener("pointermove", state.docMove, true);
+      doc.addEventListener("pointerup", state.docUp, true);
+      doc.addEventListener("pointercancel", state.docUp, true);
+      doc.addEventListener("pointerleave", state.docUp, true);
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+    function attach(inst, options){
+      if(!inst || !inst.el) return;
+      if(stateMap.has(inst.el)) return;
+      const state={ inst, options:options||{}, hover:null, active:null, docMove:null, docUp:null };
+      stateMap.set(inst.el, state);
+      inst.el.addEventListener("pointermove", function(e){ pointerMove(state, e); });
+      inst.el.addEventListener("pointerleave", function(){ applyHoverStyle(state, null); });
+      inst.el.addEventListener("pointerdown", function(e){ pointerDown(state, e); });
+    }
+    return { prepareTable, syncColumnWidths, refreshAll, attach };
+  })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
     const FOOTER_BASE_STYLE="padding:0;border-top:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -4574,6 +4831,78 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      run:function(inst, arg){
+        const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
+        if(!target) return;
+        try{ target.focus({ preventScroll:true }); }
+        catch(err){ if(typeof target.focus==="function") target.focus(); }
+        const colInput=window.prompt("Enter number of columns", "3");
+        if(colInput===null) return;
+        const cols=parseInt(colInput, 10);
+        if(!cols || cols<1 || cols>12){ window.alert("Please enter a whole number of columns between 1 and 12."); return; }
+        const rowInput=window.prompt("Enter number of rows", "3");
+        if(rowInput===null) return;
+        const rows=parseInt(rowInput, 10);
+        if(!rows || rows<1 || rows>20){ window.alert("Please enter a whole number of rows between 1 and 20."); return; }
+        const doc=target.ownerDocument || document;
+        const win=doc.defaultView || window;
+        let sel=win.getSelection ? win.getSelection() : window.getSelection();
+        if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+          WDom.placeCaretAtEnd(target);
+          sel=win.getSelection ? win.getSelection() : window.getSelection();
+        }
+        const baseRange=(sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+        const table=doc.createElement("table");
+        table.style.width="100%";
+        table.style.borderCollapse="collapse";
+        table.style.tableLayout="fixed";
+        table.style.margin="12px 0";
+        table.style.border="1px solid "+WCfg.UI.borderSubtle;
+        for(let r=0;r<rows;r++){
+          const tr=doc.createElement("tr");
+          for(let c=0;c<cols;c++){
+            const td=doc.createElement("td");
+            td.style.border="1px solid "+WCfg.UI.borderSubtle;
+            td.style.padding="8px";
+            td.style.verticalAlign="top";
+            td.style.wordBreak="break-word";
+            const block=doc.createElement("p");
+            block.appendChild(doc.createElement("br"));
+            td.appendChild(block);
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+        const fragment=doc.createDocumentFragment();
+        fragment.appendChild(table);
+        const spacer=doc.createElement("p");
+        spacer.appendChild(doc.createElement("br"));
+        fragment.appendChild(spacer);
+        if(baseRange){
+          const range=baseRange.cloneRange();
+          range.deleteContents();
+          range.insertNode(fragment);
+        } else {
+          target.appendChild(fragment);
+        }
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        TableResizer.prepareTable(table);
+        TableResizer.syncColumnWidths(table);
+        const selection=win.getSelection ? win.getSelection() : window.getSelection();
+        const firstCell=table.querySelector("td");
+        if(firstCell && selection && doc.createRange){
+          const focusTarget=firstCell.querySelector("p") || firstCell;
+          const cellRange=doc.createRange();
+          cellRange.selectNodeContents(focusTarget);
+          cellRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(cellRange);
+        }
+        HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      } },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -4622,6 +4951,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4637,6 +4967,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4699,18 +5030,23 @@
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
     Breaks.ensurePlaceholders(this.el);
-    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
+    TableResizer.refreshAll(this.el);
+    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); TableResizer.refreshAll(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
-    this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); TableResizer.refreshAll(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
     this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
     HistoryManager.init(this, this.el);
+    TableResizer.attach(this, {
+      onResizeEnd:(function(self){ return function(_, changed){ if(!changed) return; HistoryManager.record(self, self.el, { label:"Resize Table", repeatable:false }); OutputBinding.syncDebounced(self); }; })(this)
+    });
     this.el.__winst = this;
   };
   WEditorInstance.prototype.loadState=function(state){
     const applied=StateBinding.apply(this, state);
     if(applied){
       Breaks.ensurePlaceholders(this.el);
+      TableResizer.refreshAll(this.el);
       OutputBinding.syncDebounced(this);
     }
     return applied;
