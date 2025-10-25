@@ -2380,6 +2380,12 @@
       { label:"Segoe UI", value:"'Segoe UI', system-ui, -apple-system, sans-serif" },
       { label:"Times New Roman", value:"'Times New Roman', Times, serif" }
     ];
+    const HEADING_OPTIONS=[
+      { label:"Normal (Paragraph)", value:"p" },
+      { label:"Heading 1", value:"h1" },
+      { label:"Heading 2", value:"h2" },
+      { label:"Heading 3", value:"h3" }
+    ];
     const FONT_SIZES=[
       { label:"10", px:"10px", exec:"2" },
       { label:"12", px:"12px", exec:"3" },
@@ -2786,6 +2792,64 @@
         }
       }
     }
+    function resolveHeadingValue(value){
+      if(!value && value!==0) return "p";
+      const normalized=String(value).toLowerCase();
+      if(normalized==="h1" || normalized==="heading1" || normalized==="heading 1") return "h1";
+      if(normalized==="h2" || normalized==="heading2" || normalized==="heading 2") return "h2";
+      if(normalized==="h3" || normalized==="heading3" || normalized==="heading 3") return "h3";
+      if(normalized==="h4" || normalized==="heading4" || normalized==="heading 4") return "h4";
+      if(normalized==="h5" || normalized==="heading5" || normalized==="heading 5") return "h5";
+      if(normalized==="h6" || normalized==="heading6" || normalized==="heading 6") return "h6";
+      return "p";
+    }
+    function getHeading(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return "p";
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return "p";
+      const range=sel.getRangeAt(0);
+      if(range && range.commonAncestorContainer && !target.contains(range.commonAncestorContainer) && range.commonAncestorContainer!==target){
+        return "p";
+      }
+      function findBlock(node){
+        while(node && node!==target){
+          if(node.nodeType===1){
+            const tag=(node.tagName||"").toUpperCase();
+            if(tag==="P" || tag==="DIV") return "p";
+            if(tag.length===2 && tag.charAt(0)==="H" && tag.charAt(1)>="1" && tag.charAt(1)<="7"){
+              return tag.toLowerCase();
+            }
+          }
+          node=node.parentNode;
+        }
+        return "p";
+      }
+      const startBlock=findBlock(range.startContainer);
+      const endBlock=findBlock(range.endContainer);
+      if(startBlock===endBlock) return startBlock;
+      return "p";
+    }
+    function applyHeading(inst, ctx, value){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const normalized=resolveHeadingValue(value);
+      const tag=normalized.toUpperCase();
+      focusTarget(target);
+      let success=false;
+      try{ success=document.execCommand("formatBlock", false, tag==="P"?"p":tag); }
+      catch(err){ success=false; }
+      if(!success){
+        try{ success=document.execCommand("formatBlock", false, "<"+tag+">"); }
+        catch(err2){ success=false; }
+      }
+      if(success){
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+      }
+      return success;
+    }
     function applySimple(inst, ctx, command){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, command, null, true);
@@ -2975,6 +3039,7 @@
     return {
       FONT_FAMILIES,
       FONT_SIZES,
+      HEADING_OPTIONS,
       HIGHLIGHT_COLORS,
       LINE_SPACING_OPTIONS,
       FONT_THEME_COLORS,
@@ -2990,6 +3055,8 @@
       applyDecorationStyle,
       applySimple,
       applyAlign,
+      getHeading,
+      applyHeading,
       applyLineSpacing,
       clearLineSpacing,
       getLineSpacing,
@@ -3051,7 +3118,8 @@
       },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
-      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
+      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; },
+      heading:function(inst, target, args){ if(!args || !args.value) return false; return Formatting.applyHeading(inst, makeCtx(inst, target), args.value); }
     };
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function cloneInstState(inst){
@@ -6263,6 +6331,28 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.heading":{
+      label:"Heading",
+      kind:"select",
+      ariaLabel:"Select heading level",
+      options:Formatting.HEADING_OPTIONS.map(function(item){ return { label:item.label, value:item.value }; }),
+      getValue:function(inst, ctx){ return Formatting.getHeading(inst, ctx); },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        const changed=Formatting.applyHeading(inst, arg && arg.ctx, value);
+        if(!changed) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Heading Style",
+          repeatable:true,
+          repeatId:"heading",
+          repeatArgs:{ value:value },
+          repeatLabel:"Heading Style"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.fontSize":{
       label:"Size",
       kind:"select",
@@ -6583,7 +6673,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.heading","format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
@@ -6600,7 +6690,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.heading","format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
