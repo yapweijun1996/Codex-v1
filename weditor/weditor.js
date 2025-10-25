@@ -29,6 +29,12 @@
       toolbarGroup:{ display:"flex", flexDirection:"column", gap:"10px", padding:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#fafafa", flex:"1 1 240px", boxSizing:"border-box" },
       toolbarGroupTitle:{ font:"12px/1.4 Segoe UI,system-ui", textTransform:"uppercase", letterSpacing:".06em", color:UI.textDim },
       toolbarGroupRow:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      segmentWrap:{ display:"flex", flexDirection:"column", gap:"12px", width:"100%" },
+      segmentNav:{ display:"inline-flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      segmentBtn:{ padding:"6px 14px", borderRadius:"999px", border:"1px solid "+UI.borderSubtle, background:"#fff", color:UI.textDim, cursor:"pointer", font:"12px/1.3 Segoe UI,system-ui", transition:"all .18s ease" },
+      segmentBtnActive:{ background:UI.brand, border:"1px solid "+UI.brand, color:"#fff" },
+      segmentPanels:{ border:"1px solid "+UI.borderSubtle, borderRadius:"12px", background:"#fafafa", padding:"14px", display:"flex", flexDirection:"column", gap:"12px" },
+      segmentPanel:{ display:"flex", flexWrap:"wrap", gap:"12px", alignItems:"stretch" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
@@ -2124,6 +2130,109 @@
           if(typeof entry==="string"){
             const cmdBtn=createCommandButton(entry, inst, ctx);
             if(cmdBtn) target.appendChild(cmdBtn);
+            return;
+          }
+          if(entry && typeof entry==="object" && entry.type==="segments"){
+            const segments=Array.isArray(entry.segments)?entry.segments.filter(function(seg){ return !!seg && (Array.isArray(seg.items)?seg.items.length:seg.items!=null); }):[];
+            if(!segments.length) return;
+            const wrap=document.createElement("div");
+            applyStyles(wrap, WCfg.Style.segmentWrap);
+            if(entry.label){
+              const title=document.createElement("div");
+              title.textContent=entry.label;
+              applyStyles(title, WCfg.Style.toolbarGroupTitle);
+              wrap.appendChild(title);
+            }
+            const nav=document.createElement("div");
+            applyStyles(nav, WCfg.Style.segmentNav);
+            nav.setAttribute("role","tablist");
+            nav.setAttribute("aria-orientation","horizontal");
+            const panelsContainer=document.createElement("div");
+            applyStyles(panelsContainer, WCfg.Style.segmentPanels);
+            const buttons=[]; const panels=[]; const buttonSegments=[];
+            const baseId="weditor-seg-"+inst.uid+"-"+Math.floor(Math.random()*1e4);
+            for(let idx=0; idx<segments.length; idx++){
+              const segment=segments[idx];
+              const segBtn=document.createElement("button");
+              segBtn.type="button";
+              segBtn.textContent=segment.label || ("Segment "+(idx+1));
+              applyStyles(segBtn, WCfg.Style.segmentBtn);
+              segBtn.setAttribute("role","tab");
+              const segId=baseId+"-"+idx;
+              const segPanel=document.createElement("div");
+              applyStyles(segPanel, WCfg.Style.segmentPanel);
+              segPanel.style.display="none";
+              segPanel.setAttribute("role","tabpanel");
+              segPanel.setAttribute("aria-hidden","true");
+              segPanel.id=segId+"-panel";
+              segBtn.id=segId+"-tab";
+              segBtn.setAttribute("aria-controls", segPanel.id);
+              segPanel.setAttribute("aria-labelledby", segBtn.id);
+              const segItems=Array.isArray(segment.items)?segment.items:[segment.items];
+              for(let s=0; s<segItems.length; s++){
+                appendItem(segPanel, segItems[s]);
+              }
+              if(!segPanel.childNodes.length) continue;
+              const currentIndex=buttons.length;
+              segBtn.addEventListener("mouseenter", function(){ if(segBtn.getAttribute("data-active")!=="1"){ segBtn.style.background=WCfg.UI.canvas; } });
+              segBtn.addEventListener("mouseleave", function(){ if(segBtn.getAttribute("data-active")!=="1"){ segBtn.style.background=WCfg.Style.segmentBtn.background; segBtn.style.border=WCfg.Style.segmentBtn.border; segBtn.style.color=WCfg.Style.segmentBtn.color; } });
+              segBtn.addEventListener("click", function(){ setSegmentActive(currentIndex, true); });
+              segBtn.addEventListener("keydown", function(e){
+                let targetIndex=null;
+                if(e.key==="ArrowRight" || e.key==="ArrowDown"){ targetIndex=(currentIndex+1)%buttons.length; }
+                else if(e.key==="ArrowLeft" || e.key==="ArrowUp"){ targetIndex=(currentIndex-1+buttons.length)%buttons.length; }
+                else if(e.key==="Home"){ targetIndex=0; }
+                else if(e.key==="End"){ targetIndex=buttons.length-1; }
+                else if(e.key==="Enter" || e.key===" "){
+                  e.preventDefault();
+                  setSegmentActive(currentIndex, true);
+                  return;
+                }
+                if(targetIndex!==null){
+                  e.preventDefault();
+                  setSegmentActive(targetIndex, true);
+                }
+              });
+              nav.appendChild(segBtn);
+              panelsContainer.appendChild(segPanel);
+              buttons.push(segBtn);
+              panels.push(segPanel);
+              buttonSegments.push(segment);
+            }
+            if(!buttons.length) return;
+            function setSegmentActive(index, focus){
+              if(index==null || index<0 || index>=buttons.length) index=0;
+              for(let i=0;i<buttons.length;i++){
+                const btn=buttons[i];
+                const panel=panels[i];
+                const active=i===index;
+                btn.setAttribute("data-active", active?"1":"0");
+                btn.setAttribute("aria-selected", active?"true":"false");
+                if(active){
+                  btn.style.background=WCfg.Style.segmentBtnActive.background;
+                  btn.style.border=WCfg.Style.segmentBtnActive.border;
+                  btn.style.color=WCfg.Style.segmentBtnActive.color;
+                } else {
+                  btn.style.background=WCfg.Style.segmentBtn.background;
+                  btn.style.border=WCfg.Style.segmentBtn.border;
+                  btn.style.color=WCfg.Style.segmentBtn.color;
+                }
+                panel.style.display=active?"flex":"none";
+                panel.setAttribute("aria-hidden", active?"false":"true");
+              }
+              if(focus && buttons[index]) buttons[index].focus();
+            }
+            let defaultIndex=0;
+            if(typeof entry.defaultSegment==="number" && entry.defaultSegment>=0 && entry.defaultSegment<buttons.length){
+              defaultIndex=entry.defaultSegment;
+            } else if(typeof entry.defaultSegment==="string"){
+              const foundIndex=buttonSegments.findIndex(function(seg){ return seg && seg.id===entry.defaultSegment; });
+              if(foundIndex>=0) defaultIndex=foundIndex;
+            }
+            wrap.appendChild(nav);
+            wrap.appendChild(panelsContainer);
+            target.appendChild(wrap);
+            setSegmentActive(defaultIndex);
             return;
           }
           if(entry && typeof entry==="object" && Array.isArray(entry.items) && entry.items.length){
@@ -4545,9 +4654,20 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
-        { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { type:"segments", id:"formatSegments", defaultSegment:"text", segments:[
+          { id:"text", label:"Text", items:[
+            { label:"Font", items:["format.fontFamily","format.fontSize"] },
+            { label:"Emphasis", items:["format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] }
+          ] },
+          { id:"color", label:"Color", items:[
+            { label:"Text Color", items:["format.fontColor"] },
+            { label:"Highlight & Scripts", items:["format.highlight","format.subscript","format.superscript"] }
+          ] },
+          { id:"paragraph", label:"Paragraph", items:[
+            { label:"Lists & Levels", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent"] },
+            { label:"Alignment", items:["format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+          ] }
+        ] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
@@ -4560,9 +4680,20 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
-        { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { type:"segments", id:"formatSegmentsFs", defaultSegment:"text", segments:[
+          { id:"text", label:"Text", items:[
+            { label:"Font", items:["format.fontFamily","format.fontSize"] },
+            { label:"Emphasis", items:["format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] }
+          ] },
+          { id:"color", label:"Color", items:[
+            { label:"Text Color", items:["format.fontColor"] },
+            { label:"Highlight & Scripts", items:["format.highlight","format.subscript","format.superscript"] }
+          ] },
+          { id:"paragraph", label:"Paragraph", items:[
+            { label:"Lists & Levels", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent"] },
+            { label:"Alignment", items:["format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+          ] }
+        ] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
