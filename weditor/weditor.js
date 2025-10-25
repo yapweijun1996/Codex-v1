@@ -2665,6 +2665,105 @@
       if(success && inst){ inst.fontColor=null; }
       return success;
     }
+    function collectBlocksInRange(target, range){
+      const blocks=[];
+      if(!target || !range){ return blocks; }
+      const doc=target.ownerDocument || document;
+      function isBlock(node){
+        if(!node || node.nodeType!==1) return false;
+        const tag=(node.tagName||"").toUpperCase();
+        if(tag==="P"||tag==="DIV"||tag==="LI"||tag==="OL"||tag==="UL"||tag==="TABLE"||tag==="H1"||tag==="H2"||tag==="H3"||tag==="H4"||tag==="H5"||tag==="H6"||tag==="TD"||tag==="TH") return true;
+        const view=doc.defaultView || window;
+        const computed=view.getComputedStyle ? view.getComputedStyle(node) : null;
+        const display=computed ? computed.display : "";
+        return display==="block" || display==="list-item" || display==="table" || display==="flex" || display==="grid";
+      }
+      function addBlock(node){ if(node && blocks.indexOf(node)<0) blocks.push(node); }
+      let node=range.commonAncestorContainer;
+      if(node && node.nodeType===3) node=node.parentNode;
+      while(node && node!==target){ if(isBlock(node)){ addBlock(node); break; } node=node.parentNode; }
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(el){
+            if(el===target) return NodeFilter.FILTER_SKIP;
+            if(!isBlock(el)) return NodeFilter.FILTER_SKIP;
+            return intersectsRange(range, el) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        let current;
+        while((current=walker.nextNode())){ addBlock(current); }
+      }
+      if(range.collapsed){
+        let caretNode=range.startContainer;
+        if(caretNode && caretNode.nodeType===3) caretNode=caretNode.parentNode;
+        while(caretNode && caretNode!==target){ if(isBlock(caretNode)){ addBlock(caretNode); break; } caretNode=caretNode.parentNode; }
+      }
+      return blocks;
+    }
+    function fallbackApplyLineHeight(target, value){
+      if(!target || !target.ownerDocument) return false;
+      const doc=target.ownerDocument;
+      const sel=doc.defaultView ? doc.defaultView.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0){ return false; }
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.startContainer) || !target.contains(range.endContainer)){
+        let container=range.commonAncestorContainer;
+        if(container && container.nodeType===3) container=container.parentNode;
+        if(container!==target && !target.contains(container)) return false;
+      }
+      const blocks=collectBlocksInRange(target, range);
+      if(!blocks.length){ return false; }
+      let changed=false;
+      for(let i=0;i<blocks.length;i++){
+        const block=blocks[i];
+        if(!block || block.nodeType!==1) continue;
+        if(value){
+          if(block.style.lineHeight!==value){ block.style.lineHeight=value; changed=true; }
+        } else {
+          if(block.style.lineHeight){
+            block.style.removeProperty("line-height");
+            if(block.getAttribute && block.getAttribute("style")==="") block.removeAttribute("style");
+            changed=true;
+          }
+        }
+      }
+      return changed;
+    }
+    function applyLineHeight(inst, ctx, spacing){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const normalized=(spacing===""||spacing===null||typeof spacing==="undefined")?null:String(spacing);
+      focusTarget(target);
+      let success=false;
+      if(normalized){
+        try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+        try{ success=document.execCommand("lineHeight", false, normalized); }
+        catch(err){ success=false; }
+        try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+      }
+      if(!success){ success=fallbackApplyLineHeight(target, normalized); }
+      if(success && inst){ inst.lineSpacing = normalized; }
+      if(!normalized && success && inst){ inst.lineSpacing = null; }
+      return success;
+    }
+    function detectLineHeight(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return inst ? inst.lineSpacing : null;
+      const doc=target.ownerDocument || document;
+      const sel=doc.defaultView ? doc.defaultView.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0){ return inst ? inst.lineSpacing : null; }
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.startContainer) || !target.contains(range.endContainer)){
+        let container=range.commonAncestorContainer;
+        if(container && container.nodeType===3) container=container.parentNode;
+        if(container!==target && !target.contains(container)) return inst ? inst.lineSpacing : null;
+      }
+      let node=range.startContainer;
+      if(node && node.nodeType===3) node=node.parentNode;
+      while(node && node!==target){
+        if(node.nodeType===1 && node.style && node.style.lineHeight){ return node.style.lineHeight; }
+        node=node.parentNode;
+      }
+      return inst ? inst.lineSpacing : null;
+    }
     function fallbackApplyAlign(target, align){
       const info=ensureSelectionInfo(target); if(!info) return false;
       const { range }=info;
@@ -2876,6 +2975,8 @@
       applyDecorationStyle,
       applySimple,
       applyAlign,
+      applyLineHeight,
+      detectLineHeight,
       toggleList,
       applyListStyle,
       applyCustomBullet,
@@ -2925,7 +3026,11 @@
       },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
-      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
+      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; },
+      lineSpacing:function(inst, target, args){
+        if(!args || !Object.prototype.hasOwnProperty.call(args, "value")) return false;
+        return Formatting.applyLineHeight(inst, makeCtx(inst, target), args.value);
+      }
     };
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function cloneInstState(inst){
@@ -2939,7 +3044,8 @@
         footerAlign: inst.footerAlign,
         underlineStyle: inst.underlineStyle,
         highlightColor: inst.highlightColor,
-        fontColor: inst.fontColor
+        fontColor: inst.fontColor,
+        lineSpacing: inst.lineSpacing
       };
     }
     function applyInstState(inst, state){
@@ -2953,6 +3059,7 @@
       inst.underlineStyle = state.underlineStyle;
       inst.highlightColor = state.highlightColor;
       inst.fontColor = state.fontColor;
+      inst.lineSpacing = state.lineSpacing;
     }
     function instStateEqual(a, b){
       if(!a && !b) return true;
@@ -2965,7 +3072,8 @@
         a.footerAlign===b.footerAlign &&
         a.underlineStyle===b.underlineStyle &&
         a.highlightColor===b.highlightColor &&
-        a.fontColor===b.fontColor;
+        a.fontColor===b.fontColor &&
+        a.lineSpacing===b.lineSpacing;
     }
     function sameSnapshot(a, b){
       if(!a || !b) return false;
@@ -4763,6 +4871,228 @@
     }
     return { createBulleted, createNumbered, createMultilevel };
   })();
+  const LineSpacingUI=(function(){
+    const OPTIONS=[
+      { label:"Single", value:"1", detail:"1.0" },
+      { label:"1.15", value:"1.15", detail:"1.15" },
+      { label:"1.5", value:"1.5", detail:"1.5" },
+      { label:"Double", value:"2", detail:"2.0" },
+      { separator:true },
+      { label:"Reset (Default)", value:null, detail:"Remove custom spacing" }
+    ];
+    function makeSrOnly(text){
+      const span=document.createElement("span");
+      span.textContent=text;
+      span.style.position="absolute";
+      span.style.width="1px";
+      span.style.height="1px";
+      span.style.padding="0";
+      span.style.margin="-1px";
+      span.style.overflow="hidden";
+      span.style.clip="rect(0,0,0,0)";
+      span.style.whiteSpace="nowrap";
+      span.style.border="0";
+      return span;
+    }
+    function createIcon(){
+      const wrap=document.createElement("span");
+      wrap.setAttribute("aria-hidden","true");
+      wrap.style.display="grid";
+      wrap.style.gridTemplateColumns="auto auto";
+      wrap.style.alignItems="center";
+      wrap.style.gap="6px";
+      const lines=document.createElement("span");
+      lines.style.display="grid";
+      lines.style.gap="3px";
+      lines.style.width="18px";
+      lines.style.justifyItems="stretch";
+      for(let i=0;i<3;i++){
+        const bar=document.createElement("span");
+        bar.style.display="block";
+        bar.style.height="3px";
+        bar.style.borderRadius="999px";
+        bar.style.background=WCfg.UI.text;
+        lines.appendChild(bar);
+      }
+      const arrows=document.createElement("span");
+      arrows.style.display="grid";
+      arrows.style.gap="4px";
+      arrows.style.fontSize="12px";
+      arrows.style.color=WCfg.UI.brand;
+      arrows.style.justifyItems="center";
+      const up=document.createElement("span"); up.textContent="↑"; up.style.lineHeight="1"; arrows.appendChild(up);
+      const down=document.createElement("span"); down.textContent="↓"; down.style.lineHeight="1"; arrows.appendChild(down);
+      wrap.appendChild(lines);
+      wrap.appendChild(arrows);
+      return wrap;
+    }
+    function normalize(value){
+      if(value===null || typeof value==="undefined" || value==="") return null;
+      return String(value);
+    }
+    function matches(optionValue, selected){
+      const opt=normalize(optionValue);
+      const sel=normalize(selected);
+      if(opt===null){
+        return sel===null || sel==="normal";
+      }
+      if(sel===null){ return false; }
+      const optNum=parseFloat(opt);
+      const selNum=parseFloat(sel);
+      if(!isNaN(optNum) && !isNaN(selNum)){
+        return Math.abs(optNum-selNum) < 0.01;
+      }
+      return opt===sel;
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      const button=WDom.btn("Spacing", false, "Line and Paragraph Spacing");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.setAttribute("aria-label","Line and Paragraph Spacing");
+      button.textContent="";
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="6px";
+      button.style.minWidth="44px";
+      const icon=createIcon();
+      button.appendChild(icon);
+      button.appendChild(makeSrOnly("Line and Paragraph Spacing"));
+      const caret=document.createElement("span");
+      caret.textContent="▾";
+      caret.style.fontSize="10px";
+      caret.style.lineHeight="1";
+      caret.setAttribute("aria-hidden","true");
+      button.appendChild(caret);
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.right="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.minWidth="220px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="6px";
+      menu.style.zIndex="32";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const doc=container.ownerDocument || document;
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        menu.style.display=open?"flex":"none";
+        menu.setAttribute("aria-hidden", open?"false":"true");
+        button.setAttribute("aria-expanded", open?"true":"false");
+        if(open){
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            const active=menu.querySelector('[data-spacing][data-selected="1"]');
+            const focusTarget=active || menu.querySelector("button");
+            if(focusTarget) focusTarget.focus();
+          },0);
+          updateActive(Formatting.detectLineHeight(inst, ctx));
+        } else {
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      function applySpacing(value){
+        const normalized=normalize(value);
+        const changed=Formatting.applyLineHeight(inst, ctx, normalized);
+        if(changed){
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, {
+            label:"Line Spacing",
+            repeatable:true,
+            repeatId:"lineSpacing",
+            repeatArgs:{ value:normalized },
+            repeatLabel:"Line Spacing"
+          });
+          OutputBinding.syncDebounced(inst);
+        }
+        updateActive(normalized);
+        setOpen(false);
+      }
+      const optionButtons=[];
+      function updateActive(selected){
+        const normalized=normalize(selected);
+        for(let i=0;i<optionButtons.length;i++){
+          const btn=optionButtons[i];
+          const raw=btn.getAttribute("data-spacing");
+          const value=raw===""?null:raw;
+          const isSelected=matches(value, normalized);
+          btn.setAttribute("data-selected", isSelected?"1":"0");
+          btn.setAttribute("aria-checked", isSelected?"true":"false");
+          btn.style.background=isSelected?"#f3f2f1":"transparent";
+          btn.style.color=isSelected?WCfg.UI.brand:WCfg.UI.text;
+        }
+      }
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      menu.addEventListener("click", function(e){ e.stopPropagation(); });
+      menu.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      for(let i=0;i<OPTIONS.length;i++){
+        const opt=OPTIONS[i];
+        if(opt.separator){
+          const divider=document.createElement("div");
+          divider.style.height="1px";
+          divider.style.margin="6px 4px";
+          divider.style.background=WCfg.UI.borderSubtle;
+          menu.appendChild(divider);
+          continue;
+        }
+        const optBtn=document.createElement("button");
+        optBtn.type="button";
+        optBtn.setAttribute("role","menuitemradio");
+        optBtn.textContent="";
+        optBtn.style.display="flex";
+        optBtn.style.alignItems="center";
+        optBtn.style.justifyContent="space-between";
+        optBtn.style.gap="12px";
+        optBtn.style.padding="8px 10px";
+        optBtn.style.border="0";
+        optBtn.style.background="transparent";
+        optBtn.style.borderRadius="6px";
+        optBtn.style.cursor="pointer";
+        optBtn.style.font="13px/1.3 Segoe UI,system-ui";
+        optBtn.style.color=WCfg.UI.text;
+        optBtn.addEventListener("mouseenter", function(){ if(optBtn.getAttribute("data-selected")!="1") optBtn.style.background="#f8f7f6"; });
+        optBtn.addEventListener("mouseleave", function(){ if(optBtn.getAttribute("data-selected")!="1") optBtn.style.background="transparent"; });
+        const label=document.createElement("span");
+        label.textContent=opt.label;
+        label.style.fontWeight="600";
+        label.style.fontSize="13px";
+        const detail=document.createElement("span");
+        detail.textContent=opt.detail || "";
+        detail.style.fontSize="12px";
+        detail.style.color=WCfg.UI.textDim;
+        detail.style.marginLeft="auto";
+        detail.style.whiteSpace="nowrap";
+        optBtn.appendChild(label);
+        if(opt.detail){ optBtn.appendChild(detail); }
+        optBtn.dataset.spacing = opt.value==null?"":String(opt.value);
+        optBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); applySpacing(opt.value); });
+        optionButtons.push(optBtn);
+        menu.appendChild(optBtn);
+      }
+      container.appendChild(button);
+      container.appendChild(menu);
+      updateActive(Formatting.detectLineHeight(inst, ctx));
+      return container;
+    }
+    return { create };
+  })();
   const FontColorUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
     function normalizeCustomColor(input){
@@ -5930,6 +6260,11 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.lineSpacing":{
+      kind:"custom",
+      ariaLabel:"Line and Paragraph Spacing (行距)",
+      render:function(inst, ctx){ return LineSpacingUI.create(inst, ctx); }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -6074,7 +6409,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.lineSpacing","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -6091,7 +6426,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.lineSpacing","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -6131,6 +6466,7 @@
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
+    this.lineSpacing = null;
     const initialState = initialStateAttr || OutputBinding.consumeInitialState(this);
     if(initialState){
       StateBinding.apply(this, initialState);
