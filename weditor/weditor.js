@@ -3816,6 +3816,112 @@
     }
     return { attach:function(inst, options){ if(inst || (options && options.root)) createState(inst, options); }, ensureTable };
   })();
+  const TableStyling=(function(){
+    function normalizeForCompare(value){
+      return (value||"").replace(/\s+/g,"").toLowerCase();
+    }
+    function isTransparent(value){
+      if(!value) return true;
+      const norm=normalizeForCompare(value);
+      return norm==="transparent" || norm==="rgba(0,0,0,0)";
+    }
+    function readState(table){
+      const state={ hidden:false, color:"" };
+      if(!table) return state;
+      if(table.getAttribute("data-weditor-border-hidden")==="1"){ state.hidden=true; }
+      const dataColor=table.getAttribute("data-weditor-border-color");
+      if(dataColor){ state.color=dataColor; }
+      if(!state.color && !state.hidden){
+        const inline=table.style && table.style.borderColor ? table.style.borderColor.trim() : "";
+        if(inline && !isTransparent(inline)) state.color=inline;
+      }
+      if(!state.color && !state.hidden){
+        const cell=table.querySelector("td, th");
+        if(cell){
+          const cellInline=cell.style && cell.style.borderColor ? cell.style.borderColor.trim() : "";
+          if(cellInline && !isTransparent(cellInline)) state.color=cellInline;
+          else if(table.ownerDocument && table.ownerDocument.defaultView && table.ownerDocument.defaultView.getComputedStyle){
+            const win=table.ownerDocument.defaultView;
+            const computed=win.getComputedStyle(cell);
+            if(computed){
+              let compColor="";
+              if(typeof computed.getPropertyValue==="function"){ compColor=(computed.getPropertyValue("border-left-color")||"").trim(); }
+              if(!compColor){ compColor=(computed.borderLeftColor || "").trim(); }
+              if(compColor && !isTransparent(compColor)) state.color=compColor;
+            }
+          }
+        }
+      }
+      return state;
+    }
+    function markHidden(table){
+      if(!table) return;
+      table.setAttribute("data-weditor-border-hidden","1");
+      table.removeAttribute("data-weditor-border-color");
+    }
+    function markColor(table, color){
+      if(!table) return;
+      table.setAttribute("data-weditor-border-color", color);
+      table.removeAttribute("data-weditor-border-hidden");
+    }
+    function findTable(target){
+      if(!target || !target.ownerDocument) return null;
+      const win=target.ownerDocument.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      let node=range.commonAncestorContainer;
+      if(node && node.nodeType===3) node=node.parentNode;
+      while(node){
+        if(node.nodeType===1 && node.tagName && node.tagName.toLowerCase()==="table") return node;
+        if(node===target) break;
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function applyHidden(table){
+      if(!table) return false;
+      const state=readState(table);
+      const cells=table.querySelectorAll("td, th");
+      table.style.borderCollapse="collapse";
+      table.style.border="1px solid transparent";
+      table.style.borderColor="transparent";
+      markHidden(table);
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        cell.style.border="1px solid transparent";
+        cell.style.borderColor="transparent";
+      }
+      return !state.hidden || !isTransparent(state.color);
+    }
+    function applyColor(table, color){
+      if(!table || !color) return false;
+      const state=readState(table);
+      const newNorm=normalizeForCompare(color);
+      const oldNorm=normalizeForCompare(state.color);
+      const wasHidden=!!state.hidden;
+      const cells=table.querySelectorAll("td, th");
+      table.style.borderCollapse="collapse";
+      const borderValue="1px solid "+color;
+      table.style.border=borderValue;
+      table.style.borderColor=color;
+      markColor(table, color);
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        cell.style.border=borderValue;
+        cell.style.borderColor=color;
+      }
+      return wasHidden || newNorm!==oldNorm;
+    }
+    function apply(table, color){
+      if(!table) return false;
+      if(color){
+        return applyColor(table, color);
+      }
+      return applyHidden(table);
+    }
+    return { findTable, apply, readState };
+  })();
   const ListUI=(function(){
     function createSplitButton(options){
       const variant=(options && options.variant) || "default";
@@ -4969,6 +5075,40 @@
         HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "table.borderStyle":{ label:"Table Border", kind:"button", ariaLabel:"Set table border color", title:"Set or hide table border color",
+      run:function(inst, arg){
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        if(!target){ return; }
+        const table=TableStyling.findTable(target);
+        if(!table){ window.alert("Please place the caret inside a table before changing borders."); return; }
+        const state=TableStyling.readState(table);
+        const defaultValue = state.hidden ? "" : (state.color || "");
+        const promptMessage="Enter a CSS border color for the table (留空隐藏边框 / Leave blank to hide)";
+        const input=window.prompt(promptMessage, defaultValue);
+        if(input===null) return;
+        const value=(input||"").trim();
+        if(!value){
+          const changed=TableStyling.apply(table, null);
+          if(changed){
+            TableResizer.ensureTable(table);
+            HistoryManager.record(inst, target, { label:"Hide Table Borders", repeatable:false });
+            OutputBinding.syncDebounced(inst);
+          }
+          return;
+        }
+        const doc=table.ownerDocument || document;
+        const test=doc.createElement("div");
+        test.style.borderColor="";
+        test.style.borderColor=value;
+        const resolved=test.style.borderColor;
+        if(!resolved){ window.alert("Please enter a valid CSS color value."); return; }
+        const changed=TableStyling.apply(table, resolved);
+        if(changed){
+          TableResizer.ensureTable(table);
+          HistoryManager.record(inst, target, { label:"Set Table Border Color", repeatable:false });
+          OutputBinding.syncDebounced(inst);
+        }
+      } },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -5017,7 +5157,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:["insert.table","table.borderStyle"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -5033,7 +5173,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:["insert.table","table.borderStyle"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
