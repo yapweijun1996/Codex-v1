@@ -2463,6 +2463,97 @@
       const afterStart=range.compareBoundaryPoints(START_TO_END, test) > 0;
       return beforeEnd && afterStart;
     }
+    function isBlockElement(node){
+      if(!node || node.nodeType!==1) return false;
+      const tag=(node.tagName||"").toUpperCase();
+      if(tag==="P" || tag==="DIV" || tag==="LI" || tag==="OL" || tag==="UL" || tag==="TABLE" || tag==="H1" || tag==="H2" || tag==="H3" || tag==="H4" || tag==="H5" || tag==="H6" || tag==="BLOCKQUOTE"){
+        return true;
+      }
+      if(typeof window!=="undefined" && window.getComputedStyle){
+        try{
+          const display=window.getComputedStyle(node).display;
+          return display==="block" || display==="list-item" || display==="table" || display==="flex" || display==="grid";
+        } catch(e){ return false; }
+      }
+      return false;
+    }
+    function getSelectionRange(target){
+      if(!target || !target.ownerDocument) return null;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && container!==target && !target.contains(container)){ return null; }
+      return range;
+    }
+    function collectLineBlocks(target, range){
+      const blocks=[];
+      if(!target || !range) return blocks;
+      const doc=target.ownerDocument || document;
+      const seen=new Set();
+      function add(node){
+        if(!node || node===target) return;
+        if(!isBlockElement(node)) return;
+        if(seen.has(node)) return;
+        seen.add(node);
+        blocks.push(node);
+      }
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(range.collapsed){
+        let node=range.startContainer;
+        if(node && node.nodeType===3){ node=node.parentNode; }
+        while(node && node!==target){
+          if(isBlockElement(node)){ add(node); break; }
+          node=node.parentNode;
+        }
+        return blocks;
+      }
+      let node=container;
+      while(node && node!==target){
+        if(isBlockElement(node)){ add(node); break; }
+        node=node.parentNode;
+      }
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(el){
+            if(el===target) return NodeFilter.FILTER_SKIP;
+            if(!isBlockElement(el)) return NodeFilter.FILTER_SKIP;
+            return intersectsRange(range, el) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        let current;
+        while((current=walker.nextNode())){ add(current); }
+      } else if(target.querySelectorAll){
+        const candidates=target.querySelectorAll("p,div,li,ol,ul,table,h1,h2,h3,h4,h5,h6,blockquote");
+        for(let i=0;i<candidates.length;i++){
+          const el=candidates[i];
+          if(intersectsRange(range, el)){ add(el); }
+        }
+      }
+      return blocks;
+    }
+    function normalizeLineSpacing(value){
+      if(value==null) return null;
+      if(typeof value==="number"){
+        if(!isFinite(value) || value<=0) return null;
+        return String(value);
+      }
+      const str=String(value).trim();
+      if(!str){ return null; }
+      if(str.toLowerCase()==="normal") return "normal";
+      const unitMatch=str.match(/^([0-9]*\.?[0-9]+)(px|em|rem|%)?$/i);
+      if(unitMatch){
+        const num=parseFloat(unitMatch[1]);
+        if(!isFinite(num) || num<=0) return null;
+        if(!unitMatch[2]){ return String(num); }
+        return unitMatch[1]+unitMatch[2];
+      }
+      return null;
+    }
     function fallbackApplyHighlight(target, color){
       const info=ensureSelectionInfo(target); if(!info) return false;
       const doc=target.ownerDocument || document;
@@ -2665,6 +2756,59 @@
       if(success && inst){ inst.fontColor=null; }
       return success;
     }
+    function applyLineSpacing(inst, ctx, value){
+      const normalized=normalizeLineSpacing(value);
+      if(!normalized) return false;
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const range=getSelectionRange(target); if(!range) return false;
+      const blocks=collectLineBlocks(target, range);
+      if(!blocks.length) return false;
+      let changed=false;
+      for(let i=0;i<blocks.length;i++){
+        const block=blocks[i];
+        if(block.style.lineHeight!==normalized){
+          block.style.lineHeight=normalized;
+          changed=true;
+        }
+      }
+      return changed;
+    }
+    function clearLineSpacing(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const range=getSelectionRange(target); if(!range) return false;
+      const blocks=collectLineBlocks(target, range);
+      if(!blocks.length) return false;
+      let changed=false;
+      for(let i=0;i<blocks.length;i++){
+        const block=blocks[i];
+        if(block.style.lineHeight){
+          block.style.removeProperty("line-height");
+          changed=true;
+        }
+      }
+      return changed;
+    }
+    function readLineSpacing(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return { value:null, mixed:false, hasBlocks:false };
+      const range=getSelectionRange(target); if(!range) return { value:null, mixed:false, hasBlocks:false };
+      const blocks=collectLineBlocks(target, range);
+      if(!blocks.length) return { value:null, mixed:false, hasBlocks:false };
+      let value=null;
+      let hasValue=false;
+      let mixed=false;
+      for(let i=0;i<blocks.length;i++){
+        const block=blocks[i];
+        const inline=(block.style.lineHeight||"").trim();
+        if(!inline){
+          if(!hasValue){ value=null; hasValue=true; }
+          else if(value!==null){ mixed=true; break; }
+        } else {
+          if(!hasValue){ value=inline; hasValue=true; }
+          else if(value!==inline){ mixed=true; break; }
+        }
+      }
+      return { value:mixed?null:value, mixed, hasBlocks:true };
+    }
     function fallbackApplyAlign(target, align){
       const info=ensureSelectionInfo(target); if(!info) return false;
       const { range }=info;
@@ -2673,22 +2817,15 @@
       const normalized=(align||"").toLowerCase();
       const targetAlign = normalized === "justify" ? "justify" : (normalized === "center" ? "center" : (normalized === "right" ? "right" : "left"));
       let updated=false;
-      function isBlock(node){
-        if(!node || node.nodeType!==1) return false;
-        const tag=(node.tagName||"").toUpperCase();
-        if(tag==="P" || tag==="DIV" || tag==="LI" || tag==="OL" || tag==="UL" || tag==="TABLE" || tag==="H1" || tag==="H2" || tag==="H3" || tag==="H4" || tag==="H5" || tag==="H6") return true;
-        const display=window.getComputedStyle(node).display;
-        return display==="block" || display==="list-item" || display==="table" || display==="flex" || display==="grid";
-      }
       let node=range.commonAncestorContainer;
       while(node && node!==target){
-        if(isBlock(node)){ node.style.textAlign=targetAlign; updated=true; break; }
+        if(isBlockElement(node)){ node.style.textAlign=targetAlign; updated=true; break; }
         node=node.parentNode;
       }
       const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
         acceptNode:function(el){
           if(el===target) return NodeFilter.FILTER_SKIP;
-          if(!isBlock(el)) return NodeFilter.FILTER_SKIP;
+          if(!isBlockElement(el)) return NodeFilter.FILTER_SKIP;
           return intersectsRange(range, el) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
         }
       });
@@ -2872,6 +3009,9 @@
       clearHighlight,
       applyFontColor,
       clearFontColor,
+      applyLineSpacing,
+      clearLineSpacing,
+      readLineSpacing,
       applyUnderline,
       applyDecorationStyle,
       applySimple,
@@ -2922,6 +3062,14 @@
           return Formatting.clearFontColor(inst, makeCtx(inst, target));
         }
         return Formatting.clearFontColor(inst, makeCtx(inst, target));
+      },
+      lineSpacing:function(inst, target, args){
+        const ctx=makeCtx(inst, target);
+        if(args && Object.prototype.hasOwnProperty.call(args, "value")){
+          if(args.value===null || typeof args.value==="undefined"){ return Formatting.clearLineSpacing(inst, ctx); }
+          return Formatting.applyLineSpacing(inst, ctx, args.value);
+        }
+        return Formatting.clearLineSpacing(inst, ctx);
       },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
@@ -4763,6 +4911,272 @@
     }
     return { createBulleted, createNumbered, createMultilevel };
   })();
+  const LineSpacingUI=(function(){
+    const PRESETS=[
+      { label:"Single (1.0)", value:"1" },
+      { label:"1.15", value:"1.15" },
+      { label:"1.5", value:"1.5" },
+      { label:"Double (2.0)", value:"2" }
+    ];
+    function createMenuButton(label){
+      const btn=document.createElement("button");
+      btn.type="button";
+      btn.textContent=label;
+      btn.style.display="flex";
+      btn.style.alignItems="center";
+      btn.style.justifyContent="space-between";
+      btn.style.padding="8px 10px";
+      btn.style.borderRadius="6px";
+      btn.style.border="1px solid transparent";
+      btn.style.background="#fff";
+      btn.style.cursor="pointer";
+      btn.style.font="13px/1.3 Segoe UI,system-ui";
+      btn.style.color=WCfg.UI.text;
+      btn.setAttribute("data-active","0");
+      btn.onmouseenter=function(){ btn.style.background = btn.getAttribute("data-active")==="1" ? "#e6f2fb" : "#f3f2f1"; };
+      btn.onmouseleave=function(){ btn.style.background = btn.getAttribute("data-active")==="1" ? "#e6f2fb" : "#fff"; };
+      return btn;
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      const button=WDom.btn("Spacing", false, "Adjust line and paragraph spacing");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.setAttribute("aria-label","Line and paragraph spacing");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="10px";
+      button.style.padding="6px 12px";
+      button.style.minWidth="0";
+      const icon=document.createElement("span");
+      icon.style.display="flex";
+      icon.style.alignItems="center";
+      icon.style.gap="8px";
+      icon.setAttribute("aria-hidden","true");
+      const lines=document.createElement("span");
+      lines.style.display="grid";
+      lines.style.rowGap="3px";
+      lines.style.width="18px";
+      for(let i=0;i<3;i++){
+        const line=document.createElement("span");
+        line.style.display="block";
+        line.style.height="2px";
+        line.style.borderRadius="999px";
+        line.style.background=WCfg.UI.text;
+        lines.appendChild(line);
+      }
+      const arrows=document.createElement("span");
+      arrows.style.display="flex";
+      arrows.style.flexDirection="column";
+      arrows.style.alignItems="center";
+      arrows.style.justifyContent="center";
+      arrows.style.lineHeight="1";
+      const arrowUp=document.createElement("span");
+      arrowUp.textContent="↑";
+      arrowUp.style.fontSize="12px";
+      const arrowDown=document.createElement("span");
+      arrowDown.textContent="↓";
+      arrowDown.style.fontSize="12px";
+      arrows.appendChild(arrowUp);
+      arrows.appendChild(arrowDown);
+      icon.appendChild(lines);
+      icon.appendChild(arrows);
+      const textWrap=document.createElement("span");
+      textWrap.style.display="flex";
+      textWrap.style.flexDirection="column";
+      textWrap.style.alignItems="flex-start";
+      textWrap.style.lineHeight="1.2";
+      const title=document.createElement("span");
+      title.textContent="Spacing";
+      title.style.font="13px/1.3 Segoe UI,system-ui";
+      title.style.color=WCfg.UI.text;
+      const valueLabel=document.createElement("span");
+      valueLabel.textContent="Default";
+      valueLabel.style.font="11px/1.3 Segoe UI,system-ui";
+      valueLabel.style.color=WCfg.UI.textDim;
+      const caret=document.createElement("span");
+      caret.textContent="▾";
+      caret.style.fontSize="10px";
+      caret.style.color=WCfg.UI.textDim;
+      textWrap.appendChild(title);
+      textWrap.appendChild(valueLabel);
+      button.textContent="";
+      button.appendChild(icon);
+      button.appendChild(textWrap);
+      button.appendChild(caret);
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.gap="4px";
+      menu.style.minWidth="220px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="8px";
+      menu.style.zIndex="25";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const optionButtons=[];
+      function setActiveOption(value, mixed){
+        for(let i=0;i<optionButtons.length;i++){
+          const entry=optionButtons[i];
+          const isActive=!mixed && ((value===null && entry.value===null) || (value!==null && entry.value===value));
+          entry.el.setAttribute("data-active", isActive?"1":"0");
+          entry.el.style.background = isActive ? "#e6f2fb" : "#fff";
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : "transparent";
+        }
+      }
+      function updateButtonState(state){
+        if(!state || !state.hasBlocks){
+          valueLabel.textContent="—";
+          button.title="Adjust line and paragraph spacing";
+          setActiveOption(null, true);
+          return;
+        }
+        if(state.mixed){
+          valueLabel.textContent="Mixed";
+          button.title="Line spacing: Mixed";
+          setActiveOption(null, true);
+          return;
+        }
+        if(!state.value || state.value==="normal"){
+          valueLabel.textContent="Default";
+          button.title="Line spacing: Default";
+          setActiveOption(null, false);
+          return;
+        }
+        valueLabel.textContent=state.value;
+        button.title="Line spacing: "+state.value;
+        setActiveOption(state.value, false);
+      }
+      function runSpacing(value, labelText){
+        let changed=false;
+        if(value===null){
+          changed=Formatting.clearLineSpacing(inst, ctx);
+        } else {
+          changed=Formatting.applyLineSpacing(inst, ctx, value);
+        }
+        if(changed){
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, {
+            label:labelText,
+            repeatable:true,
+            repeatId:"lineSpacing",
+            repeatArgs:{ value:value },
+            repeatLabel:labelText
+          });
+          OutputBinding.syncDebounced(inst);
+          updateButtonState(Formatting.readLineSpacing(inst, ctx));
+        }
+      }
+      const doc=button.ownerDocument || document;
+      function onDocPointer(e){ if(!menu.contains(e.target) && !button.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } }
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        if(open){
+          const stateInfo=Formatting.readLineSpacing(inst, ctx);
+          updateButtonState(stateInfo);
+          menu.style.display="flex";
+          menu.setAttribute("aria-hidden","false");
+          button.setAttribute("aria-expanded","true");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            const first=menu.querySelector("button");
+            if(first) first.focus();
+          }, 0);
+        } else {
+          menu.style.display="none";
+          menu.setAttribute("aria-hidden","true");
+          button.setAttribute("aria-expanded","false");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      button.addEventListener("click", function(e){ e.preventDefault(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){
+        if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){
+          e.preventDefault();
+          setOpen(true);
+        }
+      });
+      menu.addEventListener("click", function(e){ e.stopPropagation(); });
+      menu.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      for(let i=0;i<PRESETS.length;i++){
+        const preset=PRESETS[i];
+        const btn=createMenuButton(preset.label);
+        btn.setAttribute("role","menuitem");
+        btn.addEventListener("click", function(ev){
+          ev.preventDefault();
+          ev.stopPropagation();
+          setOpen(false);
+          runSpacing(preset.value, "Line Spacing "+preset.label);
+        });
+        menu.appendChild(btn);
+        optionButtons.push({ el:btn, value:preset.value });
+      }
+      const divider=document.createElement("div");
+      divider.style.height="1px";
+      divider.style.background=WCfg.UI.borderSubtle;
+      divider.style.margin="4px 0";
+      menu.appendChild(divider);
+      const customBtn=createMenuButton("Custom line spacing…");
+      customBtn.setAttribute("role","menuitem");
+      customBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        setOpen(false);
+        const stateInfo=Formatting.readLineSpacing(inst, ctx);
+        const initial=stateInfo && !stateInfo.mixed && stateInfo.value ? stateInfo.value : "1.5";
+        const input=window.prompt("Enter line spacing (e.g. 1.75 or 24px)", initial);
+        if(input==null) return;
+        const normalized=normalizeLineSpacing(input);
+        if(!normalized){
+          window.alert("Please enter a positive number or unit value such as 1.2, 1.75, 24px, or normal.");
+          return;
+        }
+        runSpacing(normalized, "Line Spacing "+normalized);
+      });
+      menu.appendChild(customBtn);
+      const resetBtn=createMenuButton("Reset to default");
+      resetBtn.setAttribute("role","menuitem");
+      resetBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        setOpen(false);
+        runSpacing(null, "Reset Line Spacing");
+      });
+      menu.appendChild(resetBtn);
+      optionButtons.push({ el:resetBtn, value:null });
+      container.appendChild(button);
+      container.appendChild(menu);
+      updateButtonState(Formatting.readLineSpacing(inst, ctx));
+      const watchTarget=(ctx && ctx.area) || (inst && inst.el) || null;
+      let updateTimer=null;
+      function scheduleUpdate(){
+        if(updateTimer){ window.clearTimeout(updateTimer); }
+        updateTimer=window.setTimeout(function(){ updateButtonState(Formatting.readLineSpacing(inst, ctx)); }, 80);
+      }
+      if(watchTarget){
+        watchTarget.addEventListener("keyup", scheduleUpdate);
+        watchTarget.addEventListener("mouseup", scheduleUpdate);
+        watchTarget.addEventListener("input", scheduleUpdate);
+      }
+      return container;
+    }
+    return { create };
+  })();
   const FontColorUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
     function normalizeCustomColor(input){
@@ -5860,6 +6274,11 @@
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
+    "format.lineSpacing":{
+      kind:"custom",
+      ariaLabel:"Line and Paragraph Spacing",
+      render:function(inst, ctx){ return LineSpacingUI.create(inst, ctx); }
+    },
     "format.alignLeft":{
       label:"Left",
       kind:"button",
@@ -6074,7 +6493,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.lineSpacing","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -6091,7 +6510,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.lineSpacing","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
