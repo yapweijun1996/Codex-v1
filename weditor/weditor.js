@@ -3854,6 +3854,52 @@
         cell.style.paddingTop=formatPixels(metrics.padTop);
         cell.style.paddingBottom=formatPixels(metrics.padBottom);
       }
+      function tightenCellChildren(cell, contentHeight){
+        if(!cell) return;
+        const doc=cell.ownerDocument || document;
+        const win=doc.defaultView || window;
+        const formatted=formatPixels(Math.max(MIN_HEIGHT, contentHeight));
+        const children=cell.children || [];
+        for(let i=0;i<children.length;i++){
+          const child=children[i];
+          if(!child || child.nodeType!==1) continue;
+          let display="";
+          if(win && win.getComputedStyle){
+            try {
+              const computed=win.getComputedStyle(child);
+              display=computed ? (computed.display||"") : "";
+            } catch(err){
+              display="";
+            }
+          }
+          if(display==="" || display==="inline") continue;
+          if(!child.__weditorRowChildMetrics){
+            child.__weditorRowChildMetrics={
+              marginTop:child.style.marginTop||"",
+              marginBottom:child.style.marginBottom||"",
+              lineHeight:child.style.lineHeight||""
+            };
+          }
+          child.style.marginTop="0px";
+          child.style.marginBottom="0px";
+          child.style.lineHeight=formatted;
+        }
+        if(cell.dataset) cell.dataset.weditorRowTight="1";
+      }
+      function restoreCellChildren(cell){
+        if(!cell) return;
+        const children=cell.children || [];
+        for(let i=0;i<children.length;i++){
+          const child=children[i];
+          if(!child || child.nodeType!==1 || !child.__weditorRowChildMetrics) continue;
+          const metrics=child.__weditorRowChildMetrics;
+          child.style.marginTop=metrics.marginTop;
+          child.style.marginBottom=metrics.marginBottom;
+          child.style.lineHeight=metrics.lineHeight;
+          delete child.__weditorRowChildMetrics;
+        }
+        if(cell.dataset && cell.dataset.weditorRowTight){ delete cell.dataset.weditorRowTight; }
+      }
       function setRowSize(row, value){
         if(!row) return;
         const finalValue=Math.max(MIN_HEIGHT, Math.round(value));
@@ -3901,9 +3947,11 @@
             const contentHeight=Math.max(minimalContent, spaceForContent - (padTop+padBottom));
             cell.style.lineHeight=formatPixels(contentHeight);
             applyCellPadding(cell, padTop, padBottom);
+            tightenCellChildren(cell, contentHeight);
           } else {
             cell.style.lineHeight=lineHeightValue;
             restoreCellPadding(cell, metrics);
+            restoreCellChildren(cell);
           }
           cell.style.height=px;
           cell.style.minHeight=px;
