@@ -4480,8 +4480,7 @@
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:OUTPUT_ITEMS },
-      { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
+      { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ]
   };
   function readBooleanAttribute(el, name){
