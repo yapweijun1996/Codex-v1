@@ -1120,6 +1120,15 @@
           align:"left"
         },
         {
+          id:"brandmark",
+          label:"🖼️ Letterhead Logo Only",
+          preview:'<span style="display:flex;justify-content:center;"><img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="height:36px;object-fit:contain;"></span>',
+          html:'<div style="width:100%;display:flex;justify-content:center;">'+
+            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="max-height:64px;height:auto;width:auto;object-fit:contain;">'+
+          '</div>',
+          align:"center"
+        },
+        {
           id:"report",
           label:"📊 Company Report",
           preview:'<span>Q4 Business Review</span><span>Confidential · {{date}}</span>',
