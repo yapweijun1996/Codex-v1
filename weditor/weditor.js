@@ -3909,19 +3909,23 @@
     }
     function applyColorToCells(table, colorValue, hidden){
       if(!table) return;
-      const cells=table.querySelectorAll("th,td");
-      for(let i=0;i<cells.length;i++){
-        const cell=cells[i];
-        if(hidden){
-          cell.style.border="0";
-          cell.style.borderColor="transparent";
-          cell.style.borderWidth="0";
-          cell.style.borderStyle="solid";
-        } else {
-          cell.style.border="1px solid "+colorValue;
-          cell.style.borderColor=colorValue;
-          cell.style.borderWidth="1px";
-          cell.style.borderStyle="solid";
+      const rows=table.rows;
+      for(let r=0;r<rows.length;r++){
+        const row=rows[r];
+        const cells=row.cells;
+        for(let c=0;c<cells.length;c++){
+          const cell=cells[c];
+          if(hidden){
+            cell.style.border="0";
+            cell.style.borderColor="transparent";
+            cell.style.borderWidth="0";
+            cell.style.borderStyle="solid";
+          } else {
+            cell.style.border="1px solid "+colorValue;
+            cell.style.borderColor=colorValue;
+            cell.style.borderWidth="1px";
+            cell.style.borderStyle="solid";
+          }
         }
       }
     }
