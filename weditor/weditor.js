@@ -3752,7 +3752,11 @@
             cursor:info.cursor || "ns-resize"
           };
           if(mode==="split" && info.nextRow){
+            const nextHeight=readRowHeight(info.nextRow);
+            if(!nextHeight) return null;
             state.nextRow=info.nextRow;
+            state.nextStartHeight=nextHeight;
+            state.total=startHeight+nextHeight;
           }
           applyBodyDragCursor(state.cursor);
           applyRootResizeCursor(state.cursor);
@@ -3845,9 +3849,23 @@
         if(active.axis==="row"){
           const delta=event.clientY - active.startY;
           const min=MIN_HEIGHT;
-          let newHeight=active.startHeight + delta;
-          if(newHeight<min) newHeight=min;
-          applyRowHeights(active, newHeight);
+          if(active.mode==="split" && active.nextRow){
+            let newHeight=active.startHeight + delta;
+            let newNext=active.nextStartHeight - delta;
+            if(newHeight<min){ newHeight=min; newNext=active.total-newHeight; }
+            if(newNext<min){ newNext=min; newHeight=active.total-newNext; }
+            newHeight=Math.max(min, newHeight);
+            newNext=Math.max(min, newNext);
+            if(newHeight+newNext!==active.total){
+              const diff=active.total - (newHeight+newNext);
+              newNext+=diff;
+            }
+            applyRowHeights(active, newHeight, newNext);
+          } else {
+            let newHeight=active.startHeight + delta;
+            if(newHeight<min) newHeight=min;
+            applyRowHeights(active, newHeight);
+          }
         } else {
           const delta=event.clientX - active.startX;
           const min=MIN_WIDTH;
