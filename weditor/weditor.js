@@ -26,8 +26,11 @@
       controlWrap:{ display:"inline-flex", alignItems:"center", gap:"6px", font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
       controlLabel:{ font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
-      toolbarGroup:{ display:"flex", flexDirection:"column", gap:"10px", padding:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#fafafa", flex:"1 1 240px", boxSizing:"border-box" },
+      toolbarGroup:{ display:"flex", flexDirection:"column", gap:"8px", padding:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#fafafa", flex:"1 1 240px", boxSizing:"border-box", transition:"background .2s ease, border-color .2s ease" },
       toolbarGroupTitle:{ font:"12px/1.4 Segoe UI,system-ui", textTransform:"uppercase", letterSpacing:".06em", color:UI.textDim },
+      toolbarGroupToggle:{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", padding:"0", border:"0", background:"transparent", cursor:"pointer", font:"12px/1.4 Segoe UI,system-ui", textTransform:"uppercase", letterSpacing:".06em", color:UI.textDim },
+      toolbarGroupToggleIcon:{ display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:"11px", color:UI.textDim, transition:"transform .2s ease" },
+      toolbarGroupPinnedRow:{ display:"flex", flexWrap:"wrap", gap:"6px", alignItems:"center" },
       toolbarGroupRow:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
@@ -1993,6 +1996,7 @@
     return { resolve, resolveAll, resolveFormat, sync, syncDebounced, consumeInitialState, consumeInitialHTML };
   })();
   const ToolbarFactory=(function(){
+    let groupSeq=0;
     function createCommandButton(id, inst, ctx){
       const meta=Commands[id]; if(!meta) return null;
       if(typeof meta.render==="function"){ return meta.render(inst, ctx); }
@@ -2129,11 +2133,51 @@
           if(entry && typeof entry==="object" && Array.isArray(entry.items) && entry.items.length){
             const group=document.createElement("div");
             applyStyles(group, WCfg.Style.toolbarGroup);
+            const isCollapsible = !!entry.collapsible;
+            const defaultCollapsed = !!entry.defaultCollapsed;
+            const pinnedItems = Array.isArray(entry.pinned) ? entry.pinned.filter(Boolean) : [];
+            const pinnedSet = pinnedItems.length ? new Set(pinnedItems) : null;
+            let pinnedRow=null;
+            let toggleButton=null;
+            let toggleIcon=null;
+            let collapsedState=defaultCollapsed;
             if(entry.label){
-              const title=document.createElement("div");
-              title.textContent=entry.label;
-              applyStyles(title, WCfg.Style.toolbarGroupTitle);
-              group.appendChild(title);
+              if(isCollapsible){
+                toggleButton=document.createElement("button");
+                toggleButton.type="button";
+                toggleButton.setAttribute("aria-expanded", collapsedState?"false":"true");
+                applyStyles(toggleButton, WCfg.Style.toolbarGroupToggle);
+                const labelSpan=document.createElement("span");
+                labelSpan.textContent=entry.label;
+                applyStyles(labelSpan, WCfg.Style.toolbarGroupTitle);
+                toggleButton.appendChild(labelSpan);
+                toggleIcon=document.createElement("span");
+                toggleIcon.textContent="▾";
+                applyStyles(toggleIcon, WCfg.Style.toolbarGroupToggleIcon);
+                toggleButton.appendChild(toggleIcon);
+                toggleButton.title = entry.toggleTitle || (entry.label+" options");
+                group.appendChild(toggleButton);
+              } else {
+                const title=document.createElement("div");
+                title.textContent=entry.label;
+                applyStyles(title, WCfg.Style.toolbarGroupTitle);
+                group.appendChild(title);
+              }
+            }
+            if(pinnedItems.length){
+              pinnedRow=document.createElement("div");
+              applyStyles(pinnedRow, WCfg.Style.toolbarGroupPinnedRow);
+              for(let p=0;p<pinnedItems.length;p++){
+                const pinnedId=pinnedItems[p];
+                const pinnedBtn=createCommandButton(pinnedId, inst, ctx);
+                if(pinnedBtn) pinnedRow.appendChild(pinnedBtn);
+              }
+              if(pinnedRow.childNodes.length){
+                pinnedRow.setAttribute("data-toolbar-pinned","1");
+                group.appendChild(pinnedRow);
+              } else {
+                pinnedRow=null;
+              }
             }
             const row=document.createElement("div");
             applyStyles(row, WCfg.Style.toolbarGroupRow);
@@ -2141,13 +2185,38 @@
               const child=entry.items[k];
               if(!child) continue;
               if(typeof child==="string"){
+                if(pinnedSet && pinnedSet.has(child)) continue;
                 const childBtn=createCommandButton(child, inst, ctx);
                 if(childBtn) row.appendChild(childBtn);
               } else {
                 appendItem(row, child);
               }
             }
-            if(row.childNodes.length){ group.appendChild(row); panel.appendChild(group); }
+            if(row.childNodes.length){
+              const rowId="weditor-group-panel-"+(++groupSeq);
+              row.id=rowId;
+              group.appendChild(row);
+              if(isCollapsible && toggleButton){
+                toggleButton.setAttribute("aria-controls", rowId);
+                function applyCollapsed(){
+                  row.style.display = collapsedState?"none":"flex";
+                  if(toggleIcon){ toggleIcon.style.transform = collapsedState?"rotate(-90deg)":"rotate(0deg)"; }
+                  toggleButton.setAttribute("aria-expanded", collapsedState?"false":"true");
+                  group.setAttribute("data-collapsible","1");
+                  group.setAttribute("data-collapsed", collapsedState?"1":"0");
+                  group.style.background = collapsedState?"#fefefe":(WCfg.Style.toolbarGroup.background || "#fafafa");
+                  group.style.borderColor = collapsedState?WCfg.UI.border:WCfg.UI.borderSubtle;
+                  group.style.padding = collapsedState?"10px 12px":"12px";
+                  if(pinnedRow){ pinnedRow.style.marginBottom = collapsedState?"0":"4px"; }
+                }
+                toggleButton.onclick=function(){
+                  collapsedState=!collapsedState;
+                  applyCollapsed();
+                };
+                applyCollapsed();
+              }
+              panel.appendChild(group);
+            }
             return;
           }
         }
@@ -4547,7 +4616,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", collapsible:true, defaultCollapsed:true, pinned:["format.bulletedList","format.numberedList","format.alignLeft","format.alignCenter","format.alignRight"], items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
@@ -4562,7 +4631,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", collapsible:true, defaultCollapsed:true, pinned:["format.bulletedList","format.numberedList","format.alignLeft","format.alignCenter","format.alignRight"], items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
