@@ -348,6 +348,152 @@
     }
     return { fixStructure };
   })();
+  const TableTools=(function(){
+    const AUTO_COL_ATTR="data-weditor-auto-col";
+    function firstDataRow(table){
+      if(!table || !table.querySelectorAll) return null;
+      const rows=table.querySelectorAll("tr");
+      for(let i=0;i<rows.length;i++){
+        const cells=rows[i].children;
+        for(let j=0;j<cells.length;j++){
+          const cell=cells[j];
+          if(!cell || cell.nodeType!==1) continue;
+          const tag=(cell.tagName||"").toUpperCase();
+          if(tag==="TD" || tag==="TH") return rows[i];
+        }
+      }
+      return rows.length?rows[0]:null;
+    }
+    function countColumns(row){
+      if(!row) return 0;
+      const cells=row.children; let count=0;
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(!cell || cell.nodeType!==1) continue;
+        const tag=(cell.tagName||"").toUpperCase();
+        if(tag!=="TD" && tag!=="TH") continue;
+        const span=parseInt(cell.getAttribute("colspan"), 10);
+        count+=span && span>0 ? span : 1;
+      }
+      return count;
+    }
+    function findOrCreateColgroup(table){
+      if(!table) return null;
+      const doc=table.ownerDocument || document;
+      let colgroup=null;
+      let node=table.firstElementChild;
+      while(node){
+        const tag=(node.tagName||"").toUpperCase();
+        if(tag==="COLGROUP"){ colgroup=node; break; }
+        if(tag!=="COLGROUP" && tag!=="CAPTION"){ break; }
+        node=node.nextElementSibling;
+      }
+      if(!colgroup){
+        colgroup=doc.createElement("colgroup");
+        if(table.firstChild){ table.insertBefore(colgroup, table.firstChild); }
+        else { table.appendChild(colgroup); }
+      }
+      return colgroup;
+    }
+    function ensureColumnCount(colgroup, count){
+      if(!colgroup) return;
+      const doc=colgroup.ownerDocument || document;
+      while(colgroup.children.length<count){ colgroup.appendChild(doc.createElement("col")); }
+      while(colgroup.children.length>count){ colgroup.removeChild(colgroup.lastChild); }
+    }
+    function computeAutoIndex(table, columnCount){
+      if(columnCount<=0) return 0;
+      const attr=table.getAttribute(AUTO_COL_ATTR);
+      if(attr!=null){
+        const parsed=parseInt(attr, 10);
+        if(!isNaN(parsed) && parsed>=0 && parsed<columnCount) return parsed;
+      }
+      const fallback=Math.max(0, columnCount-1);
+      table.setAttribute(AUTO_COL_ATTR, String(fallback));
+      return fallback;
+    }
+    function widthAllocation(columnCount, autoIndex){
+      if(columnCount<=1) return { auto:"inherit", fixed:"auto" };
+      const autoShare=Math.min(60, Math.max(20, Math.round(100/columnCount)));
+      const fixedShare=Math.max(0, 100-autoShare);
+      const perFixed=fixedShare/Math.max(1, columnCount-1);
+      return {
+        auto:"inherit",
+        fixed:perFixed.toFixed(2)+"%"
+      };
+    }
+    function applyCellWidths(table, columnCount, autoIndex, widths){
+      if(!table || columnCount<=0) return;
+      const rows=table.querySelectorAll("tr");
+      for(let r=0;r<rows.length;r++){
+        const row=rows[r];
+        const cells=row.children;
+        let logicalIndex=0;
+        for(let c=0;c<cells.length;c++){
+          const cell=cells[c];
+          if(!cell || cell.nodeType!==1) continue;
+          const tag=(cell.tagName||"").toUpperCase();
+          if(tag!=="TD" && tag!=="TH") continue;
+          const span=parseInt(cell.getAttribute("colspan"), 10);
+          if(span && span>1){
+            logicalIndex+=span;
+            continue;
+          }
+          if(columnCount===1 || logicalIndex===autoIndex){ cell.style.width="auto"; }
+          else { cell.style.width=widths.fixed; }
+          logicalIndex++;
+        }
+      }
+    }
+    function ensureStructure(table){
+      if(!table || table.nodeType!==1) return;
+      const row=firstDataRow(table);
+      const columnCount=countColumns(row);
+      if(columnCount<=0) return;
+      const colgroup=findOrCreateColgroup(table);
+      ensureColumnCount(colgroup, columnCount);
+      const autoIndex=computeAutoIndex(table, columnCount);
+      const widths=widthAllocation(columnCount, autoIndex);
+      for(let i=0;i<columnCount;i++){
+        const col=colgroup.children[i];
+        if(!col) continue;
+        if(columnCount===1 || i===autoIndex){ col.style.width=widths.auto; }
+        else { col.style.width=widths.fixed; }
+      }
+      applyCellWidths(table, columnCount, autoIndex, widths);
+      if(!table.style.tableLayout){ table.style.tableLayout="auto"; }
+      if(!table.style.width) table.style.width="100%";
+      table.style.maxWidth="100%";
+    }
+    function applyWidth(table, widthPx, containerWidth){
+      if(!table) return;
+      const host=Math.max(0, containerWidth||0);
+      if(host<=0){
+        table.style.width="100%";
+        table.setAttribute("data-weditor-table-width","full");
+        table.style.maxWidth="100%";
+        return;
+      }
+      const minLimit=Math.max(60, Math.min(120, host));
+      let rounded=Math.round(widthPx||0);
+      if(!rounded || rounded<minLimit) rounded=minLimit;
+      if(rounded>host) rounded=host;
+      if(Math.abs(rounded-host)<=2){
+        table.style.width="100%";
+        table.setAttribute("data-weditor-table-width","full");
+      } else {
+        table.style.width=rounded+"px";
+        table.setAttribute("data-weditor-table-width", String(rounded));
+      }
+      table.style.maxWidth="100%";
+    }
+    function currentWidth(table){
+      if(!table || !table.getBoundingClientRect) return 0;
+      const rect=table.getBoundingClientRect();
+      return Math.max(0, rect.width||0);
+    }
+    return { ensureStructure, applyWidth, currentWidth };
+  })();
   const HFAlign=(function(){
     const allowed={ left:"left", center:"center", right:"right" };
     function normalize(value){
@@ -1396,6 +1542,7 @@
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
       enableImageResizer(editor);
+      TableResizer.enable(editor);
       function reattachImageOverlay(){
         const overlay=editor.__weditorImageOverlay;
         if(overlay && !editor.contains(overlay)) editor.appendChild(overlay);
@@ -4574,6 +4721,82 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      run:function(inst, arg){
+        const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
+        if(!target) return;
+        try{ target.focus({ preventScroll:true }); }
+        catch(err){ if(typeof target.focus==="function") target.focus(); }
+        const colInput=window.prompt("Enter number of columns", "3");
+        if(colInput===null) return;
+        const cols=parseInt(colInput, 10);
+        if(!cols || cols<1 || cols>12){ window.alert("Please enter a whole number of columns between 1 and 12."); return; }
+        const rowInput=window.prompt("Enter number of rows", "3");
+        if(rowInput===null) return;
+        const rows=parseInt(rowInput, 10);
+        if(!rows || rows<1 || rows>20){ window.alert("Please enter a whole number of rows between 1 and 20."); return; }
+        const doc=target.ownerDocument || document;
+        const win=doc.defaultView || window;
+        let sel=win.getSelection ? win.getSelection() : window.getSelection();
+        if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+          WDom.placeCaretAtEnd(target);
+          sel=win.getSelection ? win.getSelection() : window.getSelection();
+        }
+        const baseRange=(sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+        const table=doc.createElement("table");
+        table.style.width="100%";
+        table.style.borderCollapse="collapse";
+        table.style.tableLayout="auto";
+        table.style.margin="12px 0";
+        table.style.border="1px solid "+WCfg.UI.borderSubtle;
+        for(let r=0;r<rows;r++){
+          const tr=doc.createElement("tr");
+          for(let c=0;c<cols;c++){
+            const td=doc.createElement("td");
+            td.style.border="1px solid "+WCfg.UI.borderSubtle;
+            td.style.padding="8px";
+            td.style.verticalAlign="top";
+            td.style.wordBreak="break-word";
+            const block=doc.createElement("p");
+            block.appendChild(doc.createElement("br"));
+            td.appendChild(block);
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+        TableTools.ensureStructure(table);
+        const fragment=doc.createDocumentFragment();
+        fragment.appendChild(table);
+        const spacer=doc.createElement("p");
+        spacer.appendChild(doc.createElement("br"));
+        fragment.appendChild(spacer);
+        if(baseRange){
+          const range=baseRange.cloneRange();
+          range.deleteContents();
+          range.insertNode(fragment);
+        } else {
+          target.appendChild(fragment);
+        }
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        TableTools.ensureStructure(table);
+        const parentBox=(table.parentElement && table.parentElement.getBoundingClientRect) ? table.parentElement.getBoundingClientRect() : null;
+        const contextWidth=parentBox && parentBox.width ? parentBox.width : (target.getBoundingClientRect ? target.getBoundingClientRect().width : 0);
+        const initialWidth=TableTools.currentWidth(table) || contextWidth;
+        TableTools.applyWidth(table, initialWidth || contextWidth || 0, contextWidth || 0);
+        const selection=win.getSelection ? win.getSelection() : window.getSelection();
+        const firstCell=table.querySelector("td");
+        if(firstCell && selection && doc.createRange){
+          const focusTarget=firstCell.querySelector("p") || firstCell;
+          const cellRange=doc.createRange();
+          cellRange.selectNodeContents(focusTarget);
+          cellRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(cellRange);
+        }
+        HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      } },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -4622,6 +4845,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4637,6 +4861,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4652,6 +4877,271 @@
     return true;
   }
   let INSTANCE_SEQ=0;
+  const TableResizer=(function(){
+    function closestTable(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toUpperCase();
+          if(tag==="TABLE") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current===root && current && current.nodeType===1){
+        const tag=(current.tagName||"").toUpperCase();
+        if(tag==="TABLE") return current;
+      }
+      return null;
+    }
+    function parentWidth(table, editor){
+      if(!table) return 0;
+      let parent=table.parentElement;
+      while(parent && parent!==editor){
+        if(parent.getBoundingClientRect){
+          const rect=parent.getBoundingClientRect();
+          if(rect && rect.width){ return rect.width; }
+        }
+        parent=parent.parentElement;
+      }
+      const base=editor && editor.getBoundingClientRect ? editor.getBoundingClientRect() : null;
+      return base && base.width ? base.width : 0;
+    }
+    function enable(editor){
+      if(!editor || editor.__weditorTableResizer) return;
+      editor.__weditorTableResizer=true;
+      const doc=editor.ownerDocument || document;
+      const computed=(window && window.getComputedStyle) ? window.getComputedStyle(editor) : null;
+      if(computed && computed.position==="static"){ editor.style.position="relative"; }
+      const overlay=doc.createElement("div");
+      overlay.setAttribute("data-weditor-table-overlay","1");
+      overlay.style.position="absolute";
+      overlay.style.border="1px dashed "+WCfg.UI.brand;
+      overlay.style.borderRadius="6px";
+      overlay.style.pointerEvents="none";
+      overlay.style.display="none";
+      overlay.style.boxSizing="border-box";
+      overlay.style.zIndex="8";
+      overlay.style.left="0";
+      overlay.style.top="0";
+      const handle=doc.createElement("div");
+      handle.setAttribute("data-weditor-table-overlay","1");
+      handle.style.position="absolute";
+      handle.style.width="14px";
+      handle.style.height="24px";
+      handle.style.top="50%";
+      handle.style.right="-9px";
+      handle.style.transform="translateY(-50%)";
+      handle.style.borderRadius="12px";
+      handle.style.background=WCfg.UI.brand;
+      handle.style.border="2px solid #fff";
+      handle.style.boxShadow="0 2px 6px rgba(0,0,0,.25)";
+      handle.style.cursor="ew-resize";
+      handle.style.pointerEvents="auto";
+      handle.title="Drag to resize table width";
+      overlay.appendChild(handle);
+      const readout=doc.createElement("div");
+      readout.setAttribute("data-weditor-table-overlay","1");
+      readout.style.position="absolute";
+      readout.style.top="-28px";
+      readout.style.right="0";
+      readout.style.padding="2px 6px";
+      readout.style.font="11px/1.4 Segoe UI,system-ui";
+      readout.style.color="#fff";
+      readout.style.background=WCfg.UI.brand;
+      readout.style.borderRadius="6px";
+      readout.style.boxShadow="0 2px 6px rgba(0,0,0,.25)";
+      readout.style.pointerEvents="none";
+      readout.style.whiteSpace="nowrap";
+      overlay.appendChild(readout);
+      editor.appendChild(overlay);
+      editor.__weditorTableOverlay=overlay;
+      let activeTable=null;
+      let raf=null;
+      function hideOverlay(){
+        if(activeTable && activeTable.__weditorTableActive){ delete activeTable.__weditorTableActive; }
+        overlay.style.display="none";
+        readout.textContent="";
+        activeTable=null;
+      }
+      function updateOverlay(){
+        if(!activeTable || !editor.contains(activeTable)){
+          hideOverlay();
+          return;
+        }
+        const tableRect=activeTable.getBoundingClientRect();
+        const hostRect=editor.getBoundingClientRect();
+        const left=tableRect.left-hostRect.left+editor.scrollLeft-(editor.clientLeft||0);
+        const top=tableRect.top-hostRect.top+editor.scrollTop-(editor.clientTop||0);
+        overlay.style.transform="translate("+left+"px,"+top+"px)";
+        overlay.style.width=tableRect.width+"px";
+        overlay.style.height=tableRect.height+"px";
+        overlay.style.display="block";
+        const widthPx=Math.round(tableRect.width);
+        const hostWidth=Math.max(1, parentWidth(activeTable, editor) || hostRect.width || 1);
+        const percent=Math.min(999, Math.round((widthPx/hostWidth)*100));
+        const label=widthPx+"px · "+percent+"%";
+        readout.textContent=label;
+      }
+      function scheduleOverlay(){
+        if(raf) cancelAnimationFrame(raf);
+        raf=requestAnimationFrame(updateOverlay);
+      }
+      function selectTable(table){
+        if(!table || !editor.contains(table)) return;
+        TableTools.ensureStructure(table);
+        if(activeTable===table){ scheduleOverlay(); return; }
+        if(activeTable && activeTable.__weditorTableActive){ delete activeTable.__weditorTableActive; }
+        activeTable=table;
+        if(activeTable) activeTable.__weditorTableActive=true;
+        scheduleOverlay();
+      }
+      function onClick(ev){
+        const table=closestTable(ev.target, editor);
+        if(table){
+          selectTable(table);
+        } else if(!overlay.contains(ev.target)){
+          hideOverlay();
+        }
+      }
+      function onFocusIn(ev){
+        const table=closestTable(ev.target, editor);
+        if(table){ selectTable(table); }
+      }
+      function onInput(){
+        if(activeTable && !editor.contains(activeTable)) hideOverlay();
+        scheduleOverlay();
+      }
+      function onScroll(){ scheduleOverlay(); }
+      function onKey(ev){ if(ev.key==="Escape") hideOverlay(); }
+      function onMove(ev){ if(resizing) return; const table=closestTable(ev.target, editor); if(table){ selectTable(table); } }
+      editor.addEventListener("click", onClick);
+      editor.addEventListener("focusin", onFocusIn);
+      editor.addEventListener("input", onInput);
+      editor.addEventListener("scroll", onScroll, { passive:true });
+      editor.addEventListener("keydown", onKey);
+      editor.addEventListener("mousemove", onMove);
+      const observer=new MutationObserver(function(records){
+        let relevant=false;
+        for(let i=0;i<records.length;i++){
+          const target=records[i].target;
+          if(target && target.getAttribute && target.getAttribute("data-weditor-table-overlay")) continue;
+          if(overlay.contains(target)) continue;
+          relevant=true;
+          break;
+        }
+        if(!relevant) return;
+        if(activeTable && !editor.contains(activeTable)) hideOverlay();
+        scheduleOverlay();
+      });
+      observer.observe(editor, { childList:true, subtree:true, attributes:true });
+      const onResize=function(){ scheduleOverlay(); };
+      window.addEventListener("resize", onResize);
+      let resizing=false;
+      let pointerId=null;
+      let startX=0;
+      let startWidth=0;
+      let containerWidth=0;
+      let changed=false;
+      let prevUserSelect="";
+      let prevCursor="";
+      function finishResize(){
+        if(!resizing) return;
+        resizing=false;
+        if(pointerId!=null){ try{ handle.releasePointerCapture(pointerId); } catch(err){} }
+        pointerId=null;
+        document.body.style.userSelect=prevUserSelect;
+        document.body.style.cursor=prevCursor;
+        scheduleOverlay();
+        if(changed && editor.__winst){
+          const inst=editor.__winst;
+          HistoryManager.record(inst, editor, { label:"Resize Table", repeatable:false });
+          OutputBinding.syncDebounced(inst);
+        }
+      }
+      function applyResize(ev){
+        if(!resizing || !activeTable) return;
+        const delta=ev.clientX-startX;
+        let nextWidth=startWidth+delta;
+        if(containerWidth>0){ nextWidth=Math.min(nextWidth, containerWidth); }
+        const minLimit=Math.min(120, containerWidth>0 ? containerWidth : 120);
+        nextWidth=Math.max(minLimit, nextWidth);
+        TableTools.applyWidth(activeTable, nextWidth, containerWidth);
+        TableTools.ensureStructure(activeTable);
+        const currentWidth=TableTools.currentWidth(activeTable);
+        changed=Math.abs(currentWidth-startWidth)>=1;
+        scheduleOverlay();
+      }
+      handle.addEventListener("pointerdown", function(ev){
+        if(!activeTable) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        resizing=true;
+        pointerId=ev.pointerId;
+        startX=ev.clientX;
+        startWidth=TableTools.currentWidth(activeTable);
+        containerWidth=parentWidth(activeTable, editor);
+        changed=false;
+        prevUserSelect=document.body.style.userSelect||"";
+        prevCursor=document.body.style.cursor||"";
+        document.body.style.userSelect="none";
+        document.body.style.cursor="ew-resize";
+        TableTools.ensureStructure(activeTable);
+        try{ handle.setPointerCapture(pointerId); }
+        catch(err){}
+      });
+      handle.addEventListener("pointermove", function(ev){
+        if(!resizing) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        applyResize(ev);
+      });
+      handle.addEventListener("pointerup", function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        finishResize();
+      });
+      handle.addEventListener("pointercancel", function(ev){ if(ev) ev.stopPropagation(); finishResize(); });
+      handle.addEventListener("dblclick", function(ev){
+        if(!activeTable) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        const width=parentWidth(activeTable, editor);
+        TableTools.applyWidth(activeTable, width, width);
+        TableTools.ensureStructure(activeTable);
+        scheduleOverlay();
+        if(editor.__winst){
+          HistoryManager.record(editor.__winst, editor, { label:"Reset Table Width", repeatable:false });
+          OutputBinding.syncDebounced(editor.__winst);
+        }
+      });
+      const prevCleanup=editor.__weditorCleanup;
+      function cleanup(){
+        finishResize();
+        hideOverlay();
+        if(raf) cancelAnimationFrame(raf);
+        window.removeEventListener("resize", onResize);
+        editor.removeEventListener("click", onClick);
+        editor.removeEventListener("focusin", onFocusIn);
+        editor.removeEventListener("input", onInput);
+        editor.removeEventListener("scroll", onScroll);
+        editor.removeEventListener("keydown", onKey);
+        editor.removeEventListener("mousemove", onMove);
+        observer.disconnect();
+        if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        editor.__weditorTableOverlay=null;
+        editor.__weditorTableResizer=false;
+        editor.__weditorHideTableOverlay=null;
+      }
+      editor.__weditorCleanup=function(){
+        cleanup();
+        if(prevCleanup) prevCleanup();
+      };
+      editor.__weditorHideTableOverlay=hideOverlay;
+      const existing=editor.querySelectorAll ? editor.querySelectorAll("table") : [];
+      for(let i=0;i<existing.length;i++){ TableTools.ensureStructure(existing[i]); }
+    }
+    return { enable };
+  })();
   function WEditorInstance(editorEl){
     this.uid = ++INSTANCE_SEQ;
     this.el = editorEl;
@@ -4706,6 +5196,7 @@
     this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
     HistoryManager.init(this, this.el);
     this.el.__winst = this;
+    TableResizer.enable(this.el);
   };
   WEditorInstance.prototype.loadState=function(state){
     const applied=StateBinding.apply(this, state);
