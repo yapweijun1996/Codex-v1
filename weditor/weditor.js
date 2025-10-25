@@ -4352,6 +4352,88 @@
     }
     btn.appendChild(icon);
   }
+  function clampTableDimension(value){
+    const num=parseInt(value, 10);
+    if(!isFinite(num) || num<=0) return null;
+    return Math.max(1, Math.min(num, 12));
+  }
+  function buildTableElement(doc, rows, cols){
+    const table=doc.createElement("table");
+    table.style.width="100%";
+    table.style.borderCollapse="collapse";
+    table.style.tableLayout="fixed";
+    table.style.margin="12px 0";
+    table.style.border="1px solid "+WCfg.UI.borderSubtle;
+    const tbody=doc.createElement("tbody");
+    const colWidth=(100/cols);
+    for(let r=0;r<rows;r++){
+      const tr=doc.createElement("tr");
+      for(let c=0;c<cols;c++){
+        const td=doc.createElement("td");
+        td.style.border="1px solid "+WCfg.UI.borderSubtle;
+        td.style.padding="8px";
+        td.style.verticalAlign="top";
+        td.style.width=colWidth+"%";
+        const p=doc.createElement("p");
+        const br=doc.createElement("br");
+        p.appendChild(br);
+        td.appendChild(p);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    return table;
+  }
+  function insertTable(target, rows, cols){
+    if(!target) return false;
+    const doc=target.ownerDocument || document;
+    if(!doc) return false;
+    if(typeof target.focus==="function"){
+      try{ target.focus({ preventScroll:true }); }
+      catch(e){ try{ target.focus(); } catch(err){} }
+    }
+    const win=doc.defaultView || window;
+    const sel=win.getSelection ? win.getSelection() : window.getSelection();
+    let range=null;
+    if(sel && sel.rangeCount>0){
+      const candidate=sel.getRangeAt(0);
+      if(target.contains(candidate.commonAncestorContainer)){
+        range=candidate.cloneRange();
+      }
+    }
+    if(!range){
+      range=doc.createRange();
+      range.selectNodeContents(target);
+      range.collapse(false);
+    }
+    if(!range) return false;
+    range.deleteContents();
+    const table=buildTableElement(doc, rows, cols);
+    const fragment=doc.createDocumentFragment();
+    fragment.appendChild(table);
+    const trailing=doc.createElement("p");
+    trailing.appendChild(doc.createElement("br"));
+    fragment.appendChild(trailing);
+    range.insertNode(fragment);
+    if(sel){
+      sel.removeAllRanges();
+      const firstCell=table.querySelector("td");
+      const caretRange=doc.createRange();
+      if(firstCell){
+        const paragraph=firstCell.querySelector("p") || firstCell;
+        caretRange.selectNodeContents(paragraph);
+        caretRange.collapse(true);
+      } else {
+        caretRange.setStartAfter(table);
+        caretRange.collapse(true);
+      }
+      sel.addRange(caretRange);
+    }
+    Normalizer.fixStructure(target);
+    Breaks.ensurePlaceholders(target);
+    return true;
+  }
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -4583,6 +4665,30 @@
         if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview();
         OutputBinding.syncDebounced(inst);
       } },
+    "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      run:function(inst, arg){
+        const colsInput=window.prompt("Number of columns (1-12)", "3");
+        if(colsInput===null) return;
+        const cols=clampTableDimension(colsInput);
+        if(!cols){
+          window.alert("Please enter a valid number of columns between 1 and 12.");
+          return;
+        }
+        const rowsInput=window.prompt("Number of rows (1-12)", "2");
+        if(rowsInput===null) return;
+        const rows=clampTableDimension(rowsInput);
+        if(!rows){
+          window.alert("Please enter a valid number of rows between 1 and 12.");
+          return;
+        }
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        if(!target) return;
+        const inserted=insertTable(target, rows, cols);
+        if(!inserted) return;
+        HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+        if(arg && arg.ctx && arg.ctx.refreshPreview) arg.ctx.refreshPreview();
+        OutputBinding.syncDebounced(inst);
+      } },
     "break.remove":{ label:"Remove Break", kind:"button", ariaLabel:"Remove page break",
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
@@ -4622,6 +4728,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4637,6 +4744,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
