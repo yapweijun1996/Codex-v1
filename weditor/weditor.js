@@ -2428,6 +2428,16 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const BLOCK_FORMATS=[
+      { label:"Normal (Paragraph)", value:"p" },
+      { label:"Heading 1", value:"h1" },
+      { label:"Heading 2", value:"h2" },
+      { label:"Heading 3", value:"h3" },
+      { label:"Heading 4", value:"h4" },
+      { label:"Heading 5", value:"h5" },
+      { label:"Block Quote", value:"blockquote" },
+      { label:"Code Block", value:"pre" }
+    ];
     const LINE_SPACING_OPTIONS=[
       { label:"Single", value:"1" },
       { label:"1.15", value:"1.15" },
@@ -2802,6 +2812,157 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
+    const BLOCK_TAGS={ P:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1, PRE:1 };
+    function findBlockElement(node, root){
+      while(node && node!==root){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toUpperCase();
+          if(BLOCK_TAGS[tag]) return node;
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function fragmentHasContent(fragment){
+      if(!fragment) return false;
+      for(let node=fragment.firstChild; node; node=node.nextSibling){
+        if(node.nodeType===1) return true;
+        if(node.nodeType===3 && node.nodeValue && node.nodeValue.trim()!=="") return true;
+      }
+      return false;
+    }
+    function ensureCodeBlockStructure(node, doc){
+      if(!node || !doc) return;
+      if((node.tagName||"").toLowerCase()!=="pre") return;
+      if(node.firstElementChild && (node.firstElementChild.tagName||"").toLowerCase()==="code") return;
+      const code=doc.createElement("code");
+      while(node.firstChild){ code.appendChild(node.firstChild); }
+      node.appendChild(code);
+    }
+    function convertPartialBlock(range, blockEl, desired, doc){
+      if(!range || !blockEl || !blockEl.parentNode || !doc) return null;
+      const beforeRange=doc.createRange();
+      beforeRange.setStart(blockEl, 0);
+      try{ beforeRange.setEnd(range.startContainer, range.startOffset); }
+      catch(err){ beforeRange.detach && beforeRange.detach(); return null; }
+      const beforeFragment=beforeRange.extractContents();
+      const afterRange=doc.createRange();
+      try{
+        afterRange.setStart(range.endContainer, range.endOffset);
+      }catch(err){ afterRange.detach && afterRange.detach(); return null; }
+      afterRange.setEnd(blockEl, blockEl.childNodes?blockEl.childNodes.length:0);
+      const afterFragment=afterRange.extractContents();
+      const selectionFragment=doc.createDocumentFragment();
+      while(blockEl.firstChild){ selectionFragment.appendChild(blockEl.firstChild); }
+      const newBlock=doc.createElement(desired);
+      if(selectionFragment.childNodes.length){
+        newBlock.appendChild(selectionFragment);
+      } else {
+        newBlock.appendChild(doc.createElement("br"));
+      }
+      const parent=blockEl.parentNode;
+      const beforeBlock=fragmentHasContent(beforeFragment)?blockEl.cloneNode(false):null;
+      if(beforeBlock){ beforeBlock.appendChild(beforeFragment); }
+      const afterBlock=fragmentHasContent(afterFragment)?blockEl.cloneNode(false):null;
+      if(afterBlock){ afterBlock.appendChild(afterFragment); }
+      parent.replaceChild(newBlock, blockEl);
+      if(beforeBlock){ parent.insertBefore(beforeBlock, newBlock); }
+      if(afterBlock){ parent.insertBefore(afterBlock, newBlock.nextSibling); }
+      return newBlock;
+    }
+    function resolveBlockTag(node, root){
+      while(node && node!==root){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toUpperCase();
+          if(BLOCK_TAGS[tag]){ return tag.toLowerCase(); }
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function getSelectionWithin(target){
+      if(!target || !target.ownerDocument) return null;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && container!==target && !target.contains(container)){ return null; }
+      return { sel, range };
+    }
+    function applyBlockFormat(inst, ctx, tag){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const selection=getSelectionWithin(target); if(!selection) return false;
+      const normalized=(tag||"p").toString().trim().toLowerCase();
+      const desired=normalized ? normalized : "p";
+      const upper=desired.toUpperCase();
+      const attempts=[];
+      if(desired==="p"){ attempts.push("p"); }
+      attempts.push(upper, "<"+upper+">");
+      let success=false;
+      const { sel, range }=selection;
+      const doc=target.ownerDocument || document;
+      let newBlock=null;
+      const startBlock=findBlockElement(range.startContainer, target);
+      const endBlock=findBlockElement(range.endContainer, target);
+      if(startBlock && startBlock===endBlock){
+        try{
+          const blockRange=doc.createRange();
+          blockRange.selectNodeContents(startBlock);
+          const START_TO_START=getRangeConstant(range, "START_TO_START", 0);
+          const END_TO_END=getRangeConstant(range, "END_TO_END", 2);
+          const coversStart=range.compareBoundaryPoints(START_TO_START, blockRange)<=0;
+          const coversEnd=range.compareBoundaryPoints(END_TO_END, blockRange)>=0;
+          if(!(coversStart && coversEnd)){
+            newBlock=convertPartialBlock(range, startBlock, desired, doc);
+            if(newBlock){ success=true; }
+          }
+        }catch(err){ newBlock=null; }
+      }
+      if(!success){
+        for(let i=0;i<attempts.length && !success;i++){
+          success=execCommand(target, "formatBlock", attempts[i], false);
+        }
+      }
+      if(success){
+        Normalizer.fixStructure(target);
+        if(newBlock){
+          if(sel && doc.createRange){
+            const newRange=doc.createRange();
+            newRange.selectNodeContents(newBlock);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
+          ensureCodeBlockStructure(newBlock, doc);
+        } else {
+          const refreshed=getSelectionWithin(target);
+          if(refreshed && refreshed.range){
+            const blockEl=findBlockElement(refreshed.range.startContainer, target);
+            if(blockEl) ensureCodeBlockStructure(blockEl, doc);
+          }
+        }
+        if(desired==="pre" && doc && typeof target.querySelectorAll==="function"){
+          const codeBlocks=target.querySelectorAll("pre");
+          for(let i=0;i<codeBlocks.length;i++) ensureCodeBlockStructure(codeBlocks[i], doc);
+        }
+        Breaks.ensurePlaceholders(target);
+      }
+      return success;
+    }
+    function getBlockFormat(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return "p";
+      const selection=getSelectionWithin(target);
+      if(!selection){ return "p"; }
+      const { range }=selection;
+      const start=resolveBlockTag(range.startContainer, target);
+      if(start){ return start; }
+      const end=resolveBlockTag(range.endContainer, target);
+      if(end){ return end; }
+      const common=resolveBlockTag(range.commonAncestorContainer, target);
+      return common || "p";
+    }
     function normalizeLineSpacingValue(value){
       if(value===null || typeof value==="undefined") return null;
       const str=String(value).trim();
@@ -2997,7 +3158,10 @@
       applyListStyle,
       applyCustomBullet,
       indentList,
-      outdentList
+      outdentList,
+      applyBlockFormat,
+      getBlockFormat,
+      BLOCK_FORMATS
     };
   })();
   const HistoryManager=(function(){
@@ -3032,6 +3196,16 @@
           return Formatting.clearHighlight(inst, makeCtx(inst, target));
         }
         return Formatting.clearHighlight(inst, makeCtx(inst, target));
+      },
+      blockStyle:function(inst, target, args){
+        const value=args && args.value ? args.value : "p";
+        return Formatting.applyBlockFormat(inst, makeCtx(inst, target), value);
+      },
+      blockQuote:function(inst, target){
+        return Formatting.applyBlockFormat(inst, makeCtx(inst, target), "blockquote");
+      },
+      codeBlock:function(inst, target){
+        return Formatting.applyBlockFormat(inst, makeCtx(inst, target), "pre");
       },
       lineSpacing:function(inst, target, args){
         const ctx=makeCtx(inst, target);
@@ -6284,6 +6458,65 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.blockStyle":{
+      label:"Heading",
+      kind:"select",
+      ariaLabel:"Select paragraph style",
+      placeholder:"Heading",
+      options:Formatting.BLOCK_FORMATS.map(function(item){ return { label:item.label, value:item.value }; }),
+      getValue:function(inst, ctx){ return Formatting.getBlockFormat(inst, ctx); },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        const applied=Formatting.applyBlockFormat(inst, arg && arg.ctx, value);
+        if(!applied) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Paragraph Style",
+          repeatable:true,
+          repeatId:"blockStyle",
+          repeatArgs:{ value:value },
+          repeatLabel:"Paragraph Style"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.blockQuote":{
+      label:"❝",
+      kind:"button",
+      ariaLabel:"Block quote (段落引用)",
+      title:"Block Quote (引用段落)",
+      run:function(inst, arg){
+        const applied=Formatting.applyBlockFormat(inst, arg && arg.ctx, "blockquote");
+        if(!applied) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Block Quote",
+          repeatable:true,
+          repeatId:"blockQuote",
+          repeatLabel:"Block Quote"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.codeBlock":{
+      label:"</>",
+      kind:"button",
+      ariaLabel:"Code block (程式區塊)",
+      title:"Code Block (程式碼區塊)",
+      run:function(inst, arg){
+        const applied=Formatting.applyBlockFormat(inst, arg && arg.ctx, "pre");
+        if(!applied) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Code Block",
+          repeatable:true,
+          repeatId:"codeBlock",
+          repeatLabel:"Code Block"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.bold":{
       label:"B",
       kind:"button",
@@ -6583,9 +6816,9 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing","format.blockQuote","format.codeBlock"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -6600,9 +6833,9 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing","format.blockQuote","format.codeBlock"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
