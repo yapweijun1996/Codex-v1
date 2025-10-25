@@ -4204,6 +4204,55 @@
     }
     return { create };
   })();
+  function decorateIndentButton(btn, direction){
+    if(!btn) return;
+    const dir=direction==="increase"?"increase":"decrease";
+    btn.textContent="";
+    btn.style.display="inline-flex";
+    btn.style.alignItems="center";
+    btn.style.justifyContent="center";
+    btn.style.gap="8px";
+    btn.style.minWidth="40px";
+    btn.style.padding="8px 10px";
+    const iconWrap=document.createElement("span");
+    iconWrap.setAttribute("aria-hidden","true");
+    iconWrap.style.display="inline-flex";
+    iconWrap.style.alignItems="center";
+    iconWrap.style.gap="6px";
+    const arrow=document.createElement("span");
+    arrow.textContent = dir==="increase" ? "\u2192" : "\u2190";
+    arrow.style.color=WCfg.UI.brand;
+    arrow.style.fontSize="16px";
+    arrow.style.fontWeight="600";
+    arrow.style.lineHeight="1";
+    arrow.style.display="flex";
+    arrow.style.alignItems="center";
+    const lines=document.createElement("span");
+    lines.style.display="grid";
+    lines.style.gap="3px";
+    lines.style.justifyItems="stretch";
+    lines.style.width="22px";
+    const offsets=dir==="increase"?[4,10,4]:[0,6,0];
+    const widths=dir==="increase"?[14,12,14]:[16,16,16];
+    for(let i=0;i<offsets.length;i++){
+      const bar=document.createElement("span");
+      bar.style.display="block";
+      bar.style.height="3px";
+      bar.style.borderRadius="999px";
+      bar.style.background=WCfg.UI.text;
+      bar.style.marginLeft=offsets[i]+"px";
+      bar.style.width=widths[i]+"px";
+      lines.appendChild(bar);
+    }
+    if(dir==="increase"){
+      iconWrap.appendChild(lines);
+      iconWrap.appendChild(arrow);
+    } else {
+      iconWrap.appendChild(arrow);
+      iconWrap.appendChild(lines);
+    }
+    btn.appendChild(iconWrap);
+  }
   function decorateAlignButton(btn, align){
     if(!btn) return;
     const mode=(align||"").toLowerCase();
@@ -4408,6 +4457,28 @@
       kind:"custom",
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
+    },
+    "format.decreaseIndent":{
+      label:"Outdent",
+      kind:"button",
+      ariaLabel:"Decrease Indent (减少缩进)",
+      title:"Decrease Indent ← (用来减少缩进，让段落更靠左)",
+      decorate:function(btn){ decorateIndentButton(btn, "decrease"); },
+      run:function(inst, arg){
+        const changed=Formatting.outdentList(inst, arg && arg.ctx);
+        if(changed){ OutputBinding.syncDebounced(inst); }
+      }
+    },
+    "format.increaseIndent":{
+      label:"Indent",
+      kind:"button",
+      ariaLabel:"Increase Indent (增加缩进)",
+      title:"Increase Indent → (增加缩进，让段落往右移动)",
+      decorate:function(btn){ decorateIndentButton(btn, "increase"); },
+      run:function(inst, arg){
+        const changed=Formatting.indentList(inst, arg && arg.ctx);
+        if(changed){ OutputBinding.syncDebounced(inst); }
+      }
     },
     "format.alignLeft":{
       label:"Left",
