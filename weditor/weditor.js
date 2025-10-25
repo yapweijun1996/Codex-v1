@@ -3500,6 +3500,7 @@
   const TableResizer=(function(){
     const HANDLE_BUFFER=6;
     const MIN_WIDTH=10;
+    const MIN_HEIGHT=10;
     function firstBodyRow(table){
       if(!table) return null;
       const sections=[table.tHead, table.tBodies && table.tBodies[0], table.tFoot];
@@ -3606,9 +3607,10 @@
       const ctx={};
       ctx.inst=inst || null;
       ctx.root=root;
-      ctx.record = (options && typeof options.record==="function") ? options.record : function(instance, target){
+      ctx.record = (options && typeof options.record==="function") ? options.record : function(instance, target, label){
         if(!instance) return;
-        HistoryManager.record(instance, target || (instance.el || null), { label:"Resize Table Column", repeatable:false });
+        const actionLabel=label || "Resize Table";
+        HistoryManager.record(instance, target || (instance.el || null), { label:actionLabel, repeatable:false });
       };
       ctx.onChange = (options && typeof options.onChange==="function") ? options.onChange : function(instance){
         if(instance) OutputBinding.syncDebounced(instance);
@@ -3619,9 +3621,15 @@
       let storedRootCursor=null;
       let storedBodyCursor=null;
       let storedBodySelect=null;
-      function applyRootResizeCursor(){
+      function cursorForHandle(info){
+        if(!info) return "col-resize";
+        if(info.cursor) return info.cursor;
+        if(info.handleType==="row") return "row-resize";
+        return "col-resize";
+      }
+      function applyRootResizeCursor(cursor){
         if(storedRootCursor===null){ storedRootCursor=root.style.cursor || ""; }
-        root.style.cursor="col-resize";
+        root.style.cursor=cursor || "col-resize";
       }
       function restoreRootCursor(){
         if(storedRootCursor!==null){
@@ -3629,11 +3637,11 @@
           storedRootCursor=null;
         }
       }
-      function applyBodyDragCursor(){
+      function applyBodyDragCursor(cursor){
         if(!doc || !doc.body) return;
         if(storedBodyCursor===null){ storedBodyCursor=doc.body.style.cursor || ""; }
         if(storedBodySelect===null){ storedBodySelect=doc.body.style.userSelect || ""; }
-        doc.body.style.cursor="col-resize";
+        doc.body.style.cursor=cursor || "col-resize";
         doc.body.style.userSelect="none";
       }
       function restoreBodyCursor(){
@@ -3649,30 +3657,54 @@
       function handleHover(info){
         if(!info || active) return;
         hover=info;
-        applyRootResizeCursor();
+        applyRootResizeCursor(cursorForHandle(info));
       }
       function locateHandle(event){
         const cell=locateCell(root, event.target);
         if(!cell) return null;
         const table=cell.closest ? cell.closest("table") : null;
         if(!table || !root.contains(table)) return null;
-        const colgroup=ensureTable(table);
-        if(!colgroup) return null;
-        const colCount=colgroup.children.length;
-        if(colCount<1) return null;
-        const cellIndex=cell.cellIndex;
-        if(cellIndex<0 || cellIndex>=colCount) return null;
         const rect=cell.getBoundingClientRect();
         if(!rect) return null;
-        const edgeDistance=Math.abs(rect.right - event.clientX);
-        if(edgeDistance>HANDLE_BUFFER) return null;
-        const isLast=cellIndex===colCount-1;
-        if(isLast){
-          return { table, colgroup, colIndex:cellIndex, handleType:"edge" };
+        let rowInfo=null;
+        const row=cell.closest ? cell.closest("tr") : (cell.parentNode && cell.parentNode.tagName && cell.parentNode.tagName.toLowerCase()==="tr" ? cell.parentNode : null);
+        if(row){
+          const rowRect=row.getBoundingClientRect();
+          const bottom=(rowRect && rowRect.bottom!==undefined) ? rowRect.bottom : rect.bottom;
+          const verticalDistance=Math.abs(bottom - event.clientY);
+          if(verticalDistance<=HANDLE_BUFFER){
+            rowInfo={ table, row, handleType:"row", cursor:"row-resize", rowRect:rowRect };
+          }
         }
-        const nextCol=colgroup.children[cellIndex+1];
-        if(!nextCol) return null;
-        return { table, colgroup, colIndex:cellIndex, handleType:"split" };
+        let colInfo=null;
+        const colgroup=ensureTable(table);
+        if(colgroup){
+          const colCount=colgroup.children.length;
+          if(colCount>0){
+            const cellIndex=cell.cellIndex;
+            if(cellIndex>=0 && cellIndex<colCount){
+              const edgeDistance=Math.abs(rect.right - event.clientX);
+              if(edgeDistance<=HANDLE_BUFFER){
+                const isLast=cellIndex===colCount-1;
+                if(isLast){
+                  colInfo={ table, colgroup, colIndex:cellIndex, handleType:"edge", cursor:"col-resize" };
+                } else {
+                  const nextCol=colgroup.children[cellIndex+1];
+                  if(nextCol){
+                    colInfo={ table, colgroup, colIndex:cellIndex, handleType:"split", cursor:"col-resize" };
+                  }
+                }
+              }
+            }
+          }
+        }
+        if(rowInfo && colInfo){
+          const rowRect=rowInfo.rowRect || row.getBoundingClientRect();
+          const rowDistance=Math.abs(((rowRect && rowRect.bottom!==undefined) ? rowRect.bottom : rect.bottom) - event.clientY);
+          const colDistance=Math.abs(rect.right - event.clientX);
+          return rowDistance<=colDistance ? rowInfo : colInfo;
+        }
+        return colInfo || rowInfo;
       }
       function onMouseMove(event){
         if(active){
@@ -3691,6 +3723,25 @@
         return measureColumn(table, index);
       }
       function prepareActive(info, event){
+        if(info.handleType==="row"){
+          const rowRect=(info.rowRect && info.rowRect.height) ? info.rowRect : (info.row ? info.row.getBoundingClientRect() : null);
+          const startHeight=rowRect && rowRect.height ? rowRect.height : null;
+          if(!info.row || !startHeight){ return null; }
+          const state={
+            ctx,
+            mode:"row",
+            table:info.table,
+            row:info.row,
+            startHeight,
+            startY:event.clientY,
+            changed:false,
+            actionLabel:"Resize Table Row"
+          };
+          state.cursor=cursorForHandle(info);
+          applyBodyDragCursor(state.cursor);
+          applyRootResizeCursor(state.cursor);
+          return state;
+        }
         const col=info.colgroup.children[info.colIndex];
         if(!col) return null;
         const mode=info.handleType || "split";
@@ -3710,7 +3761,8 @@
           startWidth,
           startX:event.clientX,
           changed:false,
-          widths
+          widths,
+          actionLabel:"Resize Table Column"
         };
         if(mode==="split"){
           const nextCol=info.colgroup.children[info.colIndex+1];
@@ -3732,8 +3784,9 @@
             info.table.style.width=Math.max(MIN_WIDTH, Math.round(state.total))+"px";
           }
         }
-        applyBodyDragCursor();
-        applyRootResizeCursor();
+        state.cursor=cursorForHandle(info);
+        applyBodyDragCursor(state.cursor);
+        applyRootResizeCursor(state.cursor);
         return state;
       }
       function applyWidths(state, width, nextWidth){
@@ -3748,8 +3801,22 @@
         state.col.style.width=Math.round(width)+"px";
         state.nextCol.style.width=Math.round(nextWidth)+"px";
       }
+      function applyRowHeight(state, height){
+        const value=Math.round(height);
+        state.row.style.height=value+"px";
+        state.row.style.minHeight=value+"px";
+      }
       function onDrag(event){
         if(!active) return;
+        if(active.mode==="row"){
+          const deltaY=event.clientY - active.startY;
+          let newHeight=active.startHeight + deltaY;
+          if(newHeight<MIN_HEIGHT) newHeight=MIN_HEIGHT;
+          applyRowHeight(active, newHeight);
+          active.changed=true;
+          event.preventDefault();
+          return;
+        }
         const delta=event.clientX - active.startX;
         const min=MIN_WIDTH;
         if(active.mode==="edge"){
@@ -3776,16 +3843,18 @@
         if(!active) return;
         doc.removeEventListener("mousemove", onDrag, true);
         doc.removeEventListener("mouseup", onMouseUp, true);
-        const changed=active.changed;
-        const ctxRef=active.ctx;
+        const state=active;
+        const changed=state.changed;
+        const ctxRef=state.ctx;
         const instRef=ctxRef ? ctxRef.inst : null;
+        const actionLabel=state.actionLabel;
         active=null;
         hover=null;
         restoreBodyCursor();
         restoreRootCursor();
         if(changed && ctxRef){
           const target=ctxRef.getRecordTarget ? ctxRef.getRecordTarget(instRef) : (instRef ? instRef.el : null);
-          if(ctxRef.record) ctxRef.record(instRef, target);
+          if(ctxRef.record) ctxRef.record(instRef, target, actionLabel);
           if(ctxRef.onChange) ctxRef.onChange(instRef, target);
         }
       }
