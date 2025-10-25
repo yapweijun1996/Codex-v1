@@ -5769,7 +5769,7 @@
       button.style.alignItems="center";
       button.style.gap="8px";
       button.style.minWidth="64px";
-      button.style.padding="6px 12px";
+      button.style.padding="1px 12px";
       button.textContent="";
       const iconWrap=document.createElement("span");
       iconWrap.style.display="grid";
