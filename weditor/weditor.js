@@ -2380,6 +2380,12 @@
       { label:"Segoe UI", value:"'Segoe UI', system-ui, -apple-system, sans-serif" },
       { label:"Times New Roman", value:"'Times New Roman', Times, serif" }
     ];
+    const HEADING_OPTIONS=[
+      { label:"Normal (Paragraph)", value:"p" },
+      { label:"Heading 1", value:"h1" },
+      { label:"Heading 2", value:"h2" },
+      { label:"Heading 3", value:"h3" }
+    ];
     const FONT_SIZES=[
       { label:"10", px:"10px", exec:"2" },
       { label:"12", px:"12px", exec:"3" },
@@ -2617,6 +2623,127 @@
       const meta=FONT_SIZES.find(function(item){ return item.label===sizeLabel; }); if(!meta) return;
       execCommand(target, "fontSize", meta.exec, true);
       convertFontTags(target, meta.exec, meta.px);
+    }
+    function normalizeHeadingValue(value){
+      if(!value && value!==0) return null;
+      const normalized=String(value).toLowerCase();
+      if(normalized==="normal" || normalized==="paragraph" || normalized==="p") return "p";
+      if(normalized==="heading 1" || normalized==="h1" || normalized==="1") return "h1";
+      if(normalized==="heading 2" || normalized==="h2" || normalized==="2") return "h2";
+      if(normalized==="heading 3" || normalized==="h3" || normalized==="3") return "h3";
+      return null;
+    }
+    function findHeadingBlock(node, root){
+      const allowed={ p:1, div:1, h1:1, h2:1, h3:1, h4:1, h5:1, h6:1 };
+      while(node && node!==root){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toLowerCase();
+          if(allowed[tag]) return node;
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function fallbackApplyHeading(target, heading){
+      if(!target) return false;
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return false;
+      const range=sel.getRangeAt(0);
+      if(range && range.commonAncestorContainer && !target.contains(range.commonAncestorContainer) && range.commonAncestorContainer!==target){
+        return false;
+      }
+      const desired=heading==="p"?"p":heading;
+      const blocks=[];
+      const seen=new Set();
+      function addBlock(node){
+        const block=findHeadingBlock(node, target);
+        if(block && !seen.has(block)){
+          seen.add(block);
+          blocks.push(block);
+        }
+      }
+      addBlock(range.startContainer);
+      addBlock(range.endContainer);
+      if(!range.collapsed && doc && typeof doc.createTreeWalker==="function"){
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(node){
+            if(node===target) return NodeFilter.FILTER_SKIP;
+            const tag=(node.tagName||"").toLowerCase();
+            if(!tag) return NodeFilter.FILTER_SKIP;
+            if(tag!=="p" && tag!=="div" && tag!=="h1" && tag!=="h2" && tag!=="h3" && tag!=="h4" && tag!=="h5" && tag!=="h6") return NodeFilter.FILTER_SKIP;
+            return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        let current;
+        while((current=walker.nextNode())){ addBlock(current); }
+      }
+      if(!blocks.length){ addBlock(range.commonAncestorContainer); }
+      if(!blocks.length) return false;
+      let changed=false;
+      for(let i=0;i<blocks.length;i++){
+        const block=blocks[i];
+        if(!block || !block.parentNode) continue;
+        const currentTag=(block.tagName||"").toLowerCase();
+        if(currentTag===desired || currentTag==="li") continue;
+        const replacementTag=desired;
+        const replacement=doc.createElement(replacementTag);
+        if(block.attributes){
+          for(let a=0;a<block.attributes.length;a++){
+            const attr=block.attributes[a];
+            if(!attr || !attr.name) continue;
+            if(attr.name.toLowerCase()==="style") continue;
+            replacement.setAttribute(attr.name, attr.value);
+          }
+        }
+        replacement.style.cssText=block.style?block.style.cssText:"";
+        while(block.firstChild){ replacement.appendChild(block.firstChild); }
+        block.parentNode.replaceChild(replacement, block);
+        changed=true;
+      }
+      if(changed){
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+      }
+      return changed;
+    }
+    function applyHeading(inst, ctx, heading){
+      const normalized=normalizeHeadingValue(heading);
+      if(!normalized) return false;
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const tag=normalized==="p"?"P":normalized.toUpperCase();
+      let success=false;
+      try{ success=document.execCommand("formatBlock", false, "<"+tag+">"); }
+      catch(err){ success=false; }
+      if(!success){
+        try{ success=document.execCommand("formatBlock", false, tag); }
+        catch(err2){ success=false; }
+      }
+      if(!success){ success=fallbackApplyHeading(target, normalized); }
+      if(success){
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+      }
+      return success;
+    }
+    function detectHeading(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return "p";
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return "p";
+      const range=sel.getRangeAt(0);
+      if(range && range.commonAncestorContainer && !target.contains(range.commonAncestorContainer) && range.commonAncestorContainer!==target){
+        return "p";
+      }
+      const block=findHeadingBlock(range.startContainer, target) || (!range.collapsed ? findHeadingBlock(range.endContainer, target) : null);
+      if(!block) return "p";
+      const tag=(block.tagName||"").toLowerCase();
+      if(tag==="div" || tag==="p") return "p";
+      if(tag==="h1" || tag==="h2" || tag==="h3") return tag;
+      return "p";
     }
     function applyHighlight(inst, ctx, color){
       if(!color){ return clearHighlight(inst, ctx); }
@@ -2975,6 +3102,7 @@
     return {
       FONT_FAMILIES,
       FONT_SIZES,
+      HEADING_OPTIONS,
       HIGHLIGHT_COLORS,
       LINE_SPACING_OPTIONS,
       FONT_THEME_COLORS,
@@ -2982,6 +3110,8 @@
       FONT_COLOR_DEFAULT,
       applyFontFamily,
       applyFontSize,
+      applyHeading,
+      detectHeading,
       applyHighlight,
       clearHighlight,
       applyFontColor,
@@ -3051,7 +3181,8 @@
       },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
-      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
+      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; },
+      heading:function(inst, target, args){ if(!args || !args.value) return false; return Formatting.applyHeading(inst, makeCtx(inst, target), args.value); }
     };
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function cloneInstState(inst){
@@ -6242,6 +6373,31 @@
       ariaLabel:"Redo or Repeat (Ctrl+Y / Cmd+Y / F4)",
       render:function(inst, ctx){ return HistoryUI.createRedo(inst, ctx); }
     },
+    "format.heading":{
+      label:"Heading",
+      kind:"select",
+      ariaLabel:"Select heading style",
+      placeholder:"Heading",
+      options:Formatting.HEADING_OPTIONS.map(function(item){ return { label:item.label, value:item.value }; }),
+      getValue:function(inst, ctx){ return Formatting.detectHeading(inst, ctx); },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        const changed=Formatting.applyHeading(inst, arg && arg.ctx, value);
+        if(changed){
+          const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+          const label=value==="p"?"Normal Paragraph":"Heading "+value.substring(1).toUpperCase();
+          HistoryManager.record(inst, target, {
+            label:label,
+            repeatable:true,
+            repeatId:"heading",
+            repeatArgs:{ value:value },
+            repeatLabel:"Heading"
+          });
+          OutputBinding.syncDebounced(inst);
+        }
+      }
+    },
     "format.fontFamily":{
       label:"Font",
       kind:"select",
@@ -6583,7 +6739,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.heading","format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
@@ -6600,7 +6756,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.heading","format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
