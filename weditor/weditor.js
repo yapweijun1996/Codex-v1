@@ -1781,6 +1781,8 @@
       if(typeof data.outputMode==="string"){
         inst.outputMode=data.outputMode.toLowerCase()==="paged"?"paged":"raw";
       }
+      const headerEnabledExplicit=typeof header.enabled==="boolean" || typeof data.headerEnabled==="boolean";
+      const footerEnabledExplicit=typeof footer.enabled==="boolean" || typeof data.footerEnabled==="boolean";
       if(typeof header.enabled==="boolean") inst.headerEnabled=header.enabled;
       else if(typeof data.headerEnabled==="boolean") inst.headerEnabled=data.headerEnabled;
       if(typeof footer.enabled==="boolean") inst.footerEnabled=footer.enabled;
@@ -1789,6 +1791,8 @@
       else if(typeof data.headerHTML==="string") inst.headerHTML=sanitizeHTML(data.headerHTML);
       if(typeof footer.html==="string") inst.footerHTML=sanitizeHTML(footer.html);
       else if(typeof data.footerHTML==="string") inst.footerHTML=sanitizeHTML(data.footerHTML);
+      if(!headerEnabledExplicit && inst.headerHTML && inst.headerHTML.trim()) inst.headerEnabled=true;
+      if(!footerEnabledExplicit && inst.footerHTML && inst.footerHTML.trim()) inst.footerEnabled=true;
       if(header.align) inst.headerAlign=HFAlign.normalize(header.align);
       else if(data.headerAlign) inst.headerAlign=HFAlign.normalize(data.headerAlign);
       if(footer.align) inst.footerAlign=HFAlign.normalize(footer.align);
@@ -4450,18 +4454,31 @@
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
     ]
   };
+  function readBooleanAttribute(el, name){
+    if(!el) return null;
+    const raw=el.getAttribute(name);
+    if(raw==null) return null;
+    const value=raw.trim().toLowerCase();
+    if(value==="" || value==="true" || value==="1" || value==="yes" || value==="on") return true;
+    if(value==="false" || value==="0" || value==="no" || value==="off") return false;
+    return true;
+  }
   let INSTANCE_SEQ=0;
   function WEditorInstance(editorEl){
     this.uid = ++INSTANCE_SEQ;
     this.el = editorEl;
     this.el.setAttribute("data-weditor-instance", String(this.uid));
     const initialStateAttr=StateBinding.consumeInitial(editorEl);
-    this.headerHTML = "Demo Header — {{date}} · Page {{page}} / {{total}}";
-    this.footerHTML = "Confidential · {{date}}";
+    this.headerHTML = "";
+    this.footerHTML = "";
     this.headerAlign = HFAlign.normalize(editorEl.getAttribute("data-header-align"));
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
-    this.headerEnabled = !editorEl.classList.contains("weditor--no-header");
-    this.footerEnabled = !editorEl.classList.contains("weditor--no-footer");
+    const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
+    const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
+    this.headerEnabled = headerAttr!=null ? headerAttr : false;
+    this.footerEnabled = footerAttr!=null ? footerAttr : false;
+    if(editorEl.classList.contains("weditor--no-header")) this.headerEnabled=false;
+    if(editorEl.classList.contains("weditor--no-footer")) this.footerEnabled=false;
     this.outputEls = OutputBinding.resolveAll(editorEl);
     this.outputEl = this.outputEls.length ? this.outputEls[0] : null;
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
