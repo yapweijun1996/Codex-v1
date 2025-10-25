@@ -3830,6 +3830,21 @@
       if(current && current.nodeType===1 && (current.tagName||"").toLowerCase()==="table") return current;
       return null;
     }
+    function ascendToCell(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="td" || tag==="th") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current && current.nodeType===1){
+        const tag=(current.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th") return current;
+      }
+      return null;
+    }
     function currentSelectionTable(target){
       if(!target || !target.ownerDocument) return null;
       const doc=target.ownerDocument;
@@ -3857,6 +3872,36 @@
         if(!target.contains(node)) continue;
         const table=ascendToTable(node, target);
         if(table) return table;
+      }
+      return null;
+    }
+    function currentSelectionCell(target){
+      if(!target || !target.ownerDocument) return null;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      let sel=null;
+      try{ sel=win.getSelection ? win.getSelection() : window.getSelection(); }
+      catch(err){ sel=null; }
+      const candidates=[];
+      if(sel && sel.rangeCount>0){
+        const range=sel.getRangeAt(0);
+        if(range){
+          candidates.push(range.commonAncestorContainer);
+          candidates.push(range.startContainer);
+          candidates.push(range.endContainer);
+        }
+        candidates.push(sel.anchorNode);
+        candidates.push(sel.focusNode);
+      }
+      if(doc.activeElement && target.contains(doc.activeElement)) candidates.push(doc.activeElement);
+      for(let i=0;i<candidates.length;i++){
+        const candidate=candidates[i];
+        if(!candidate) continue;
+        const node=candidate.nodeType===3 ? candidate.parentNode : candidate;
+        if(!node) continue;
+        if(!target.contains(node)) continue;
+        const cell=ascendToCell(node, target);
+        if(cell) return cell;
       }
       return null;
     }
@@ -3929,6 +3974,17 @@
         }
       }
     }
+    function normalizeSides(input){
+      if(!input) return [];
+      const list=Array.isArray(input) ? input : [input];
+      const valid={ top:1,right:1,bottom:1,left:1 };
+      const sides=[];
+      for(let i=0;i<list.length;i++){
+        const value=(list[i]||"").toString().toLowerCase();
+        if(valid[value] && sides.indexOf(value)===-1) sides.push(value);
+      }
+      return sides;
+    }
     function applyColor(inst, ctx, color){
       const target=resolveTarget(inst, ctx);
       if(!target) return { changed:false };
@@ -3949,6 +4005,54 @@
       table.style.borderStyle="solid";
       applyColorToCells(table, normalized, false);
       return { changed:true, table, hidden:false, color:normalized };
+    }
+    function applyCellBorder(inst, ctx, options){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const table=currentSelectionTable(target);
+      if(!table) return { changed:false };
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const sides=normalizeSides(options && options.sides ? options.sides : ["top","right","bottom","left"]);
+      if(!sides.length) return { changed:false };
+      const rawColor=options && Object.prototype.hasOwnProperty.call(options,"color") ? options.color : undefined;
+      const normalizedColor = typeof rawColor==="string" ? normalizeColor(rawColor) : (rawColor ? normalizeColor(String(rawColor)) : null);
+      if(typeof rawColor==="string" && rawColor && !normalizedColor){
+        return { changed:false };
+      }
+      const hasColor = !!normalizedColor;
+      const widthValue = options && typeof options.width === "number" ? options.width : (hasColor ? 1 : 0);
+      const styleValue = (options && options.style) ? String(options.style) : "solid";
+      let changed=false;
+      TableResizer.ensureTable(table);
+      table.style.borderCollapse="collapse";
+      for(let i=0;i<sides.length;i++){
+        const side=sides[i];
+        const sideKey=side.charAt(0).toUpperCase()+side.slice(1);
+        const colorProp="border"+sideKey+"Color";
+        const widthProp="border"+sideKey+"Width";
+        const styleProp="border"+sideKey+"Style";
+        if(hasColor){
+          const desiredWidth=widthValue+"px";
+          if(cell.style[colorProp]!==normalizedColor || cell.style[widthProp]!==desiredWidth || cell.style[styleProp]!==styleValue){
+            changed=true;
+          }
+          cell.style[colorProp]=normalizedColor;
+          cell.style[widthProp]=desiredWidth;
+          cell.style[styleProp]=styleValue;
+        } else {
+          if(cell.style[colorProp]!=="transparent" || cell.style[widthProp]!=="0px" || cell.style[styleProp]!=="solid"){
+            changed=true;
+          }
+          cell.style[colorProp]="transparent";
+          cell.style[widthProp]="0px";
+          cell.style[styleProp]="solid";
+        }
+      }
+      if(!hasColor && sides.length===4){
+        cell.style.border="0";
+      }
+      return { changed, table, cell, color:normalizedColor, sides };
     }
     function applyDefault(inst, ctx){
       return applyColor(inst, ctx, WCfg.UI.borderSubtle || "#c8c6c4");
@@ -3979,7 +4083,12 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor };
+    function getActiveCell(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return null;
+      return currentSelectionCell(target);
+    }
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, getActiveCell };
   })();
   const ListUI=(function(){
     function createSplitButton(options){
@@ -4664,6 +4773,86 @@
       const colorButtons=[];
       const actionButtons={ hide:null, standard:null };
       const defaultColor=TableStyler.normalizeColor(WCfg.UI.borderSubtle || "#c8c6c4");
+      const cellSideButtons={};
+      let currentCellSide="all";
+      function describeSideLabel(side){
+        if(side==="all") return "All Sides";
+        const label=side.charAt(0).toUpperCase()+side.slice(1);
+        return label;
+      }
+      function setCurrentCellSide(side){
+        const next=cellSideButtons[side] ? side : "all";
+        currentCellSide=next;
+        for(const key in cellSideButtons){
+          if(Object.prototype.hasOwnProperty.call(cellSideButtons, key)){
+            const btn=cellSideButtons[key];
+            setActionActive(btn, key===next);
+            btn.setAttribute("aria-pressed", key===next?"true":"false");
+          }
+        }
+      }
+      function selectedSides(){
+        return currentCellSide==="all" ? ["top","right","bottom","left"] : [currentCellSide];
+      }
+      function ensureCellSelection(){
+        const cell=TableStyler.getActiveCell(inst, ctx);
+        if(cell) return true;
+        window.alert("Place the caret inside a table cell to adjust cell borders.");
+        return false;
+      }
+      function handleCellResult(result, labelText){
+        if(!result || !result.changed) return;
+        const target=HistoryManager.resolveTarget(inst, ctx);
+        HistoryManager.record(inst, target, { label:labelText, repeatable:false });
+        updatePreviewState(TableStyler.getState(inst, ctx));
+        OutputBinding.syncDebounced(inst);
+      }
+      function applyCellColor(value){
+        if(!ensureCellSelection()) return;
+        const sides=selectedSides();
+        const outcome=TableStyler.applyCellBorder(inst, ctx, { color:value, sides });
+        handleCellResult(outcome, "Set Cell Border ("+describeSideLabel(currentCellSide)+")");
+      }
+      function clearCellBorder(){
+        if(!ensureCellSelection()) return;
+        const sides=selectedSides();
+        const outcome=TableStyler.applyCellBorder(inst, ctx, { color:null, sides });
+        handleCellResult(outcome, "Clear Cell Border ("+describeSideLabel(currentCellSide)+")");
+      }
+      function createCellColorGrid(title, colors){
+        if(!colors || !colors.length) return null;
+        const section=document.createElement("div");
+        section.style.display="flex";
+        section.style.flexDirection="column";
+        section.style.gap="6px";
+        const heading=document.createElement("div");
+        heading.textContent=title;
+        heading.style.font="11px/1.4 Segoe UI,system-ui";
+        heading.style.color=WCfg.UI.textDim;
+        const grid=document.createElement("div");
+        grid.style.display="grid";
+        grid.style.gridTemplateColumns="repeat(auto-fill, minmax(24px, 1fr))";
+        grid.style.gap="6px";
+        for(let i=0;i<colors.length;i++){
+          const swatch=doc.createElement("button");
+          swatch.type="button";
+          swatch.style.width="24px";
+          swatch.style.height="24px";
+          swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+          swatch.style.borderRadius="4px";
+          swatch.style.background=colors[i].value;
+          swatch.style.cursor="pointer";
+          swatch.setAttribute("role","menuitem");
+          swatch.setAttribute("title", colors[i].label+" cell border");
+          swatch.setAttribute("aria-label", colors[i].label+" cell border");
+          swatch.addEventListener("click", function(ev){ ev.preventDefault(); applyCellColor(colors[i].value); });
+          swatch.addEventListener("keydown", function(ev){ if(ev.key==="Escape"){ ev.preventDefault(); closePalette(); button.focus(); } });
+          grid.appendChild(swatch);
+        }
+        section.appendChild(heading);
+        section.appendChild(grid);
+        return section;
+      }
       function registerColorButton(value, el){ colorButtons.push({ value, el }); }
       function updateSelectionUI(selectedColor, hidden){
         for(let i=0;i<colorButtons.length;i++){
@@ -4727,6 +4916,9 @@
           doc.addEventListener("keydown", onDocKey);
         } else {
           closePalette();
+        }
+        if(open){
+          setCurrentCellSide("all");
         }
       }
       function onDocClick(e){ if(!palette.contains(e.target) && !button.contains(e.target)){ closePalette(); } }
@@ -4808,6 +5000,55 @@
       const themeSection=createColorSection("Theme colors", Formatting.FONT_THEME_COLORS || []);
       const standardSection=createColorSection("Standard colors", Formatting.FONT_STANDARD_COLORS || []);
       palette.appendChild(actions);
+      const cellSection=document.createElement("div");
+      cellSection.style.display="flex";
+      cellSection.style.flexDirection="column";
+      cellSection.style.gap="8px";
+      const cellLabel=document.createElement("div");
+      cellLabel.textContent="Cell borders";
+      cellLabel.style.font="11px/1.4 Segoe UI,system-ui";
+      cellLabel.style.color=WCfg.UI.textDim;
+      const cellHint=document.createElement("div");
+      cellHint.textContent="Select a side, then choose a color for the active cell.";
+      cellHint.style.font="11px/1.4 Segoe UI,system-ui";
+      cellHint.style.color=WCfg.UI.textDim;
+      const sideRow=document.createElement("div");
+      sideRow.style.display="flex";
+      sideRow.style.flexWrap="wrap";
+      sideRow.style.gap="6px";
+      function addSideButton(key, text){
+        const sideBtn=createActionButton(text);
+        sideBtn.setAttribute("role","menuitemradio");
+        sideBtn.setAttribute("aria-pressed","false");
+        sideBtn.addEventListener("click", function(e){ e.preventDefault(); setCurrentCellSide(key); });
+        sideRow.appendChild(sideBtn);
+        cellSideButtons[key]=sideBtn;
+        return sideBtn;
+      }
+      addSideButton("all","All");
+      addSideButton("top","Top");
+      addSideButton("right","Right");
+      addSideButton("bottom","Bottom");
+      addSideButton("left","Left");
+      setCurrentCellSide("all");
+      const cellColorsWrap=document.createElement("div");
+      cellColorsWrap.style.display="flex";
+      cellColorsWrap.style.flexDirection="column";
+      cellColorsWrap.style.gap="6px";
+      const cellThemeSection=createCellColorGrid("Theme colors", Formatting.FONT_THEME_COLORS || []);
+      const cellStandardSection=createCellColorGrid("Standard colors", Formatting.FONT_STANDARD_COLORS || []);
+      if(cellThemeSection) cellColorsWrap.appendChild(cellThemeSection);
+      if(cellStandardSection) cellColorsWrap.appendChild(cellStandardSection);
+      const clearBtn=createActionButton("Clear selected border");
+      clearBtn.setAttribute("role","menuitem");
+      clearBtn.addEventListener("click", function(e){ e.preventDefault(); clearCellBorder(); });
+      clearBtn.style.alignSelf="flex-start";
+      cellSection.appendChild(cellLabel);
+      cellSection.appendChild(cellHint);
+      cellSection.appendChild(sideRow);
+      if(cellColorsWrap.children.length>0) cellSection.appendChild(cellColorsWrap);
+      cellSection.appendChild(clearBtn);
+      palette.appendChild(cellSection);
       if(themeSection) palette.appendChild(themeSection);
       if(standardSection) palette.appendChild(standardSection);
       palette.addEventListener("click", function(e){ e.stopPropagation(); });
