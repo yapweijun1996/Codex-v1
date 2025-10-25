@@ -179,7 +179,7 @@
     return { clean };
   })();
   const Normalizer=(function(){
-    const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|HR|IMG)$/i;
+    const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|PRE|HR|IMG)$/i;
     function isBlock(el){ return el && el.nodeType===1 && BLOCK.test(el.tagName); }
     const WORD_LIST_RE=/mso-list\s*:/i;
     const WORD_CLASS_RE=/^mso/i;
@@ -2428,6 +2428,16 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const BLOCK_FORMATS=[
+      { label:"Normal (Paragraph)", value:"p" },
+      { label:"Heading 1", value:"h1" },
+      { label:"Heading 2", value:"h2" },
+      { label:"Heading 3", value:"h3" },
+      { label:"Heading 4", value:"h4" },
+      { label:"Heading 5", value:"h5" },
+      { label:"Blockquote", value:"blockquote" },
+      { label:"Code Block", value:"pre" }
+    ];
     const LINE_SPACING_OPTIONS=[
       { label:"Single", value:"1" },
       { label:"1.15", value:"1.15" },
@@ -2802,6 +2812,153 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
+    const BLOCK_TAGS={ P:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1, PRE:1 };
+    function resolveBlockTag(node, root){
+      while(node && node!==root){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toUpperCase();
+          if(BLOCK_TAGS[tag]){ return tag.toLowerCase(); }
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function findBlockElement(node, root){
+      while(node && node!==root){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toUpperCase();
+          if(BLOCK_TAGS[tag]) return node;
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function rangeCoversNode(range, node){
+      if(!range || !node) return false;
+      const doc=node.ownerDocument || document;
+      if(!doc || !doc.createRange) return false;
+      try{
+        const test=doc.createRange();
+        test.selectNodeContents(node);
+        const START_TO_START=getRangeConstant(range, "START_TO_START", 0);
+        const END_TO_END=getRangeConstant(range, "END_TO_END", 1);
+        return range.compareBoundaryPoints(START_TO_START, test)===0 && range.compareBoundaryPoints(END_TO_END, test)===0;
+      } catch(err){
+        return false;
+      }
+    }
+    function fragmentHasContent(fragment){
+      if(!fragment) return false;
+      let node=fragment.firstChild;
+      while(node){
+        if(node.nodeType===1){ return true; }
+        if(node.nodeType===3 && node.nodeValue && node.nodeValue.replace(/[\s\u00a0]+/g,"")!==''){ return true; }
+        node=node.nextSibling;
+      }
+      return false;
+    }
+    function manualApplyBlock(range, target, desired, sel){
+      const doc=target.ownerDocument || document;
+      if(!doc || !doc.createElement) return false;
+      const startBlock=findBlockElement(range.startContainer, target);
+      const endBlock=findBlockElement(range.endContainer, target);
+      if(!startBlock || startBlock!==endBlock) return false;
+      const block=startBlock;
+      if(rangeCoversNode(range, block)) return false;
+      const parent=block.parentNode;
+      if(!parent) return false;
+      try{
+        const beforeRange=doc.createRange();
+        beforeRange.setStart(block,0);
+        beforeRange.setEnd(range.startContainer, range.startOffset);
+        const beforeFragment=beforeRange.cloneContents();
+        const selectionFragment=range.cloneContents();
+        const afterRange=doc.createRange();
+        afterRange.setStart(range.endContainer, range.endOffset);
+        afterRange.setEnd(block, block.childNodes.length);
+        const afterFragment=afterRange.cloneContents();
+        const nodes=[];
+        if(fragmentHasContent(beforeFragment)){
+          const beforeBlock=block.cloneNode(false);
+          beforeBlock.appendChild(beforeFragment);
+          nodes.push(beforeBlock);
+        }
+        const newBlock=doc.createElement(desired.toUpperCase());
+        newBlock.appendChild(selectionFragment);
+        nodes.push(newBlock);
+        if(fragmentHasContent(afterFragment)){
+          const afterBlock=block.cloneNode(false);
+          afterBlock.appendChild(afterFragment);
+          nodes.push(afterBlock);
+        }
+        const reference=block.nextSibling;
+        parent.removeChild(block);
+        for(let i=0;i<nodes.length;i++){
+          parent.insertBefore(nodes[i], reference);
+        }
+        const selection=sel || (window.getSelection ? window.getSelection() : null);
+        if(selection){
+          selection.removeAllRanges();
+          const newRange=doc.createRange();
+          newRange.selectNodeContents(newBlock);
+          selection.addRange(newRange);
+        }
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        return true;
+      } catch(err){
+        return false;
+      }
+    }
+    function getSelectionWithin(target){
+      if(!target || !target.ownerDocument) return null;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && container!==target && !target.contains(container)){ return null; }
+      return { sel, range };
+    }
+    function applyBlockFormat(inst, ctx, tag){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const selection=getSelectionWithin(target); if(!selection) return false;
+      const normalized=(tag||"p").toString().trim().toLowerCase();
+      const desired=normalized ? normalized : "p";
+      const upper=desired.toUpperCase();
+      const attempts=[];
+      if(desired==="p"){ attempts.push("p"); }
+      attempts.push(upper, "<"+upper+">");
+      let success=false;
+      const { sel, range }=selection;
+      if(desired!=="p" && !range.collapsed){
+        success=manualApplyBlock(range, target, desired, sel);
+      }
+      if(!success){
+        for(let i=0;i<attempts.length && !success;i++){
+          success=execCommand(target, "formatBlock", attempts[i], false);
+        }
+        if(success){
+          Normalizer.fixStructure(target);
+          Breaks.ensurePlaceholders(target);
+        }
+      }
+      return success;
+    }
+    function getBlockFormat(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return "p";
+      const selection=getSelectionWithin(target);
+      if(!selection){ return "p"; }
+      const { range }=selection;
+      const start=resolveBlockTag(range.startContainer, target);
+      if(start){ return start; }
+      const end=resolveBlockTag(range.endContainer, target);
+      if(end){ return end; }
+      const common=resolveBlockTag(range.commonAncestorContainer, target);
+      return common || "p";
+    }
     function normalizeLineSpacingValue(value){
       if(value===null || typeof value==="undefined") return null;
       const str=String(value).trim();
@@ -2997,7 +3154,10 @@
       applyListStyle,
       applyCustomBullet,
       indentList,
-      outdentList
+      outdentList,
+      applyBlockFormat,
+      getBlockFormat,
+      BLOCK_FORMATS
     };
   })();
   const HistoryManager=(function(){
@@ -6284,6 +6444,29 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.blockStyle":{
+      label:"Heading",
+      kind:"select",
+      ariaLabel:"Select paragraph style",
+      placeholder:"Heading",
+      options:Formatting.BLOCK_FORMATS.map(function(item){ return { label:item.label, value:item.value }; }),
+      getValue:function(inst, ctx){ return Formatting.getBlockFormat(inst, ctx); },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        const applied=Formatting.applyBlockFormat(inst, arg && arg.ctx, value);
+        if(!applied) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Paragraph Style",
+          repeatable:true,
+          repeatId:"blockStyle",
+          repeatArgs:{ value:value },
+          repeatLabel:"Paragraph Style"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.bold":{
       label:"B",
       kind:"button",
@@ -6583,7 +6766,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
@@ -6600,7 +6783,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
