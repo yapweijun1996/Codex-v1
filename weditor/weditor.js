@@ -2388,6 +2388,12 @@
       { label:"18", px:"18px", exec:"6" },
       { label:"24", px:"24px", exec:"7" }
     ];
+    const BLOCK_STYLES=[
+      { label:"Normal (Paragraph)", value:"p" },
+      { label:"Heading 1", value:"h1" },
+      { label:"Heading 2", value:"h2" },
+      { label:"Heading 3", value:"h3" }
+    ];
     const FONT_THEME_COLORS=[
       { label:"Black", value:"#000000" },
       { label:"Brown", value:"#7f6000" },
@@ -2468,6 +2474,102 @@
       const beforeEnd=range.compareBoundaryPoints(END_TO_START, test) < 0;
       const afterStart=range.compareBoundaryPoints(START_TO_END, test) > 0;
       return beforeEnd && afterStart;
+    }
+    function normalizeBlockTag(value){
+      const raw=(value==null?"":String(value)).toLowerCase();
+      if(raw==="normal" || raw==="paragraph" || raw==="p" || raw==="div") return "p";
+      if(raw==="h1" || raw==="h2" || raw==="h3" || raw==="h4" || raw==="h5" || raw==="h6") return raw;
+      return "p";
+    }
+    function isHeadingBlockCandidate(node){
+      if(!node || node.nodeType!==1) return false;
+      const tag=(node.tagName||"").toUpperCase();
+      return tag==="P" || tag==="DIV" || tag==="H1" || tag==="H2" || tag==="H3" || tag==="H4" || tag==="H5" || tag==="H6";
+    }
+    function findHeadingBlock(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(isHeadingBlockCandidate(current)) return current;
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function collectHeadingBlocks(target, range){
+      const doc=target ? (target.ownerDocument || document) : document;
+      const blocks=[];
+      const seen=new Set();
+      function add(node){
+        const block=findHeadingBlock(node, target);
+        if(block && !seen.has(block)){
+          seen.add(block);
+          blocks.push(block);
+        }
+      }
+      if(!range){ return blocks; }
+      add(range.startContainer);
+      add(range.endContainer);
+      if(!range.collapsed && doc && typeof doc.createTreeWalker==="function"){
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(node){
+            if(node===target) return NodeFilter.FILTER_SKIP;
+            if(!isHeadingBlockCandidate(node)) return NodeFilter.FILTER_SKIP;
+            return intersectsRange(range, node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        let current;
+        while((current=walker.nextNode())){
+          add(current);
+        }
+      }
+      return blocks;
+    }
+    function fallbackApplyBlockStyle(target, tag){
+      if(!target || !target.ownerDocument) return false;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return false;
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.startContainer) || !target.contains(range.endContainer)) return false;
+      const blocks=collectHeadingBlocks(target, range);
+      if(!blocks.length){
+        const single=findHeadingBlock(range.startContainer, target);
+        if(single) blocks.push(single);
+      }
+      if(!blocks.length) return false;
+      let changed=false;
+      for(let i=0;i<blocks.length;i++){
+        const block=blocks[i];
+        if(!block || !block.parentNode) continue;
+        const currentTag=(block.tagName||"").toLowerCase();
+        const normalizedCurrent=currentTag==="div"?"p":currentTag;
+        if(normalizedCurrent===tag && currentTag!=="div") continue;
+        const replacement=doc.createElement(tag);
+        const attrs=block.attributes || [];
+        for(let j=0;j<attrs.length;j++){
+          const attr=attrs[j];
+          replacement.setAttribute(attr.name, attr.value);
+        }
+        while(block.firstChild){ replacement.appendChild(block.firstChild); }
+        block.parentNode.replaceChild(replacement, block);
+        changed=true;
+      }
+      return changed;
+    }
+    function getBlockStyle(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return "p";
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return "p";
+      const range=sel.getRangeAt(0);
+      if(!target.contains(range.startContainer) || !target.contains(range.endContainer)) return "p";
+      const block=findHeadingBlock(range.startContainer, target);
+      if(!block) return "p";
+      const tag=(block.tagName||"").toLowerCase();
+      if(tag==="div" || tag==="p") return "p";
+      if(tag==="h1" || tag==="h2" || tag==="h3" || tag==="h4" || tag==="h5" || tag==="h6") return tag;
+      return "p";
     }
     function fallbackApplyHighlight(target, color){
       const info=ensureSelectionInfo(target); if(!info) return false;
@@ -2786,6 +2888,24 @@
         }
       }
     }
+    function applyBlockStyle(inst, ctx, value){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const normalized=normalizeBlockTag(value);
+      focusTarget(target);
+      let success=false;
+      const commandValue=normalized.toUpperCase();
+      try{ success=document.execCommand("formatBlock", false, commandValue); }
+      catch(err){ success=false; }
+      if(!success){
+        try{ success=document.execCommand("formatBlock", false, "<"+commandValue+">"); }
+        catch(err2){ success=false; }
+      }
+      if(!success){
+        success=fallbackApplyBlockStyle(target, normalized);
+      }
+      if(success){ Normalizer.fixStructure(target); }
+      return success;
+    }
     function applySimple(inst, ctx, command){
       const target=resolveTarget(inst, ctx); if(!target) return;
       execCommand(target, command, null, true);
@@ -2980,6 +3100,7 @@
       FONT_THEME_COLORS,
       FONT_STANDARD_COLORS,
       FONT_COLOR_DEFAULT,
+      BLOCK_STYLES,
       applyFontFamily,
       applyFontSize,
       applyHighlight,
@@ -2988,11 +3109,13 @@
       clearFontColor,
       applyUnderline,
       applyDecorationStyle,
+      applyBlockStyle,
       applySimple,
       applyAlign,
       applyLineSpacing,
       clearLineSpacing,
       getLineSpacing,
+      getBlockStyle,
       toggleList,
       applyListStyle,
       applyCustomBullet,
@@ -3050,6 +3173,7 @@
         return Formatting.clearFontColor(inst, makeCtx(inst, target));
       },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
+      blockStyle:function(inst, target, args){ if(!args || !args.value) return false; return Formatting.applyBlockStyle(inst, makeCtx(inst, target), args.value); },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
       fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
     };
@@ -6242,6 +6366,28 @@
       ariaLabel:"Redo or Repeat (Ctrl+Y / Cmd+Y / F4)",
       render:function(inst, ctx){ return HistoryUI.createRedo(inst, ctx); }
     },
+    "format.blockStyle":{
+      label:"Heading",
+      kind:"select",
+      ariaLabel:"Paragraph style",
+      options:Formatting.BLOCK_STYLES.map(function(item){ return { label:item.label, value:item.value }; }),
+      getValue:function(inst, ctx){ return Formatting.getBlockStyle(inst, ctx); },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        const applied=Formatting.applyBlockStyle(inst, arg && arg.ctx, value);
+        if(!applied) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Paragraph Style",
+          repeatable:true,
+          repeatId:"blockStyle",
+          repeatArgs:{ value:value },
+          repeatLabel:"Paragraph Style"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.fontFamily":{
       label:"Font",
       kind:"select",
@@ -6583,7 +6729,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
