@@ -1756,6 +1756,33 @@
     }
     return { open };
   })();
+  const InsertDialog=(function(){
+    let missingHandlerWarned=false;
+    function createEvent(name, detail){
+      try {
+        return new CustomEvent(name, { detail, cancelable:true });
+      } catch(err){
+        if(typeof document!=="undefined" && typeof document.createEvent==="function"){
+          const legacy=document.createEvent("CustomEvent");
+          legacy.initCustomEvent(name, false, true, detail);
+          return legacy;
+        }
+        return null;
+      }
+    }
+    function openTable(inst, ctx){
+      if(typeof document==="undefined" || typeof document.dispatchEvent!=="function"){ return; }
+      const detail={ instance:inst||null, context:ctx||null };
+      const event=createEvent("weditor:insert-table", detail);
+      if(!event){ return; }
+      document.dispatchEvent(event);
+      if(!event.defaultPrevented && !missingHandlerWarned && typeof console!=="undefined" && console.warn){
+        console.warn("weditor:insert-table handler missing. Provide a listener to show the table dialog.");
+        missingHandlerWarned=true;
+      }
+    }
+    return { openTable };
+  })();
   const StateBinding=(function(){
     function parse(json){
       if(!json) return null;
@@ -4575,6 +4602,7 @@
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
+    "insert.table":{ label:"Insert Table…", kind:"button", ariaLabel:"Insert table", run:function(inst, arg){ InsertDialog.openTable(inst, arg && arg.ctx); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
@@ -4622,6 +4650,9 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:[
+        { label:"Content", compact:true, items:["insert.table"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4636,6 +4667,9 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+      ] },
+      { id:"insert", label:"Insert", items:[
+        { label:"Content", compact:true, items:["insert.table"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
