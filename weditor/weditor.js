@@ -3500,6 +3500,7 @@
   const TableResizer=(function(){
     const HANDLE_BUFFER=6;
     const MIN_WIDTH=10;
+    const MIN_HEIGHT=12;
     function firstBodyRow(table){
       if(!table) return null;
       const sections=[table.tHead, table.tBodies && table.tBodies[0], table.tFoot];
@@ -3606,9 +3607,10 @@
       const ctx={};
       ctx.inst=inst || null;
       ctx.root=root;
-      ctx.record = (options && typeof options.record==="function") ? options.record : function(instance, target){
+      ctx.record = (options && typeof options.record==="function") ? options.record : function(instance, target, detail){
         if(!instance) return;
-        HistoryManager.record(instance, target || (instance.el || null), { label:"Resize Table Column", repeatable:false });
+        const label=(detail && detail.label) ? detail.label : "Resize Table Column";
+        HistoryManager.record(instance, target || (instance.el || null), { label, repeatable:false });
       };
       ctx.onChange = (options && typeof options.onChange==="function") ? options.onChange : function(instance){
         if(instance) OutputBinding.syncDebounced(instance);
@@ -3619,9 +3621,9 @@
       let storedRootCursor=null;
       let storedBodyCursor=null;
       let storedBodySelect=null;
-      function applyRootResizeCursor(){
+      function applyRootResizeCursor(cursor){
         if(storedRootCursor===null){ storedRootCursor=root.style.cursor || ""; }
-        root.style.cursor="col-resize";
+        root.style.cursor=cursor || "col-resize";
       }
       function restoreRootCursor(){
         if(storedRootCursor!==null){
@@ -3629,11 +3631,11 @@
           storedRootCursor=null;
         }
       }
-      function applyBodyDragCursor(){
+      function applyBodyDragCursor(cursor){
         if(!doc || !doc.body) return;
         if(storedBodyCursor===null){ storedBodyCursor=doc.body.style.cursor || ""; }
         if(storedBodySelect===null){ storedBodySelect=doc.body.style.userSelect || ""; }
-        doc.body.style.cursor="col-resize";
+        doc.body.style.cursor=cursor || "col-resize";
         doc.body.style.userSelect="none";
       }
       function restoreBodyCursor(){
@@ -3649,30 +3651,65 @@
       function handleHover(info){
         if(!info || active) return;
         hover=info;
-        applyRootResizeCursor();
+        const cursor=info.cursor || (info.axis==="row"?"ns-resize":"col-resize");
+        applyRootResizeCursor(cursor);
       }
       function locateHandle(event){
         const cell=locateCell(root, event.target);
         if(!cell) return null;
         const table=cell.closest ? cell.closest("table") : null;
         if(!table || !root.contains(table)) return null;
-        const colgroup=ensureTable(table);
-        if(!colgroup) return null;
-        const colCount=colgroup.children.length;
-        if(colCount<1) return null;
-        const cellIndex=cell.cellIndex;
-        if(cellIndex<0 || cellIndex>=colCount) return null;
         const rect=cell.getBoundingClientRect();
         if(!rect) return null;
-        const edgeDistance=Math.abs(rect.right - event.clientX);
-        if(edgeDistance>HANDLE_BUFFER) return null;
-        const isLast=cellIndex===colCount-1;
-        if(isLast){
-          return { table, colgroup, colIndex:cellIndex, handleType:"edge" };
+        const withinColumn=Math.abs(rect.right - event.clientX) <= HANDLE_BUFFER;
+        const withinRow=Math.abs(rect.bottom - event.clientY) <= HANDLE_BUFFER;
+        if(!withinColumn && !withinRow) return null;
+        let colInfo=null;
+        let rowInfo=null;
+        if(withinColumn){
+          const colgroup=ensureTable(table);
+          if(colgroup){
+            const colCount=colgroup.children.length;
+            if(colCount>0){
+              const cellIndex=cell.cellIndex;
+              if(cellIndex>=0 && cellIndex<colCount){
+                const isLast=cellIndex===colCount-1;
+                if(isLast){
+                  colInfo={ table, colgroup, colIndex:cellIndex, handleType:"edge", axis:"col", cursor:"col-resize" };
+                } else {
+                  const nextCol=colgroup.children[cellIndex+1];
+                  if(nextCol){
+                    colInfo={ table, colgroup, colIndex:cellIndex, handleType:"split", axis:"col", cursor:"col-resize" };
+                  }
+                }
+              }
+            }
+          }
         }
-        const nextCol=colgroup.children[cellIndex+1];
-        if(!nextCol) return null;
-        return { table, colgroup, colIndex:cellIndex, handleType:"split" };
+        if(withinRow){
+          const row=cell.parentNode && cell.parentNode.nodeType===1 ? cell.parentNode : null;
+          if(row && typeof row.rowIndex==="number"){
+            const rows=table.rows ? Array.prototype.slice.call(table.rows) : [];
+            const rowIndex=rows.indexOf(row);
+            if(rowIndex>=0){
+              const isLast=rowIndex===rows.length-1;
+              if(isLast){
+                rowInfo={ table, row, rowIndex, handleType:"edge", axis:"row", cursor:"ns-resize" };
+              } else {
+                const nextRow=rows[rowIndex+1];
+                if(nextRow){
+                  rowInfo={ table, row, rowIndex, nextRow, handleType:"split", axis:"row", cursor:"ns-resize" };
+                }
+              }
+            }
+          }
+        }
+        if(colInfo && rowInfo){
+          const colDistance=Math.abs(rect.right - event.clientX);
+          const rowDistance=Math.abs(rect.bottom - event.clientY);
+          return colDistance<=rowDistance ? colInfo : rowInfo;
+        }
+        return colInfo || rowInfo || null;
       }
       function onMouseMove(event){
         if(active){
@@ -3683,6 +3720,14 @@
         if(info){ handleHover(info); }
         else if(hover){ clearHover(); }
       }
+      function readRowHeight(row){
+        if(!row) return 0;
+        const rect=row.getBoundingClientRect();
+        if(rect && rect.height) return rect.height;
+        const styleHeight=parseFloat(row.style.height);
+        if(styleHeight && !Number.isNaN(styleHeight)) return styleHeight;
+        return MIN_HEIGHT;
+      }
       function readColumnWidth(table, colgroup, index){
         const col=colgroup.children[index];
         if(!col) return 0;
@@ -3691,29 +3736,59 @@
         return measureColumn(table, index);
       }
       function prepareActive(info, event){
-        const col=info.colgroup.children[info.colIndex];
+        if(info.axis==="row"){
+          const mode=info.handleType || "split";
+          const startHeight=readRowHeight(info.row);
+          if(!startHeight) return null;
+          const rect=info.row.getBoundingClientRect ? info.row.getBoundingClientRect() : null;
+          const measuredHeight=rect && rect.height ? rect.height : startHeight;
+          const state={
+            ctx,
+            axis:"row",
+            mode,
+            table:info.table,
+            row:info.row,
+            startHeight,
+            currentHeight:measuredHeight,
+            startY:event.clientY,
+            lastY:event.clientY,
+            changed:false,
+            cursor:info.cursor || "ns-resize"
+          };
+          if(mode==="split" && info.nextRow){
+            state.nextRow=info.nextRow;
+          }
+          applyBodyDragCursor(state.cursor);
+          applyRootResizeCursor(state.cursor);
+          return state;
+        }
+        const colgroup=info.colgroup;
+        if(!colgroup) return null;
+        const col=colgroup.children[info.colIndex];
         if(!col) return null;
         const mode=info.handleType || "split";
         const widths=[];
-        for(let i=0;i<info.colgroup.children.length;i++){
-          const w=readColumnWidth(info.table, info.colgroup, i);
+        for(let i=0;i<colgroup.children.length;i++){
+          const w=readColumnWidth(info.table, colgroup, i);
           if(!w){ return null; }
           widths.push(w);
         }
         const startWidth=widths[info.colIndex];
         const state={
           ctx,
+          axis:"col",
           mode,
           table:info.table,
-          colgroup:info.colgroup,
+          colgroup,
           col,
           startWidth,
           startX:event.clientX,
           changed:false,
-          widths
+          widths,
+          cursor:info.cursor || "col-resize"
         };
         if(mode==="split"){
-          const nextCol=info.colgroup.children[info.colIndex+1];
+          const nextCol=colgroup.children[info.colIndex+1];
           if(!nextCol) return null;
           const nextWidth=widths[info.colIndex+1];
           if(!nextWidth) return null;
@@ -3732,9 +3807,208 @@
             info.table.style.width=Math.max(MIN_WIDTH, Math.round(state.total))+"px";
           }
         }
-        applyBodyDragCursor();
-        applyRootResizeCursor();
+        applyBodyDragCursor(state.cursor);
+        applyRootResizeCursor(state.cursor);
         return state;
+      }
+      function ensureCellMetrics(cell){
+        if(!cell) return null;
+        if(cell.__weditorRowMetrics) return cell.__weditorRowMetrics;
+        const doc=cell.ownerDocument || document;
+        const win=doc.defaultView || window;
+        let padTop=0, padBottom=0, borderTop=0, borderBottom=0, lineHeight="", boxSizing="";
+        if(win && win.getComputedStyle){
+          try {
+            const computed=win.getComputedStyle(cell);
+            if(computed){
+              padTop=parseFloat(computed.paddingTop)||0;
+              padBottom=parseFloat(computed.paddingBottom)||0;
+              borderTop=parseFloat(computed.borderTopWidth)||0;
+              borderBottom=parseFloat(computed.borderBottomWidth)||0;
+              boxSizing=computed.boxSizing||"";
+              const lh=(computed.lineHeight||"").trim();
+              if(lh && lh!=="normal" && lh!=="inherit" && lh!=="initial") lineHeight=lh;
+            }
+          } catch(err){
+            padTop=padTop||0;
+            padBottom=padBottom||0;
+            borderTop=borderTop||0;
+            borderBottom=borderBottom||0;
+            lineHeight=lineHeight||"";
+            boxSizing=boxSizing||"";
+          }
+        }
+        const childrenMetrics=[];
+        const children=cell && cell.children ? cell.children : null;
+        if(children && win && win.getComputedStyle){
+          for(let i=0;i<children.length;i++){
+            const child=children[i];
+            if(!child || child.nodeType!==1) continue;
+            let marginTop=0, marginBottom=0, childLineHeight="";
+            try {
+              const childComputed=win.getComputedStyle(child);
+              if(childComputed){
+                marginTop=parseFloat(childComputed.marginTop)||0;
+                marginBottom=parseFloat(childComputed.marginBottom)||0;
+                const clh=(childComputed.lineHeight||"").trim();
+                if(clh && clh!=="normal" && clh!=="inherit" && clh!=="initial") childLineHeight=clh;
+              }
+            } catch(err){
+              marginTop=marginTop||0;
+              marginBottom=marginBottom||0;
+              childLineHeight=childLineHeight||"";
+            }
+            childrenMetrics.push({ el:child, marginTop, marginBottom, lineHeight:childLineHeight });
+          }
+        }
+        const metrics={ padTop, padBottom, borderTop, borderBottom, lineHeight, boxSizing, children:childrenMetrics };
+        cell.__weditorRowMetrics=metrics;
+        return metrics;
+      }
+      function formatPixels(value){
+        const safe=Math.max(0, Number.isFinite(value)?value:0);
+        if(!safe) return "0px";
+        const rounded=Math.round(safe*100)/100;
+        return rounded+"px";
+      }
+      function applyCellPadding(cell, top, bottom){
+        if(!cell || !cell.style) return;
+        cell.style.paddingTop=formatPixels(top);
+        cell.style.paddingBottom=formatPixels(bottom);
+      }
+      function restoreCellPadding(cell, metrics){
+        if(!cell || !cell.style || !metrics) return;
+        cell.style.paddingTop=formatPixels(metrics.padTop);
+        cell.style.paddingBottom=formatPixels(metrics.padBottom);
+      }
+      function restoreChildMargins(cell, metrics){
+        if(!cell || !metrics || !metrics.children) return;
+        const list=metrics.children;
+        for(let i=0;i<list.length;i++){
+          const info=list[i];
+          const el=info && info.el;
+          if(!el || !el.style) continue;
+          el.style.marginTop=formatPixels(info.marginTop);
+          el.style.marginBottom=formatPixels(info.marginBottom);
+          if(info.lineHeight){ el.style.lineHeight=info.lineHeight; }
+        }
+      }
+      function adjustChildMargins(cell, metrics, allowance){
+        if(!cell || !metrics || !metrics.children || metrics.children.length===0) return 0;
+        const list=metrics.children;
+        let totalBase=0;
+        for(let i=0;i<list.length;i++){
+          const info=list[i];
+          if(!info) continue;
+          totalBase+=Math.max(0, info.marginTop||0)+Math.max(0, info.marginBottom||0);
+        }
+        if(totalBase<=0){
+          restoreChildMargins(cell, metrics);
+          return 0;
+        }
+        const safeAllowance=Math.max(0, Number.isFinite(allowance)?allowance:0);
+        if(safeAllowance>=totalBase){
+          restoreChildMargins(cell, metrics);
+          return totalBase;
+        }
+        let used=0;
+        const scale=safeAllowance>0 ? safeAllowance/totalBase : 0;
+        for(let i=0;i<list.length;i++){
+          const info=list[i];
+          const el=info && info.el;
+          if(!el || !el.style) continue;
+          const baseTop=Math.max(0, info.marginTop||0);
+          const baseBottom=Math.max(0, info.marginBottom||0);
+          let top=0, bottom=0;
+          if(scale>0){
+            top=Math.floor(baseTop*scale);
+            bottom=Math.floor(baseBottom*scale);
+          }
+          el.style.marginTop=formatPixels(top);
+          el.style.marginBottom=formatPixels(bottom);
+          used+=top+bottom;
+        }
+        if(list.length>0 && used!==safeAllowance){
+          const diff=Math.round(safeAllowance-used);
+          if(diff!==0){
+            for(let i=0;i<list.length;i++){
+              const info=list[i];
+              const el=info && info.el;
+              if(!el || !el.style) continue;
+              const current=parseFloat(el.style.marginBottom)||0;
+              const adjusted=Math.max(0, current+diff);
+              el.style.marginBottom=formatPixels(adjusted);
+              used+=adjusted-current;
+              break;
+            }
+          }
+        }
+        return Math.min(used, safeAllowance);
+      }
+      function setRowSize(row, value){
+        if(!row) return;
+        const finalValue=Math.max(MIN_HEIGHT, Math.round(value));
+        const px=finalValue+"px";
+        row.style.boxSizing="border-box";
+        row.style.height=px;
+        row.style.minHeight=px;
+        const cells=row.cells || [];
+        for(let i=0;i<cells.length;i++){
+          const cell=cells[i];
+          if(!cell || !cell.style) continue;
+          const metrics=ensureCellMetrics(cell);
+          const basePadTop=metrics?metrics.padTop:0;
+          const basePadBottom=metrics?metrics.padBottom:0;
+          const basePaddingTotal=basePadTop+basePadBottom;
+          const borderTotal=metrics?metrics.borderTop+metrics.borderBottom:0;
+          const spaceForContent=Math.max(0, finalValue - borderTotal);
+          let padTop=basePadTop;
+          let padBottom=basePadBottom;
+          let lineHeightValue="";
+          if(metrics && metrics.lineHeight){ lineHeightValue=metrics.lineHeight; }
+          cell.style.boxSizing="border-box";
+          cell.style.overflow="hidden";
+          if(spaceForContent < basePaddingTotal + MIN_HEIGHT){
+            const availableForPadding=Math.max(0, spaceForContent - MIN_HEIGHT);
+            if(basePaddingTotal>0){
+              const scale=availableForPadding/basePaddingTotal;
+              padTop=Math.floor(basePadTop*scale);
+              padBottom=Math.floor(basePadBottom*scale);
+              let used=padTop+padBottom;
+              if(used<availableForPadding){
+                const remainder=Math.round(availableForPadding-used);
+                if(basePadTop>=basePadBottom){ padTop+=remainder; }
+                else { padBottom+=remainder; }
+              } else if(used>availableForPadding){
+                const overflow=used-availableForPadding;
+                if(padTop>=padBottom){ padTop=Math.max(0, padTop-overflow); }
+                else { padBottom=Math.max(0, padBottom-overflow); }
+              }
+            } else {
+              padTop=0;
+              padBottom=0;
+            }
+            const remainingAfterPadding=Math.max(0, spaceForContent - (padTop+padBottom));
+            const marginAllowance=Math.max(0, remainingAfterPadding - MIN_HEIGHT);
+            const marginUsed=adjustChildMargins(cell, metrics, marginAllowance);
+            const remainingAfterMargins=Math.max(0, remainingAfterPadding - marginUsed);
+            const contentHeight=Math.max(MIN_HEIGHT, remainingAfterMargins);
+            cell.style.lineHeight=formatPixels(contentHeight);
+            applyCellPadding(cell, padTop, padBottom);
+          } else {
+            cell.style.lineHeight=lineHeightValue;
+            restoreCellPadding(cell, metrics);
+            restoreChildMargins(cell, metrics);
+          }
+          cell.style.height=px;
+          cell.style.minHeight=px;
+        }
+      }
+      function applyRowHeights(state, height, nextHeight){
+        setRowSize(state.row, height);
+        if(state.mode!="edge" && state.nextRow && typeof nextHeight==="number"){
+          setRowSize(state.nextRow, nextHeight);
+        }
       }
       function applyWidths(state, width, nextWidth){
         if(state.mode==="edge"){
@@ -3750,42 +4024,56 @@
       }
       function onDrag(event){
         if(!active) return;
-        const delta=event.clientX - active.startX;
-        const min=MIN_WIDTH;
-        if(active.mode==="edge"){
-          let newWidth=active.startWidth + delta;
-          if(newWidth<min) newWidth=min;
-          applyWidths(active, newWidth);
+        if(active.axis==="row"){
+          const delta=event.clientY - active.lastY;
+          if(!Number.isFinite(delta)) return;
+          const min=MIN_HEIGHT;
+          let newHeight=active.currentHeight + delta;
+          if(newHeight<min) newHeight=min;
+          applyRowHeights(active, newHeight);
+          active.currentHeight=readRowHeight(active.row);
+          active.lastY=event.clientY;
         } else {
-          let newWidth=active.startWidth + delta;
-          let newNext=active.nextWidth - delta;
-          if(newWidth<min){ newWidth=min; newNext=active.total-newWidth; }
-          if(newNext<min){ newNext=min; newWidth=active.total-newNext; }
-          newWidth=Math.max(min, newWidth);
-          newNext=Math.max(min, newNext);
-          if(newWidth+newNext!==active.total){
-            const diff=active.total - (newWidth+newNext);
-            newNext+=diff;
+          const delta=event.clientX - active.startX;
+          const min=MIN_WIDTH;
+          if(active.mode==="edge"){
+            let newWidth=active.startWidth + delta;
+            if(newWidth<min) newWidth=min;
+            applyWidths(active, newWidth);
+          } else {
+            let newWidth=active.startWidth + delta;
+            let newNext=active.nextWidth - delta;
+            if(newWidth<min){ newWidth=min; newNext=active.total-newWidth; }
+            if(newNext<min){ newNext=min; newWidth=active.total-newNext; }
+            newWidth=Math.max(min, newWidth);
+            newNext=Math.max(min, newNext);
+            if(newWidth+newNext!==active.total){
+              const diff=active.total - (newWidth+newNext);
+              newNext+=diff;
+            }
+            applyWidths(active, newWidth, newNext);
           }
-          applyWidths(active, newWidth, newNext);
         }
         active.changed=true;
         event.preventDefault();
       }
       function finishResize(){
         if(!active) return;
+        const state=active;
         doc.removeEventListener("mousemove", onDrag, true);
         doc.removeEventListener("mouseup", onMouseUp, true);
-        const changed=active.changed;
-        const ctxRef=active.ctx;
+        const changed=state.changed;
+        const ctxRef=state.ctx;
         const instRef=ctxRef ? ctxRef.inst : null;
+        const axis=state.axis || "col";
         active=null;
         hover=null;
         restoreBodyCursor();
         restoreRootCursor();
         if(changed && ctxRef){
           const target=ctxRef.getRecordTarget ? ctxRef.getRecordTarget(instRef) : (instRef ? instRef.el : null);
-          if(ctxRef.record) ctxRef.record(instRef, target);
+          const label=axis==="row" ? "Resize Table Row" : "Resize Table Column";
+          if(ctxRef.record) ctxRef.record(instRef, target, { label });
           if(ctxRef.onChange) ctxRef.onChange(instRef, target);
         }
       }
