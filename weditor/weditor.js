@@ -1756,6 +1756,332 @@
     }
     return { open };
   })();
+  const TableResizer=(function(){
+    const MIN_WIDTH=48;
+    const HIT_ZONE=6;
+    function firstRowWithCells(table){
+      if(!table || !table.rows) return null;
+      for(let i=0;i<table.rows.length;i++){
+        const row=table.rows[i];
+        if(row && row.cells && row.cells.length){ return row; }
+      }
+      return null;
+    }
+    function ensureColGroup(table){
+      if(!table || table.nodeType!==1) return null;
+      const doc=table.ownerDocument || document;
+      const row=firstRowWithCells(table);
+      const colCount=row && row.cells ? row.cells.length : 0;
+      if(colCount<=0) return null;
+      let colgroup=null;
+      const existing=table.getElementsByTagName("colgroup");
+      for(let i=0;i<existing.length;i++){
+        if(existing[i].parentNode===table){ colgroup=existing[i]; break; }
+      }
+      if(!colgroup){
+        colgroup=doc.createElement("colgroup");
+        if(table.firstChild) table.insertBefore(colgroup, table.firstChild);
+        else table.appendChild(colgroup);
+      }
+      while(colgroup.children.length>colCount){ colgroup.removeChild(colgroup.lastChild); }
+      while(colgroup.children.length<colCount){
+        const col=doc.createElement("col");
+        col.style.width="inherit";
+        colgroup.appendChild(col);
+      }
+      for(let c=0;c<colgroup.children.length;c++){
+        const col=colgroup.children[c];
+        if(!col.style.width){ col.style.width="inherit"; }
+      }
+      if(!table.style.tableLayout) table.style.tableLayout="fixed";
+      if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
+      return colgroup;
+    }
+    function scanTables(root){
+      if(!root) return;
+      const tables=root.querySelectorAll ? root.querySelectorAll("table") : [];
+      for(let i=0;i<tables.length;i++){ ensureColGroup(tables[i]); }
+    }
+    function findTables(node){
+      const list=[];
+      if(!node) return list;
+      if(node.nodeType===1){
+        if(node.tagName && node.tagName.toLowerCase()==="table"){ list.push(node); }
+        const nested=node.querySelectorAll ? node.querySelectorAll("table") : [];
+        for(let i=0;i<nested.length;i++){ list.push(nested[i]); }
+      }
+      return list;
+    }
+    function getColumnWidth(table, index){
+      if(!table) return 0;
+      const rows=table.rows;
+      if(rows){
+        for(let i=0;i<rows.length;i++){
+          const row=rows[i];
+          if(!row || !row.cells) continue;
+          const cell=row.cells[index];
+          if(cell){
+            const rect=cell.getBoundingClientRect();
+            if(rect && rect.width){ return rect.width; }
+          }
+        }
+      }
+      const colgroup=table.querySelector ? table.querySelector("colgroup") : null;
+      if(colgroup && colgroup.children[index]){
+        const raw=parseFloat(colgroup.children[index].style.width);
+        if(isFinite(raw) && raw>0) return raw;
+      }
+      const tableRect=table.getBoundingClientRect ? table.getBoundingClientRect() : null;
+      if(tableRect && tableRect.width && tableRect.width>0 && index>=0){
+        const columns=Math.max(1, colgroup ? colgroup.children.length : 1);
+        return tableRect.width/columns;
+      }
+      return 0;
+    }
+    function boundaryFromTable(table, index){
+      if(!table) return null;
+      const rows=table.rows;
+      if(rows){
+        for(let i=0;i<rows.length;i++){
+          const row=rows[i];
+          if(!row || !row.cells) continue;
+          const cell=row.cells[index];
+          if(cell){
+            const rect=cell.getBoundingClientRect();
+            if(rect) return rect.right;
+          }
+        }
+      }
+      return null;
+    }
+    function createOverlay(editor){
+      const doc=editor.ownerDocument || document;
+      const overlay=doc.createElement("div");
+      overlay.setAttribute("data-weditor-table-overlay","1");
+      overlay.style.position="absolute";
+      overlay.style.pointerEvents="none";
+      overlay.style.display="none";
+      overlay.style.zIndex="6";
+      overlay.style.top="0";
+      overlay.style.left="0";
+      overlay.style.width="3px";
+      const line=doc.createElement("div");
+      line.style.width="3px";
+      line.style.height="100%";
+      line.style.background=WCfg.UI.brand;
+      overlay.appendChild(line);
+      const label=doc.createElement("div");
+      label.style.position="absolute";
+      label.style.left="50%";
+      label.style.transform="translate(-50%, -8px)";
+      label.style.background=WCfg.UI.brand;
+      label.style.color="#fff";
+      label.style.font="11px/1.4 Segoe UI,system-ui";
+      label.style.padding="2px 6px";
+      label.style.borderRadius="6px";
+      label.style.boxShadow="0 2px 6px rgba(0,0,0,.18)";
+      label.style.whiteSpace="nowrap";
+      label.style.pointerEvents="none";
+      overlay.appendChild(label);
+      return { overlay, label };
+    }
+    function analyzeEvent(editor, ev){
+      if(!ev || !ev.target || !editor.contains(ev.target)) return null;
+      const cell=ev.target.closest ? ev.target.closest("td,th") : null;
+      if(!cell || !editor.contains(cell)) return null;
+      if(cell.colSpan && cell.colSpan>1) return null;
+      const table=cell.closest ? cell.closest("table") : null;
+      if(!table || !editor.contains(table)) return null;
+      const colgroup=ensureColGroup(table);
+      if(!colgroup) return null;
+      const colIndex=cell.cellIndex;
+      if(typeof colIndex!="number" || colIndex<0) return null;
+      if(colIndex>=colgroup.children.length-1) return null;
+      const rect=cell.getBoundingClientRect();
+      if(!rect) return null;
+      const boundary=rect.right;
+      const distance=Math.abs(ev.clientX - boundary);
+      if(distance>HIT_ZONE) return null;
+      return { table, colgroup, colIndex, boundary };
+    }
+    function enable(editor, commit){
+      if(!editor || editor.__weditorTableResizer){
+        if(editor && commit) editor.__weditorTableResizerCommit = commit;
+        return;
+      }
+      editor.__weditorTableResizer = true;
+      editor.__weditorTableResizerCommit = typeof commit==="function" ? commit : null;
+      const computed=window.getComputedStyle(editor);
+      if(computed.position === "static") editor.style.position="relative";
+      const parts=createOverlay(editor);
+      const overlay=parts.overlay;
+      const label=parts.label;
+      editor.appendChild(overlay);
+      scanTables(editor);
+      let hoverInfo=null;
+      let active=null;
+      let raf=null;
+      let prevUserSelect="";
+      function lockSelection(){
+        const doc=editor.ownerDocument || document;
+        const body=doc && doc.body ? doc.body : null;
+        if(body){ prevUserSelect=body.style.userSelect||""; body.style.userSelect="none"; }
+      }
+      function unlockSelection(){
+        const doc=editor.ownerDocument || document;
+        const body=doc && doc.body ? doc.body : null;
+        if(body) body.style.userSelect=prevUserSelect;
+      }
+      function hideOverlay(){
+        if(active) return;
+        overlay.style.display="none";
+        label.textContent="";
+        hoverInfo=null;
+        editor.style.cursor="";
+      }
+      function updateOverlayPosition(table, clientX){
+        if(!table || !editor.contains(table)){ overlay.style.display="none"; return; }
+        const tableRect=table.getBoundingClientRect();
+        const hostRect=editor.getBoundingClientRect();
+        if(!tableRect || !hostRect){ overlay.style.display="none"; return; }
+        const clientLeft=editor.clientLeft||0;
+        const clientTop=editor.clientTop||0;
+        const left=clientX - hostRect.left + editor.scrollLeft - clientLeft;
+        const top=tableRect.top - hostRect.top + editor.scrollTop - clientTop;
+        overlay.style.transform="translate("+Math.round(left-1)+"px,"+Math.round(top)+"px)";
+        overlay.style.height=Math.max(20, Math.round(tableRect.height))+"px";
+        overlay.style.display="block";
+      }
+      function showHover(info){
+        hoverInfo=info;
+        editor.style.cursor="col-resize";
+        const width=getColumnWidth(info.table, info.colIndex);
+        label.textContent = width?Math.round(width)+"px":"";
+        updateOverlayPosition(info.table, info.boundary);
+      }
+      function onPointerMove(ev){
+        if(active){ return; }
+        const info=analyzeEvent(editor, ev);
+        if(info){ showHover(info); }
+        else { hideOverlay(); }
+      }
+      function scheduleActivePosition(){
+        if(!active) return;
+        if(raf) cancelAnimationFrame(raf);
+        raf=requestAnimationFrame(function(){
+          if(!active) return;
+          const boundary=boundaryFromTable(active.table, active.colIndex);
+          const fallback=active.startBoundary + (active.currentLeft - active.startLeft);
+          const clientX=(boundary!=null)?boundary:fallback;
+          label.textContent=Math.round(active.currentLeft)+"px";
+          updateOverlayPosition(active.table, clientX);
+        });
+      }
+      function onActiveMove(ev){
+        if(!active) return;
+        ev.preventDefault();
+        const delta=ev.clientX - active.startX;
+        let newLeft=active.startLeft + delta;
+        let newRight=active.startRight - delta;
+        if(newLeft<MIN_WIDTH){
+          const diff=MIN_WIDTH - newLeft;
+          newLeft=MIN_WIDTH;
+          newRight-=diff;
+        }
+        if(newRight<MIN_WIDTH){
+          const diff=MIN_WIDTH - newRight;
+          newRight=MIN_WIDTH;
+          newLeft-=diff;
+          if(newLeft<MIN_WIDTH) newLeft=MIN_WIDTH;
+        }
+        if(!isFinite(newLeft) || newLeft<=0 || !isFinite(newRight) || newRight<=0){ return; }
+        active.leftCol.style.width=Math.round(newLeft)+"px";
+        active.rightCol.style.width=Math.round(newRight)+"px";
+        active.currentLeft=newLeft;
+        if(Math.abs(newLeft - active.startLeft)>0.5) active.changed=true;
+        scheduleActivePosition();
+      }
+      function endActive(ev){
+        if(!active) return;
+        if(ev) ev.preventDefault();
+        window.removeEventListener("pointermove", onActiveMove, true);
+        window.removeEventListener("pointerup", endActive, true);
+        if(raf){ cancelAnimationFrame(raf); raf=null; }
+        if(active.captureTarget && typeof active.captureTarget.releasePointerCapture==="function"){ try{ active.captureTarget.releasePointerCapture(active.pointerId); } catch(err){}
+        }
+        unlockSelection();
+        const changed=active.changed;
+        active=null;
+        overlay.style.display="none";
+        label.textContent="";
+        editor.style.cursor="";
+        if(changed && typeof editor.__weditorTableResizerCommit==="function"){ editor.__weditorTableResizerCommit(); }
+      }
+      function startActive(info, ev){
+        const cols=info.colgroup.children;
+        const leftCol=cols[info.colIndex];
+        const rightCol=cols[info.colIndex+1];
+        if(!leftCol || !rightCol) return;
+        const leftWidth=getColumnWidth(info.table, info.colIndex) || MIN_WIDTH;
+        const rightWidth=getColumnWidth(info.table, info.colIndex+1) || MIN_WIDTH;
+        active={
+          table:info.table,
+          colgroup:info.colgroup,
+          colIndex:info.colIndex,
+          leftCol:leftCol,
+          rightCol:rightCol,
+          startX:ev.clientX,
+          startLeft:leftWidth,
+          startRight:rightWidth,
+          startBoundary:info.boundary,
+          currentLeft:leftWidth,
+          changed:false,
+          pointerId:ev.pointerId,
+          captureTarget:ev.target
+        };
+        if(!active.leftCol || !active.rightCol){ active=null; return; }
+        lockSelection();
+        editor.style.cursor="col-resize";
+        scheduleActivePosition();
+        window.addEventListener("pointermove", onActiveMove, true);
+        window.addEventListener("pointerup", endActive, true);
+        if(ev.target && typeof ev.target.setPointerCapture==="function"){ try{ ev.target.setPointerCapture(ev.pointerId); } catch(err){} }
+      }
+      function onPointerDown(ev){
+        if(active) return;
+        const info=analyzeEvent(editor, ev);
+        if(!info) return;
+        ev.preventDefault();
+        startActive(info, ev);
+      }
+      editor.addEventListener("pointermove", onPointerMove);
+      editor.addEventListener("pointerdown", onPointerDown);
+      editor.addEventListener("pointerleave", function(){ if(!active) hideOverlay(); });
+      editor.addEventListener("scroll", function(){ if(active){ scheduleActivePosition(); } else { hideOverlay(); } }, { passive:true });
+      editor.addEventListener("blur", function(){ if(active) endActive(); else hideOverlay(); });
+      const observer=new MutationObserver(function(records){
+        for(let i=0;i<records.length;i++){
+          const record=records[i];
+          if(record.type==="childList"){
+            for(let j=0;j<record.addedNodes.length;j++){
+              const node=record.addedNodes[j];
+              const tables=findTables(node);
+              for(let k=0;k<tables.length;k++){ ensureColGroup(tables[k]); }
+            }
+            const target=record.target;
+            if(target && target.nodeType===1){
+              const table=target.closest ? target.closest("table") : null;
+              if(table) ensureColGroup(table);
+            }
+          }
+        }
+      });
+      observer.observe(editor, { childList:true, subtree:true });
+      editor.__weditorTableResizerObserver = observer;
+    }
+    function prepare(table){ ensureColGroup(table); }
+    return { enable, prepare };
+  })();
   const StateBinding=(function(){
     function parse(json){
       if(!json) return null;
@@ -4617,6 +4943,7 @@
           }
           table.appendChild(tr);
         }
+        TableResizer.prepare(table);
         const fragment=doc.createDocumentFragment();
         fragment.appendChild(table);
         const spacer=doc.createElement("p");
@@ -4777,6 +5104,12 @@
     this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
     this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
     HistoryManager.init(this, this.el);
+    TableResizer.enable(this.el, (function(self){
+      return function(){
+        HistoryManager.record(self, self.el, { label:"Resize Table Column", repeatable:false });
+        OutputBinding.syncDebounced(self);
+      };
+    })(this));
     this.el.__winst = this;
   };
   WEditorInstance.prototype.loadState=function(state){
