@@ -179,7 +179,7 @@
     return { clean };
   })();
   const Normalizer=(function(){
-    const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|HR|IMG)$/i;
+    const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|PRE|HR|IMG)$/i;
     function isBlock(el){ return el && el.nodeType===1 && BLOCK.test(el.tagName); }
     const WORD_LIST_RE=/mso-list\s*:/i;
     const WORD_CLASS_RE=/^mso/i;
@@ -2428,6 +2428,16 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const BLOCK_FORMATS=[
+      { label:"Normal (Paragraph)", value:"p" },
+      { label:"Heading 1", value:"h1" },
+      { label:"Heading 2", value:"h2" },
+      { label:"Heading 3", value:"h3" },
+      { label:"Heading 4", value:"h4" },
+      { label:"Heading 5", value:"h5" },
+      { label:"Block Quote", value:"blockquote" },
+      { label:"Code Block", value:"pre" }
+    ];
     const LINE_SPACING_OPTIONS=[
       { label:"Single", value:"1" },
       { label:"1.15", value:"1.15" },
@@ -2802,6 +2812,128 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
+    const BLOCK_TAGS={ P:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1, PRE:1 };
+    function findBlockNode(node, root){
+      while(node && node!==root){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toUpperCase();
+          if(tag==="CODE"){
+            const parent=node.parentNode;
+            if(parent && parent.tagName && parent.tagName.toUpperCase()==="PRE"){ return parent; }
+          }
+          if(BLOCK_TAGS[tag]){ return node; }
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function resolveBlockTag(node, root){
+      const block=findBlockNode(node, root);
+      if(!block) return null;
+      const tag=(block.tagName||"").toLowerCase();
+      return tag||null;
+    }
+    function getSelectionWithin(target){
+      if(!target || !target.ownerDocument) return null;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      let container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && container!==target && !target.contains(container)){ return null; }
+      return { sel, range };
+    }
+    function rangeCoversNode(range, node){
+      if(!range || !node) return false;
+      const doc=node.ownerDocument || document;
+      if(!doc || !doc.createRange) return false;
+      const test=doc.createRange();
+      try{ test.selectNodeContents(node); }
+      catch(err){ return false; }
+      const START_TO_START=getRangeConstant(range, "START_TO_START", 0);
+      const END_TO_END=getRangeConstant(range, "END_TO_END", 1);
+      const startCompare=range.compareBoundaryPoints(START_TO_START, test);
+      const endCompare=range.compareBoundaryPoints(END_TO_END, test);
+      return startCompare<=0 && endCompare>=0;
+    }
+    function wrapSelectionAsBlock(target, selection, tag){
+      if(!target || !selection || !tag) return false;
+      const { sel, range }=selection;
+      if(!range || range.collapsed) return false;
+      const doc=target.ownerDocument || document;
+      const upper=tag.toUpperCase();
+      const block=doc.createElement(upper);
+      let contents;
+      try{ contents=range.extractContents(); }
+      catch(err){ return false; }
+      if(!contents){ contents=doc.createDocumentFragment(); }
+      if(upper==="PRE"){
+        const code=doc.createElement("code");
+        const text=contents.textContent || "";
+        code.textContent=text.replace(/\u00a0/g, " ");
+        if(!code.textContent){ code.appendChild(doc.createTextNode("")); }
+        block.appendChild(code);
+      }else{
+        if(contents.childNodes && contents.childNodes.length){
+          block.appendChild(contents);
+        }else{
+          block.appendChild(doc.createTextNode(""));
+        }
+      }
+      range.insertNode(block);
+      sel.removeAllRanges();
+      const newRange=doc.createRange();
+      newRange.selectNodeContents(block);
+      sel.addRange(newRange);
+      Normalizer.fixStructure(target);
+      Breaks.ensurePlaceholders(target);
+      return true;
+    }
+    function applyBlockFormat(inst, ctx, tag){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const selection=getSelectionWithin(target); if(!selection) return false;
+      const normalized=(tag||"p").toString().trim().toLowerCase();
+      const desired=normalized ? normalized : "p";
+      const upper=desired.toUpperCase();
+      const attempts=[];
+      const { range }=selection;
+      const startBlock=findBlockNode(range.startContainer, target);
+      const endBlock=findBlockNode(range.endContainer, target);
+      if(startBlock && endBlock && startBlock===endBlock){
+        const currentTag=(startBlock.tagName||"").toLowerCase();
+        const coversEntire=rangeCoversNode(range, startBlock);
+        if(currentTag===desired && !coversEntire){ return true; }
+        if(!coversEntire){
+          const manual=wrapSelectionAsBlock(target, selection, desired);
+          if(manual) return true;
+        }
+      }
+      if(desired==="p"){ attempts.push("p"); }
+      attempts.push(upper, "<"+upper+">");
+      let success=false;
+      for(let i=0;i<attempts.length && !success;i++){
+        success=execCommand(target, "formatBlock", attempts[i], false);
+      }
+      if(success){
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+      }
+      return success;
+    }
+    function getBlockFormat(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return "p";
+      const selection=getSelectionWithin(target);
+      if(!selection){ return "p"; }
+      const { range }=selection;
+      const start=resolveBlockTag(range.startContainer, target);
+      if(start){ return start; }
+      const end=resolveBlockTag(range.endContainer, target);
+      if(end){ return end; }
+      const common=resolveBlockTag(range.commonAncestorContainer, target);
+      return common || "p";
+    }
     function normalizeLineSpacingValue(value){
       if(value===null || typeof value==="undefined") return null;
       const str=String(value).trim();
@@ -2811,6 +2943,7 @@
       if(!node || node.nodeType!==1) return false;
       const tag=(node.tagName||"").toUpperCase();
       if(tag==="P" || tag==="DIV" || tag==="LI" || tag==="BLOCKQUOTE" || tag==="DD" || tag==="DT") return true;
+      if(tag==="PRE") return true;
       if(tag==="TD" || tag==="TH") return true;
       if(tag.length===2 && tag.charAt(0)==="H" && tag.charAt(1)>="1" && tag.charAt(1)<="6") return true;
       return false;
@@ -2997,7 +3130,10 @@
       applyListStyle,
       applyCustomBullet,
       indentList,
-      outdentList
+      outdentList,
+      applyBlockFormat,
+      getBlockFormat,
+      BLOCK_FORMATS
     };
   })();
   const HistoryManager=(function(){
@@ -6284,6 +6420,29 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.blockStyle":{
+      label:"Heading",
+      kind:"select",
+      ariaLabel:"Select paragraph style",
+      placeholder:"Heading",
+      options:Formatting.BLOCK_FORMATS.map(function(item){ return { label:item.label, value:item.value }; }),
+      getValue:function(inst, ctx){ return Formatting.getBlockFormat(inst, ctx); },
+      run:function(inst, arg){
+        const value=(arg && arg.value) || (arg && arg.event && arg.event.target && arg.event.target.value);
+        if(!value) return;
+        const applied=Formatting.applyBlockFormat(inst, arg && arg.ctx, value);
+        if(!applied) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Paragraph Style",
+          repeatable:true,
+          repeatId:"blockStyle",
+          repeatArgs:{ value:value },
+          repeatLabel:"Paragraph Style"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.bold":{
       label:"B",
       kind:"button",
@@ -6583,7 +6742,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
@@ -6600,7 +6759,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
