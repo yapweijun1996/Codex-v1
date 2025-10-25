@@ -4231,6 +4231,60 @@
     }
     btn.appendChild(icon);
   }
+  function createIndentIcon(direction){
+    const ns="http://www.w3.org/2000/svg";
+    const svg=document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox","0 0 28 20");
+    svg.setAttribute("width","28");
+    svg.setAttribute("height","20");
+    svg.setAttribute("aria-hidden","true");
+    svg.style.display="block";
+    svg.style.flexShrink="0";
+    const arrow=document.createElementNS(ns, "path");
+    arrow.setAttribute("fill", WCfg.UI.brand);
+    if(direction==="increase"){
+      arrow.setAttribute("d","M3 4 L3 16 L10 10 Z");
+    } else {
+      arrow.setAttribute("d","M11 4 L11 16 L4 10 Z");
+    }
+    svg.appendChild(arrow);
+    const linesGroup=document.createElementNS(ns, "g");
+    linesGroup.setAttribute("fill", WCfg.UI.textDim);
+    const yPositions=[4,9.5,15];
+    const offsets=direction==="increase"?[13,16,13]:[9,9,9];
+    const widths=direction==="increase"?[12,10,12]:[18,18,18];
+    for(let i=0;i<yPositions.length;i++){
+      const rect=document.createElementNS(ns, "rect");
+      rect.setAttribute("x", String(offsets[i]));
+      rect.setAttribute("y", String(yPositions[i]));
+      rect.setAttribute("width", String(widths[i]));
+      rect.setAttribute("height","2.4");
+      rect.setAttribute("rx","1.2");
+      linesGroup.appendChild(rect);
+    }
+    if(direction==="increase"){
+      const block=document.createElementNS(ns, "rect");
+      block.setAttribute("x","6");
+      block.setAttribute("y","9.2");
+      block.setAttribute("width","3");
+      block.setAttribute("height","3.6");
+      block.setAttribute("rx","1.2");
+      block.setAttribute("fill", WCfg.UI.textDim);
+      linesGroup.appendChild(block);
+    }
+    svg.appendChild(linesGroup);
+    return svg;
+  }
+  function decorateIndentButton(btn, direction){
+    if(!btn) return;
+    btn.textContent="";
+    btn.style.display="inline-flex";
+    btn.style.alignItems="center";
+    btn.style.justifyContent="center";
+    btn.style.minWidth="40px";
+    btn.style.padding="6px 10px";
+    btn.appendChild(createIndentIcon(direction));
+  }
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -4393,6 +4447,46 @@
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
+    "format.decreaseIndent":{
+      label:"←",
+      kind:"button",
+      ariaLabel:"Decrease Indent (减少缩进 / 減少縮排)",
+      title:"Decrease Indent – Moves the paragraph closer to the left margin. (减少缩进，段落更靠左)",
+      decorate:function(btn){ decorateIndentButton(btn, "decrease"); },
+      run:function(inst, arg){
+        const changed=Formatting.outdentList(inst, arg && arg.ctx);
+        if(changed){
+          const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+          HistoryManager.record(inst, target, {
+            label:"Decrease Indent",
+            repeatable:true,
+            repeatId:"outdent",
+            repeatLabel:"Decrease Indent"
+          });
+          OutputBinding.syncDebounced(inst);
+        }
+      }
+    },
+    "format.increaseIndent":{
+      label:"→",
+      kind:"button",
+      ariaLabel:"Increase Indent (增加缩进 / 增加縮排)",
+      title:"Increase Indent – Moves the paragraph further from the left margin. (增加缩进，让段落更靠右)",
+      decorate:function(btn){ decorateIndentButton(btn, "increase"); },
+      run:function(inst, arg){
+        const changed=Formatting.indentList(inst, arg && arg.ctx);
+        if(changed){
+          const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+          HistoryManager.record(inst, target, {
+            label:"Increase Indent",
+            repeatable:true,
+            repeatId:"indent",
+            repeatLabel:"Increase Indent"
+          });
+          OutputBinding.syncDebounced(inst);
+        }
+      }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -4461,7 +4555,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
@@ -4476,7 +4570,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
