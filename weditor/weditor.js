@@ -546,6 +546,263 @@
     }
     return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize };
   })();
+  const TableResizer=(function(){
+    const EDGE_THRESHOLD=14;
+    const MIN_TABLE_WIDTH=160;
+    const MIN_CELL_WIDTH=64;
+    const stateMap=new WeakMap();
+    const outlineMap=new WeakMap();
+    const outlineOffsetMap=new WeakMap();
+    function findTable(node){
+      while(node){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toLowerCase();
+          if(tag==="table") return node;
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function getDirectColGroup(table){
+      if(!table) return null;
+      let child=table.firstElementChild;
+      while(child){
+        const tag=(child.tagName||"").toLowerCase();
+        if(tag==="colgroup") return child;
+        if(tag!=="colgroup" && tag!=="thead" && tag!=="tbody" && tag!=="tfoot") break;
+        child=child.nextElementSibling;
+      }
+      return null;
+    }
+    function ensureColGroup(table){
+      if(!table) return null;
+      const doc=table.ownerDocument||document;
+      let colgroup=getDirectColGroup(table);
+      if(!colgroup){
+        colgroup=doc.createElement("colgroup");
+        if(table.firstChild){ table.insertBefore(colgroup, table.firstChild); }
+        else { table.appendChild(colgroup); }
+      }
+      const row=(table.rows && table.rows.length) ? table.rows[0] : null;
+      const count=row && row.cells ? row.cells.length : 0;
+      if(count<=0) return colgroup;
+      while(colgroup.children.length<count){ colgroup.appendChild(doc.createElement("col")); }
+      while(colgroup.children.length>count){ colgroup.removeChild(colgroup.lastElementChild); }
+      return colgroup;
+    }
+    function syncColumnWidths(table){
+      if(!table) return;
+      const colgroup=ensureColGroup(table);
+      if(!colgroup) return;
+      const cols=colgroup.children;
+      if(!cols || !cols.length) return;
+      const row=(table.rows && table.rows.length) ? table.rows[0] : null;
+      if(!row || !row.cells || !row.cells.length) return;
+      const cellCount=Math.min(row.cells.length, cols.length);
+      let totalWidth=0;
+      const widths=[];
+      for(let i=0;i<cellCount;i++){
+        const rect=row.cells[i].getBoundingClientRect();
+        const width=rect && rect.width ? rect.width : 0;
+        widths.push(width);
+        totalWidth+=width;
+      }
+      if(totalWidth<=0) return;
+      for(let i=0;i<cols.length;i++){
+        const col=cols[i];
+        if(i===cols.length-1){
+          col.style.width="";
+          col.removeAttribute("width");
+          continue;
+        }
+        const width=widths[i] || (totalWidth/cols.length);
+        const percent=Math.max(0, (width/totalWidth)*100);
+        col.style.width=percent.toFixed(2)+"%";
+        col.removeAttribute("width");
+      }
+    }
+    function prepareTable(table){
+      if(!table || table.nodeType!==1) return;
+      table.setAttribute("data-weditor-resizable","1");
+      if(!table.style.tableLayout) table.style.tableLayout="fixed";
+      if(!table.style.maxWidth) table.style.maxWidth="100%";
+      if(!table.style.width) table.style.width="100%";
+      ensureColGroup(table);
+    }
+    function refreshAll(root){
+      if(!root || !root.querySelectorAll) return;
+      const tables=root.querySelectorAll("table");
+      for(let i=0;i<tables.length;i++){
+        prepareTable(tables[i]);
+        syncColumnWidths(tables[i]);
+      }
+    }
+    function storeOutline(table){
+      if(!table) return;
+      if(!outlineMap.has(table)) outlineMap.set(table, table.style.outline||"");
+      if(!outlineOffsetMap.has(table)) outlineOffsetMap.set(table, table.style.outlineOffset||"");
+    }
+    function restoreOutline(table){
+      if(!table) return;
+      if(outlineMap.has(table)){ table.style.outline=outlineMap.get(table); outlineMap.delete(table); }
+      else table.style.removeProperty("outline");
+      if(outlineOffsetMap.has(table)){ table.style.outlineOffset=outlineOffsetMap.get(table); outlineOffsetMap.delete(table); }
+      else table.style.removeProperty("outline-offset");
+    }
+    function applyHoverStyle(state, table){
+      const inst=state && state.inst;
+      if(!inst || !inst.el) return;
+      if(state.hover===table) return;
+      if(state.hover){
+        restoreOutline(state.hover);
+        state.hover.style.cursor="";
+      }
+      state.hover=table;
+      if(table){
+        storeOutline(table);
+        table.style.outline="1px dashed "+WCfg.UI.brand;
+        table.style.outlineOffset="2px";
+        table.style.cursor="col-resize";
+        inst.el.style.cursor="col-resize";
+      }else{
+        inst.el.style.cursor="";
+      }
+    }
+    function calcMinWidth(table){
+      const row=(table.rows && table.rows.length) ? table.rows[0] : null;
+      const cols=row && row.cells ? row.cells.length : 1;
+      return Math.max(MIN_TABLE_WIDTH, cols*MIN_CELL_WIDTH);
+    }
+    function calcMaxWidth(inst, table, fallback){
+      let available=0;
+      const root=inst && inst.el ? inst.el : null;
+      if(root){
+        available=root.clientWidth || 0;
+        if(!available){
+          const rect=root.getBoundingClientRect();
+          available=rect && rect.width ? rect.width : 0;
+        }
+        const doc=table && table.ownerDocument ? table.ownerDocument : document;
+        const view=doc.defaultView || window;
+        if(view && view.getComputedStyle){
+          const styles=view.getComputedStyle(root);
+          if(styles){
+            const padL=parseFloat(styles.paddingLeft||"0")||0;
+            const padR=parseFloat(styles.paddingRight||"0")||0;
+            available=Math.max(0, available-padL-padR);
+          }
+        }
+      }
+      if(!available && table && table.parentElement){
+        available=table.parentElement.clientWidth||0;
+      }
+      if(!available){
+        available=fallback||0;
+      }
+      return available>0 ? available : fallback||MIN_TABLE_WIDTH;
+    }
+    function updateActive(state, pointerEvent){
+      const active=state.active;
+      if(!active) return;
+      const delta=pointerEvent.clientX-active.startX;
+      let width=active.startWidth+delta;
+      width=Math.max(active.minWidth, Math.min(width, active.maxWidth));
+      active.table.style.width=width+"px";
+      active.table.style.maxWidth="100%";
+      if(state.options && typeof state.options.onResizeChange==="function"){
+        state.options.onResizeChange(active.table, width);
+      }
+    }
+    function endResize(state){
+      if(!state || !state.active) return;
+      const active=state.active;
+      const table=active.table;
+      const doc=table.ownerDocument||document;
+      if(state.docMove){
+        doc.removeEventListener("pointermove", state.docMove, true);
+        doc.removeEventListener("pointerup", state.docUp, true);
+        doc.removeEventListener("pointercancel", state.docUp, true);
+        doc.removeEventListener("pointerleave", state.docUp, true);
+      }
+      state.docMove=null;
+      state.docUp=null;
+      state.active=null;
+      syncColumnWidths(table);
+      const rect=table.getBoundingClientRect();
+      const newWidth=rect && rect.width ? rect.width : active.startWidth;
+      const changed=Math.abs(newWidth - active.startWidth) >= 0.5;
+      if(state.options && typeof state.options.onResizeEnd==="function"){
+        state.options.onResizeEnd(table, changed, newWidth);
+      }
+      applyHoverStyle(state, null);
+    }
+    function pointerMove(state, ev){
+      if(!state) return;
+      if(state.active){
+        if(ev.pointerId===state.active.pointerId){
+          updateActive(state, ev);
+          ev.preventDefault();
+        }
+        return;
+      }
+      const table=findTable(ev.target);
+      if(!table){
+        if(state.hover) applyHoverStyle(state, null);
+        return;
+      }
+      prepareTable(table);
+      const rect=table.getBoundingClientRect();
+      if(!rect || !rect.width){
+        applyHoverStyle(state, null);
+        return;
+      }
+      const withinY=ev.clientY>=rect.top && ev.clientY<=rect.bottom;
+      const nearRight=Math.abs(ev.clientX-rect.right)<=EDGE_THRESHOLD;
+      if(withinY && nearRight){ applyHoverStyle(state, table); }
+      else if(state.hover===table){ applyHoverStyle(state, null); }
+      else if(!nearRight){ applyHoverStyle(state, null); }
+    }
+    function pointerDown(state, ev){
+      if(!state || !state.hover) return;
+      const table=state.hover;
+      const rect=table.getBoundingClientRect();
+      const withinY=ev.clientY>=rect.top && ev.clientY<=rect.bottom;
+      const nearRight=Math.abs(ev.clientX-rect.right)<=EDGE_THRESHOLD;
+      if(!withinY || !nearRight) return;
+      ensureColGroup(table);
+      syncColumnWidths(table);
+      const minWidth=calcMinWidth(table);
+      const maxWidth=Math.max(minWidth, calcMaxWidth(state.inst, table, rect.width));
+      state.active={
+        inst:state.inst,
+        table,
+        pointerId:ev.pointerId,
+        startX:ev.clientX,
+        startWidth:rect.width,
+        minWidth,
+        maxWidth
+      };
+      const doc=table.ownerDocument||document;
+      state.docMove=function(e){ if(!state.active || e.pointerId!==state.active.pointerId) return; updateActive(state, e); e.preventDefault(); };
+      state.docUp=function(e){ if(!state.active || e.pointerId!==state.active.pointerId) return; endResize(state); };
+      doc.addEventListener("pointermove", state.docMove, true);
+      doc.addEventListener("pointerup", state.docUp, true);
+      doc.addEventListener("pointercancel", state.docUp, true);
+      doc.addEventListener("pointerleave", state.docUp, true);
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+    function attach(inst, options){
+      if(!inst || !inst.el) return;
+      if(stateMap.has(inst.el)) return;
+      const state={ inst, options:options||{}, hover:null, active:null, docMove:null, docUp:null };
+      stateMap.set(inst.el, state);
+      inst.el.addEventListener("pointermove", function(e){ pointerMove(state, e); });
+      inst.el.addEventListener("pointerleave", function(){ applyHoverStyle(state, null); });
+      inst.el.addEventListener("pointerdown", function(e){ pointerDown(state, e); });
+    }
+    return { prepareTable, syncColumnWidths, refreshAll, attach };
+  })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
     const FOOTER_BASE_STYLE="padding:0;border-top:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -4631,6 +4888,8 @@
         }
         Normalizer.fixStructure(target);
         Breaks.ensurePlaceholders(target);
+        TableResizer.prepareTable(table);
+        TableResizer.syncColumnWidths(table);
         const selection=win.getSelection ? win.getSelection() : window.getSelection();
         const firstCell=table.querySelector("td");
         if(firstCell && selection && doc.createRange){
@@ -4771,18 +5030,23 @@
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
     Breaks.ensurePlaceholders(this.el);
-    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
+    TableResizer.refreshAll(this.el);
+    this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); TableResizer.refreshAll(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
-    this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
+    this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); TableResizer.refreshAll(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
     this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
     HistoryManager.init(this, this.el);
+    TableResizer.attach(this, {
+      onResizeEnd:(function(self){ return function(_, changed){ if(!changed) return; HistoryManager.record(self, self.el, { label:"Resize Table", repeatable:false }); OutputBinding.syncDebounced(self); }; })(this)
+    });
     this.el.__winst = this;
   };
   WEditorInstance.prototype.loadState=function(state){
     const applied=StateBinding.apply(this, state);
     if(applied){
       Breaks.ensurePlaceholders(this.el);
+      TableResizer.refreshAll(this.el);
       OutputBinding.syncDebounced(this);
     }
     return applied;
