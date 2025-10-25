@@ -4557,6 +4557,56 @@
       }
       return { changed:changed, cell, table, hidden:true };
     }
+    function normalizeCellVerticalAlign(value){
+      const key=(value==null?"":String(value)).trim().toLowerCase();
+      if(key==="center") return "middle";
+      if(key==="middle"||key==="top"||key==="bottom") return key;
+      return null;
+    }
+    function readCellAlignment(cell){
+      if(!cell) return null;
+      const inline=normalizeCellVerticalAlign(cell.style ? cell.style.verticalAlign : null);
+      if(inline) return inline;
+      try{
+        const doc=cell.ownerDocument || document;
+        const win=doc.defaultView || window;
+        if(win && typeof win.getComputedStyle==="function"){
+          const computed=win.getComputedStyle(cell);
+          if(computed){
+            const norm=normalizeCellVerticalAlign(computed.verticalAlign);
+            if(norm) return norm;
+          }
+        }
+      }catch(err){ return null; }
+      return null;
+    }
+    function setCellVerticalAlign(inst, ctx, align){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const normalized=normalizeCellVerticalAlign(align);
+      let changed=false;
+      if(normalized){
+        if(cell.style.verticalAlign!==normalized){ cell.style.verticalAlign=normalized; changed=true; }
+      } else {
+        if(cell.style.verticalAlign){
+          cell.style.verticalAlign="";
+          if(cell.style.removeProperty) cell.style.removeProperty("vertical-align");
+          changed=true;
+        }
+      }
+      const table=cell.closest ? cell.closest("table") : null;
+      if(table){ TableResizer.ensureTable(table); }
+      return { changed, cell, table, align:normalized };
+    }
+    function getCellAlignment(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return null;
+      const cell=currentSelectionCell(target);
+      if(!cell) return null;
+      return { cell, align:readCellAlignment(cell) };
+    }
     function getState(inst, ctx){
       const target=resolveTarget(inst, ctx);
       if(!target) return null;
@@ -4564,7 +4614,7 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder };
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellVerticalAlign, getCellAlignment };
   })();
   const ListUI=(function(){
     function createSplitButton(options){
@@ -5590,6 +5640,109 @@
     }
     return { create };
   })();
+  const TableCellAlignUI=(function(){
+    const OPTIONS=[
+      { value:"top", label:"Top", aria:"Align selected cell content to the top", history:"Align Cell Top" },
+      { value:"middle", label:"Middle", aria:"Align selected cell content to the middle", history:"Align Cell Middle" },
+      { value:"bottom", label:"Bottom", aria:"Align selected cell content to the bottom", history:"Align Cell Bottom" }
+    ];
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      container.style.gap="8px";
+      const label=document.createElement("span");
+      label.textContent="Cell Align";
+      label.style.font="12px/1.4 Segoe UI,system-ui";
+      label.style.color=WCfg.UI.textDim;
+      label.setAttribute("aria-hidden","true");
+      const group=document.createElement("div");
+      group.style.display="inline-flex";
+      group.style.border="1px solid "+WCfg.UI.borderSubtle;
+      group.style.borderRadius="999px";
+      group.style.overflow="hidden";
+      group.style.background="#fff";
+      const buttons=[];
+      function setActive(value){
+        for(let i=0;i<buttons.length;i++){
+          const entry=buttons[i];
+          const active=entry.value===value;
+          entry.button.setAttribute("data-active", active?"1":"0");
+          entry.button.style.background = active?"#e6f2fb":"transparent";
+          entry.button.style.color = active?WCfg.UI.brand:WCfg.UI.textDim;
+          entry.button.style.fontWeight = active?"600":"500";
+        }
+      }
+      function refreshFromSelection(){
+        const state=TableStyler.getCellAlignment(inst, ctx);
+        if(state && state.align){
+          setActive(state.align);
+        } else {
+          setActive(null);
+        }
+      }
+      function applyAlign(option){
+        const result=TableStyler.setCellVerticalAlign(inst, ctx, option.value);
+        if(!result || !result.cell){
+          window.alert("Place the caret inside a table cell to change its alignment.");
+          return;
+        }
+        const alignValue=result && Object.prototype.hasOwnProperty.call(result, "align") ? result.align : option.value;
+        setActive(alignValue || null);
+        if(result.changed){
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, { label:option.history, repeatable:false });
+          OutputBinding.syncDebounced(inst);
+        }
+      }
+      for(let i=0;i<OPTIONS.length;i++){
+        const option=OPTIONS[i];
+        const btn=document.createElement("button");
+        btn.type="button";
+        btn.textContent=option.label;
+        btn.setAttribute("aria-label", option.aria);
+        btn.style.border="0";
+        btn.style.background="transparent";
+        btn.style.padding="6px 12px";
+        btn.style.font="12px/1.4 Segoe UI,system-ui";
+        btn.style.color=WCfg.UI.textDim;
+        btn.style.cursor="pointer";
+        btn.style.transition="background .15s ease, color .15s ease";
+        btn.setAttribute("data-active","0");
+        btn.addEventListener("mouseenter", function(){ if(btn.getAttribute("data-active")!=="1") btn.style.background="#f3f2f1"; });
+        btn.addEventListener("mouseleave", function(){ if(btn.getAttribute("data-active")!=="1") btn.style.background="transparent"; });
+        btn.addEventListener("click", function(e){ e.preventDefault(); applyAlign(option); });
+        group.appendChild(btn);
+        buttons.push({ value:option.value, button:btn });
+      }
+      const root=(ctx && ctx.area) ? ctx.area : inst ? inst.el : null;
+      const doc=root ? root.ownerDocument || document : document;
+      let rafId=null;
+      function scheduleRefresh(){
+        if(typeof window!=="undefined" && typeof window.requestAnimationFrame==="function"){
+          if(rafId!==null) return;
+          rafId=window.requestAnimationFrame(function(){ rafId=null; refreshFromSelection(); });
+        } else {
+          if(rafId!==null) return;
+          const timeoutFn = typeof setTimeout==="function" ? setTimeout : function(fn){ fn(); return null; };
+          rafId=timeoutFn(function(){ rafId=null; refreshFromSelection(); }, 50);
+        }
+      }
+      if(root){
+        root.addEventListener("keyup", scheduleRefresh);
+        root.addEventListener("mouseup", scheduleRefresh);
+        root.addEventListener("focusin", scheduleRefresh);
+      }
+      if(doc){
+        doc.addEventListener("selectionchange", scheduleRefresh);
+      }
+      container.appendChild(label);
+      container.appendChild(group);
+      refreshFromSelection();
+      return container;
+    }
+    return { create };
+  })();
   const LineSpacingUI=(function(){
     function normalize(value){
       if(value===null || typeof value==="undefined") return null;
@@ -6381,6 +6534,11 @@
       ariaLabel:"Table border color or visibility",
       render:function(inst, ctx){ return TableBorderUI.create(inst, ctx); }
     },
+    "table.cellVerticalAlign":{
+      kind:"custom",
+      ariaLabel:"Table cell vertical alignment",
+      render:function(inst, ctx){ return TableCellAlignUI.create(inst, ctx); }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -6428,7 +6586,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -6445,7 +6603,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
