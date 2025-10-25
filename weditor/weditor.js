@@ -3500,6 +3500,7 @@
   const TableResizer=(function(){
     const HANDLE_BUFFER=6;
     const MIN_WIDTH=10;
+    const MIN_HEIGHT=12;
     function firstBodyRow(table){
       if(!table) return null;
       const sections=[table.tHead, table.tBodies && table.tBodies[0], table.tFoot];
@@ -3606,9 +3607,10 @@
       const ctx={};
       ctx.inst=inst || null;
       ctx.root=root;
-      ctx.record = (options && typeof options.record==="function") ? options.record : function(instance, target){
+      ctx.record = (options && typeof options.record==="function") ? options.record : function(instance, target, detail){
         if(!instance) return;
-        HistoryManager.record(instance, target || (instance.el || null), { label:"Resize Table Column", repeatable:false });
+        const label=(detail && detail.label) ? detail.label : "Resize Table Column";
+        HistoryManager.record(instance, target || (instance.el || null), { label, repeatable:false });
       };
       ctx.onChange = (options && typeof options.onChange==="function") ? options.onChange : function(instance){
         if(instance) OutputBinding.syncDebounced(instance);
@@ -3619,9 +3621,9 @@
       let storedRootCursor=null;
       let storedBodyCursor=null;
       let storedBodySelect=null;
-      function applyRootResizeCursor(){
+      function applyRootResizeCursor(cursor){
         if(storedRootCursor===null){ storedRootCursor=root.style.cursor || ""; }
-        root.style.cursor="col-resize";
+        root.style.cursor=cursor || "col-resize";
       }
       function restoreRootCursor(){
         if(storedRootCursor!==null){
@@ -3629,11 +3631,11 @@
           storedRootCursor=null;
         }
       }
-      function applyBodyDragCursor(){
+      function applyBodyDragCursor(cursor){
         if(!doc || !doc.body) return;
         if(storedBodyCursor===null){ storedBodyCursor=doc.body.style.cursor || ""; }
         if(storedBodySelect===null){ storedBodySelect=doc.body.style.userSelect || ""; }
-        doc.body.style.cursor="col-resize";
+        doc.body.style.cursor=cursor || "col-resize";
         doc.body.style.userSelect="none";
       }
       function restoreBodyCursor(){
@@ -3649,30 +3651,65 @@
       function handleHover(info){
         if(!info || active) return;
         hover=info;
-        applyRootResizeCursor();
+        const cursor=info.cursor || (info.axis==="row"?"ns-resize":"col-resize");
+        applyRootResizeCursor(cursor);
       }
       function locateHandle(event){
         const cell=locateCell(root, event.target);
         if(!cell) return null;
         const table=cell.closest ? cell.closest("table") : null;
         if(!table || !root.contains(table)) return null;
-        const colgroup=ensureTable(table);
-        if(!colgroup) return null;
-        const colCount=colgroup.children.length;
-        if(colCount<1) return null;
-        const cellIndex=cell.cellIndex;
-        if(cellIndex<0 || cellIndex>=colCount) return null;
         const rect=cell.getBoundingClientRect();
         if(!rect) return null;
-        const edgeDistance=Math.abs(rect.right - event.clientX);
-        if(edgeDistance>HANDLE_BUFFER) return null;
-        const isLast=cellIndex===colCount-1;
-        if(isLast){
-          return { table, colgroup, colIndex:cellIndex, handleType:"edge" };
+        const withinColumn=Math.abs(rect.right - event.clientX) <= HANDLE_BUFFER;
+        const withinRow=Math.abs(rect.bottom - event.clientY) <= HANDLE_BUFFER;
+        if(!withinColumn && !withinRow) return null;
+        let colInfo=null;
+        let rowInfo=null;
+        if(withinColumn){
+          const colgroup=ensureTable(table);
+          if(colgroup){
+            const colCount=colgroup.children.length;
+            if(colCount>0){
+              const cellIndex=cell.cellIndex;
+              if(cellIndex>=0 && cellIndex<colCount){
+                const isLast=cellIndex===colCount-1;
+                if(isLast){
+                  colInfo={ table, colgroup, colIndex:cellIndex, handleType:"edge", axis:"col", cursor:"col-resize" };
+                } else {
+                  const nextCol=colgroup.children[cellIndex+1];
+                  if(nextCol){
+                    colInfo={ table, colgroup, colIndex:cellIndex, handleType:"split", axis:"col", cursor:"col-resize" };
+                  }
+                }
+              }
+            }
+          }
         }
-        const nextCol=colgroup.children[cellIndex+1];
-        if(!nextCol) return null;
-        return { table, colgroup, colIndex:cellIndex, handleType:"split" };
+        if(withinRow){
+          const row=cell.parentNode && cell.parentNode.nodeType===1 ? cell.parentNode : null;
+          if(row && typeof row.rowIndex==="number"){
+            const rows=table.rows ? Array.prototype.slice.call(table.rows) : [];
+            const rowIndex=rows.indexOf(row);
+            if(rowIndex>=0){
+              const isLast=rowIndex===rows.length-1;
+              if(isLast){
+                rowInfo={ table, row, rowIndex, handleType:"edge", axis:"row", cursor:"ns-resize" };
+              } else {
+                const nextRow=rows[rowIndex+1];
+                if(nextRow){
+                  rowInfo={ table, row, rowIndex, nextRow, handleType:"split", axis:"row", cursor:"ns-resize" };
+                }
+              }
+            }
+          }
+        }
+        if(colInfo && rowInfo){
+          const colDistance=Math.abs(rect.right - event.clientX);
+          const rowDistance=Math.abs(rect.bottom - event.clientY);
+          return colDistance<=rowDistance ? colInfo : rowInfo;
+        }
+        return colInfo || rowInfo || null;
       }
       function onMouseMove(event){
         if(active){
@@ -3683,6 +3720,14 @@
         if(info){ handleHover(info); }
         else if(hover){ clearHover(); }
       }
+      function readRowHeight(row){
+        if(!row) return 0;
+        const rect=row.getBoundingClientRect();
+        if(rect && rect.height) return rect.height;
+        const styleHeight=parseFloat(row.style.height);
+        if(styleHeight && !Number.isNaN(styleHeight)) return styleHeight;
+        return MIN_HEIGHT;
+      }
       function readColumnWidth(table, colgroup, index){
         const col=colgroup.children[index];
         if(!col) return 0;
@@ -3691,29 +3736,55 @@
         return measureColumn(table, index);
       }
       function prepareActive(info, event){
-        const col=info.colgroup.children[info.colIndex];
+        if(info.axis==="row"){
+          const mode=info.handleType || "split";
+          const startHeight=readRowHeight(info.row);
+          if(!startHeight) return null;
+          const state={
+            ctx,
+            axis:"row",
+            mode,
+            table:info.table,
+            row:info.row,
+            startHeight,
+            startY:event.clientY,
+            changed:false,
+            cursor:info.cursor || "ns-resize"
+          };
+          if(mode==="split" && info.nextRow){
+            state.nextRow=info.nextRow;
+          }
+          applyBodyDragCursor(state.cursor);
+          applyRootResizeCursor(state.cursor);
+          return state;
+        }
+        const colgroup=info.colgroup;
+        if(!colgroup) return null;
+        const col=colgroup.children[info.colIndex];
         if(!col) return null;
         const mode=info.handleType || "split";
         const widths=[];
-        for(let i=0;i<info.colgroup.children.length;i++){
-          const w=readColumnWidth(info.table, info.colgroup, i);
+        for(let i=0;i<colgroup.children.length;i++){
+          const w=readColumnWidth(info.table, colgroup, i);
           if(!w){ return null; }
           widths.push(w);
         }
         const startWidth=widths[info.colIndex];
         const state={
           ctx,
+          axis:"col",
           mode,
           table:info.table,
-          colgroup:info.colgroup,
+          colgroup,
           col,
           startWidth,
           startX:event.clientX,
           changed:false,
-          widths
+          widths,
+          cursor:info.cursor || "col-resize"
         };
         if(mode==="split"){
-          const nextCol=info.colgroup.children[info.colIndex+1];
+          const nextCol=colgroup.children[info.colIndex+1];
           if(!nextCol) return null;
           const nextWidth=widths[info.colIndex+1];
           if(!nextWidth) return null;
@@ -3732,9 +3803,165 @@
             info.table.style.width=Math.max(MIN_WIDTH, Math.round(state.total))+"px";
           }
         }
-        applyBodyDragCursor();
-        applyRootResizeCursor();
+        applyBodyDragCursor(state.cursor);
+        applyRootResizeCursor(state.cursor);
         return state;
+      }
+      function ensureCellMetrics(cell){
+        if(!cell) return null;
+        if(cell.__weditorRowMetrics) return cell.__weditorRowMetrics;
+        const doc=cell.ownerDocument || document;
+        const win=doc.defaultView || window;
+        let padTop=0, padBottom=0, borderTop=0, borderBottom=0, lineHeight="", boxSizing="";
+        if(win && win.getComputedStyle){
+          try {
+            const computed=win.getComputedStyle(cell);
+            if(computed){
+              padTop=parseFloat(computed.paddingTop)||0;
+              padBottom=parseFloat(computed.paddingBottom)||0;
+              borderTop=parseFloat(computed.borderTopWidth)||0;
+              borderBottom=parseFloat(computed.borderBottomWidth)||0;
+              boxSizing=computed.boxSizing||"";
+              const lh=(computed.lineHeight||"").trim();
+              if(lh && lh!=="normal" && lh!=="inherit" && lh!=="initial") lineHeight=lh;
+            }
+          } catch(err){
+            padTop=padTop||0;
+            padBottom=padBottom||0;
+            borderTop=borderTop||0;
+            borderBottom=borderBottom||0;
+            lineHeight=lineHeight||"";
+            boxSizing=boxSizing||"";
+          }
+        }
+        const metrics={ padTop, padBottom, borderTop, borderBottom, lineHeight, boxSizing };
+        cell.__weditorRowMetrics=metrics;
+        return metrics;
+      }
+      function formatPixels(value){
+        const safe=Math.max(0, Number.isFinite(value)?value:0);
+        if(!safe) return "0px";
+        const rounded=Math.round(safe*100)/100;
+        return rounded+"px";
+      }
+      function applyCellPadding(cell, top, bottom){
+        if(!cell || !cell.style) return;
+        cell.style.paddingTop=formatPixels(top);
+        cell.style.paddingBottom=formatPixels(bottom);
+      }
+      function restoreCellPadding(cell, metrics){
+        if(!cell || !cell.style || !metrics) return;
+        cell.style.paddingTop=formatPixels(metrics.padTop);
+        cell.style.paddingBottom=formatPixels(metrics.padBottom);
+      }
+      function tightenCellChildren(cell, contentHeight){
+        if(!cell) return;
+        const doc=cell.ownerDocument || document;
+        const win=doc.defaultView || window;
+        const formatted=formatPixels(Math.max(MIN_HEIGHT, contentHeight));
+        const children=cell.children || [];
+        for(let i=0;i<children.length;i++){
+          const child=children[i];
+          if(!child || child.nodeType!==1) continue;
+          let display="";
+          if(win && win.getComputedStyle){
+            try {
+              const computed=win.getComputedStyle(child);
+              display=computed ? (computed.display||"") : "";
+            } catch(err){
+              display="";
+            }
+          }
+          if(display==="" || display==="inline") continue;
+          if(!child.__weditorRowChildMetrics){
+            child.__weditorRowChildMetrics={
+              marginTop:child.style.marginTop||"",
+              marginBottom:child.style.marginBottom||"",
+              lineHeight:child.style.lineHeight||""
+            };
+          }
+          child.style.marginTop="0px";
+          child.style.marginBottom="0px";
+          child.style.lineHeight=formatted;
+        }
+        if(cell.dataset) cell.dataset.weditorRowTight="1";
+      }
+      function restoreCellChildren(cell){
+        if(!cell) return;
+        const children=cell.children || [];
+        for(let i=0;i<children.length;i++){
+          const child=children[i];
+          if(!child || child.nodeType!==1 || !child.__weditorRowChildMetrics) continue;
+          const metrics=child.__weditorRowChildMetrics;
+          child.style.marginTop=metrics.marginTop;
+          child.style.marginBottom=metrics.marginBottom;
+          child.style.lineHeight=metrics.lineHeight;
+          delete child.__weditorRowChildMetrics;
+        }
+        if(cell.dataset && cell.dataset.weditorRowTight){ delete cell.dataset.weditorRowTight; }
+      }
+      function setRowSize(row, value){
+        if(!row) return;
+        const finalValue=Math.max(MIN_HEIGHT, Math.round(value));
+        const px=finalValue+"px";
+        row.style.boxSizing="border-box";
+        row.style.height=px;
+        row.style.minHeight=px;
+        const cells=row.cells || [];
+        for(let i=0;i<cells.length;i++){
+          const cell=cells[i];
+          if(!cell || !cell.style) continue;
+          const metrics=ensureCellMetrics(cell);
+          const basePadTop=metrics?metrics.padTop:0;
+          const basePadBottom=metrics?metrics.padBottom:0;
+          const basePaddingTotal=basePadTop+basePadBottom;
+          const borderTotal=metrics?metrics.borderTop+metrics.borderBottom:0;
+          const spaceForContent=Math.max(0, finalValue - borderTotal);
+          let padTop=basePadTop;
+          let padBottom=basePadBottom;
+          let lineHeightValue="";
+          if(metrics && metrics.lineHeight){ lineHeightValue=metrics.lineHeight; }
+          cell.style.boxSizing="border-box";
+          cell.style.overflow="hidden";
+          if(spaceForContent < basePaddingTotal + MIN_HEIGHT){
+            const availableForPadding=Math.max(0, spaceForContent - MIN_HEIGHT);
+            if(basePaddingTotal>0){
+              const scale=availableForPadding/basePaddingTotal;
+              padTop=Math.floor(basePadTop*scale);
+              padBottom=Math.floor(basePadBottom*scale);
+              let used=padTop+padBottom;
+              if(used<availableForPadding){
+                const remainder=Math.round(availableForPadding-used);
+                if(basePadTop>=basePadBottom){ padTop+=remainder; }
+                else { padBottom+=remainder; }
+              } else if(used>availableForPadding){
+                const overflow=used-availableForPadding;
+                if(padTop>=padBottom){ padTop=Math.max(0, padTop-overflow); }
+                else { padBottom=Math.max(0, padBottom-overflow); }
+              }
+            } else {
+              padTop=0;
+              padBottom=0;
+            }
+            const minimalContent=Math.min(MIN_HEIGHT, spaceForContent);
+            const contentHeight=Math.max(minimalContent, spaceForContent - (padTop+padBottom));
+            cell.style.lineHeight=formatPixels(contentHeight);
+            applyCellPadding(cell, padTop, padBottom);
+            tightenCellChildren(cell, contentHeight);
+          } else {
+            cell.style.lineHeight=lineHeightValue;
+            restoreCellPadding(cell, metrics);
+            restoreCellChildren(cell);
+          }
+          cell.style.height=px;
+          cell.style.minHeight=px;
+        }
+      }
+      function applyRowHeights(state, height, nextHeight){
+        setRowSize(state.row, height);
+        if(state.mode!="edge" && state.nextRow && typeof nextHeight==="number"){
+          setRowSize(state.nextRow, nextHeight);
+        }
       }
       function applyWidths(state, width, nextWidth){
         if(state.mode==="edge"){
@@ -3750,42 +3977,53 @@
       }
       function onDrag(event){
         if(!active) return;
-        const delta=event.clientX - active.startX;
-        const min=MIN_WIDTH;
-        if(active.mode==="edge"){
-          let newWidth=active.startWidth + delta;
-          if(newWidth<min) newWidth=min;
-          applyWidths(active, newWidth);
+        if(active.axis==="row"){
+          const delta=event.clientY - active.startY;
+          const min=MIN_HEIGHT;
+          let newHeight=active.startHeight + delta;
+          if(newHeight<min) newHeight=min;
+          applyRowHeights(active, newHeight);
         } else {
-          let newWidth=active.startWidth + delta;
-          let newNext=active.nextWidth - delta;
-          if(newWidth<min){ newWidth=min; newNext=active.total-newWidth; }
-          if(newNext<min){ newNext=min; newWidth=active.total-newNext; }
-          newWidth=Math.max(min, newWidth);
-          newNext=Math.max(min, newNext);
-          if(newWidth+newNext!==active.total){
-            const diff=active.total - (newWidth+newNext);
-            newNext+=diff;
+          const delta=event.clientX - active.startX;
+          const min=MIN_WIDTH;
+          if(active.mode==="edge"){
+            let newWidth=active.startWidth + delta;
+            if(newWidth<min) newWidth=min;
+            applyWidths(active, newWidth);
+          } else {
+            let newWidth=active.startWidth + delta;
+            let newNext=active.nextWidth - delta;
+            if(newWidth<min){ newWidth=min; newNext=active.total-newWidth; }
+            if(newNext<min){ newNext=min; newWidth=active.total-newNext; }
+            newWidth=Math.max(min, newWidth);
+            newNext=Math.max(min, newNext);
+            if(newWidth+newNext!==active.total){
+              const diff=active.total - (newWidth+newNext);
+              newNext+=diff;
+            }
+            applyWidths(active, newWidth, newNext);
           }
-          applyWidths(active, newWidth, newNext);
         }
         active.changed=true;
         event.preventDefault();
       }
       function finishResize(){
         if(!active) return;
+        const state=active;
         doc.removeEventListener("mousemove", onDrag, true);
         doc.removeEventListener("mouseup", onMouseUp, true);
-        const changed=active.changed;
-        const ctxRef=active.ctx;
+        const changed=state.changed;
+        const ctxRef=state.ctx;
         const instRef=ctxRef ? ctxRef.inst : null;
+        const axis=state.axis || "col";
         active=null;
         hover=null;
         restoreBodyCursor();
         restoreRootCursor();
         if(changed && ctxRef){
           const target=ctxRef.getRecordTarget ? ctxRef.getRecordTarget(instRef) : (instRef ? instRef.el : null);
-          if(ctxRef.record) ctxRef.record(instRef, target);
+          const label=axis==="row" ? "Resize Table Row" : "Resize Table Column";
+          if(ctxRef.record) ctxRef.record(instRef, target, { label });
           if(ctxRef.onChange) ctxRef.onChange(instRef, target);
         }
       }
