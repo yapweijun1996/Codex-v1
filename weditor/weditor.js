@@ -31,6 +31,26 @@
       toolbarGroupTitle:{ font:"12px/1.4 Segoe UI,system-ui", textTransform:"uppercase", letterSpacing:".06em", color:UI.textDim },
       toolbarGroupRow:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
       toolbarGroupRowCompact:{ gap:"6px" },
+      tableNotice:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      tableRow:{ display:"flex", flexDirection:"column", gap:"8px" },
+      tableInputsRow:{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(140px, 1fr))", gap:"8px" },
+      tableInlineInputs:{ display:"flex", gap:"8px", alignItems:"center", flexWrap:"wrap" },
+      tableRange:{ width:"100%" },
+      tableNumber:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", font:"13px/1.4 Segoe UI,system-ui", width:"100%", boxSizing:"border-box" },
+      tableSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", font:"13px/1.4 Segoe UI,system-ui", background:"#fff", color:UI.text, cursor:"pointer" },
+      tableColor:{ width:"42px", height:"32px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", padding:"0", cursor:"pointer" },
+      tableModal:{ width:"100%", maxWidth:"480px", background:"#fff", borderRadius:"14px", boxShadow:"0 18px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", overflow:"hidden" },
+      tableModalHead:{ padding:"20px 24px", borderBottom:"1px solid "+UI.border, display:"flex", flexDirection:"column", gap:"6px" },
+      tableModalTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
+      tableModalDesc:{ font:"13px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      tableModalBody:{ padding:"20px 24px", display:"flex", flexDirection:"column", gap:"18px" },
+      tableModalField:{ display:"flex", flexDirection:"column", gap:"8px" },
+      tableModalLabel:{ font:"13px/1.5 Segoe UI,system-ui", color:UI.text },
+      tableModalHint:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      tableModalGrid:{ display:"grid", gridTemplateColumns:"repeat(2, minmax(0, 1fr))", gap:"12px" },
+      tableModalNumber:{ padding:"8px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", font:"14px/1.5 Segoe UI,system-ui", width:"100%", boxSizing:"border-box" },
+      tableModalRadioGroup:{ display:"flex", flexDirection:"column", gap:"8px" },
+      tableModalActions:{ padding:"16px 24px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
@@ -3398,6 +3418,711 @@
     }
     return { resolveTarget, init, detach, record, undo, redo, repeat, handleInput, handleKeydown, registerUndo, registerRedo, toggleUndoMenu, getUndoHistory };
   })();
+  const TableTools=(function(){
+    const AUTO_FIT_FIXED="fixed";
+    const AUTO_FIT_CONTENTS="contents";
+    const AUTO_FIT_WINDOW="window";
+    const BORDER_DEFAULT="#c8c6c4";
+    const rememberedTables=new WeakMap();
+    const selectionListeners=new WeakMap();
+    function clamp(value, min, max){
+      if(isNaN(value)) return min;
+      return Math.min(Math.max(value, min), max);
+    }
+    function toInt(value, fallback){
+      const n=parseInt(value, 10);
+      return isNaN(n) ? fallback : n;
+    }
+    function getTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function computeHostWidth(table){
+      if(!table) return WCfg.A4W;
+      const parent=table.parentElement;
+      if(parent){
+        const rect=parent.getBoundingClientRect();
+        if(rect && rect.width) return rect.width;
+        if(parent.clientWidth) return parent.clientWidth;
+      }
+      const rect=table.getBoundingClientRect();
+      if(rect && rect.width) return rect.width;
+      return WCfg.A4W;
+    }
+    function getColumnCount(table){
+      if(!table) return 0;
+      const firstRow=table.querySelector("tr");
+      if(!firstRow) return 0;
+      let count=0;
+      for(let i=0;i<firstRow.children.length;i++){
+        const cell=firstRow.children[i];
+        if(cell && (cell.tagName==="TD" || cell.tagName==="TH")) count++;
+      }
+      return count;
+    }
+    function ensureColgroup(table, desired){
+      if(!table) return null;
+      const doc=table.ownerDocument || document;
+      let colgroup=table.querySelector("colgroup");
+      const count=desired || getColumnCount(table);
+      if(!colgroup){
+        colgroup=doc.createElement("colgroup");
+        const ref=table.firstElementChild && table.firstElementChild.tagName==="COLGROUP" ? table.firstElementChild : table.firstChild;
+        table.insertBefore(colgroup, ref);
+      }
+      let current=colgroup.children.length;
+      while(current<count){
+        const col=doc.createElement("col");
+        colgroup.appendChild(col);
+        current++;
+      }
+      while(current>count){
+        colgroup.removeChild(colgroup.lastChild);
+        current--;
+      }
+      return colgroup;
+    }
+    function clearColWidth(col){
+      if(!col) return;
+      col.style.width="";
+      col.removeAttribute("width");
+      col.removeAttribute("data-weditor-width-unit");
+      col.removeAttribute("data-weditor-width-value");
+    }
+    function ensureAutoColumn(table){
+      const colgroup=table ? table.querySelector("colgroup") : null;
+      if(!colgroup) return;
+      const cols=colgroup.children;
+      if(!cols || cols.length===0) return;
+      for(let i=0;i<cols.length;i++){
+        const col=cols[i];
+        const width=(col.style && col.style.width) || col.getAttribute && col.getAttribute("width");
+        if(!width){ return; }
+      }
+      clearColWidth(cols[cols.length-1]);
+    }
+    function rememberTable(target, table){
+      if(!target || !table) return;
+      if(target.contains(table)) rememberedTables.set(target, table);
+    }
+    function findTableForNode(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1 && current.tagName==="TABLE") return current;
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function getActiveTable(inst, ctx){
+      const target=getTarget(inst, ctx);
+      if(!target) return null;
+      const doc=target.ownerDocument || document;
+      const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      let table=null;
+      if(sel && sel.rangeCount){
+        const anchor=sel.anchorNode;
+        const focus=sel.focusNode;
+        table=findTableForNode(anchor, target) || findTableForNode(focus, target);
+      }
+      if(table){
+        rememberTable(target, table);
+        return table;
+      }
+      const remembered=rememberedTables.get(target);
+      if(remembered && target.contains(remembered)) return remembered;
+      return null;
+    }
+    function parseWidthPercent(table){
+      if(!table) return 100;
+      const data=table.getAttribute("data-weditor-width-percent");
+      if(data){
+        const num=parseFloat(data);
+        if(!isNaN(num)) return clamp(num, 10, 100);
+      }
+      const styleWidth=table.style && table.style.width ? table.style.width.trim() : "";
+      if(styleWidth && styleWidth.endsWith("%")){
+        const num=parseFloat(styleWidth.slice(0, -1));
+        if(!isNaN(num)) return clamp(num, 10, 100);
+      }
+      if(styleWidth && styleWidth.endsWith("px")){
+        const px=parseFloat(styleWidth.slice(0, -2));
+        if(!isNaN(px)){
+          const host=computeHostWidth(table) || WCfg.A4W;
+          if(host>0) return clamp(Math.round(px/host*100), 10, 100);
+        }
+      }
+      return 100;
+    }
+    function setTableWidth(table, percent){
+      if(!table) return;
+      const value=clamp(percent, 10, 100);
+      table.setAttribute("data-weditor-width-percent", String(value));
+      table.style.width = value+"%";
+    }
+    function computeFixedColumnWidth(hostWidth, percent, columns){
+      const width=Math.max(1, hostWidth || WCfg.A4W);
+      const pct=clamp(percent, 10, 100)/100;
+      const cols=Math.max(1, columns||1);
+      return Math.max(40, Math.round(width * pct / cols));
+    }
+    function setAutoFit(table, mode, opts){
+      if(!table) return;
+      const columns=(opts && opts.columns) ? opts.columns : getColumnCount(table);
+      const widthPercent=(opts && typeof opts.widthPercent==="number") ? opts.widthPercent : parseWidthPercent(table);
+      table.setAttribute("data-weditor-autofit", mode);
+      if(mode===AUTO_FIT_CONTENTS){
+        table.style.tableLayout="auto";
+        table.style.width="auto";
+        table.removeAttribute("data-weditor-width-percent");
+        const colgroup=table.querySelector("colgroup");
+        if(colgroup){
+          for(let i=0;i<colgroup.children.length;i++){ clearColWidth(colgroup.children[i]); }
+        }
+        ensureAutoColumn(table);
+        return;
+      }
+      setTableWidth(table, widthPercent);
+      table.style.tableLayout="fixed";
+      const colgroup=ensureColgroup(table, columns);
+      if(!colgroup) return;
+      const cols=colgroup.children;
+      const hostWidth=computeHostWidth(table);
+      if(mode===AUTO_FIT_WINDOW){
+        const portion=columns>0 ? Math.floor(100/columns) : 100;
+        for(let i=0;i<cols.length;i++){
+          const col=cols[i];
+          if(i===cols.length-1){ clearColWidth(col); continue; }
+          const width=Math.max(1, portion);
+          col.style.width = width+"%";
+          col.setAttribute("data-weditor-width-unit", "%");
+          col.setAttribute("data-weditor-width-value", String(width));
+          col.removeAttribute("width");
+        }
+      } else {
+        const pxWidth=computeFixedColumnWidth(hostWidth, widthPercent, columns);
+        for(let i=0;i<cols.length;i++){
+          const col=cols[i];
+          if(i===cols.length-1){ clearColWidth(col); continue; }
+          col.style.width = pxWidth+"px";
+          col.setAttribute("data-weditor-width-unit", "px");
+          col.setAttribute("data-weditor-width-value", String(pxWidth));
+          col.setAttribute("width", String(pxWidth));
+        }
+      }
+      ensureAutoColumn(table);
+    }
+    function applyColumnWidth(table, index, value, unit){
+      if(!table) return;
+      const colgroup=ensureColgroup(table);
+      if(!colgroup) return;
+      const cols=colgroup.children;
+      if(!cols || index<0 || index>=cols.length-1) return;
+      const col=cols[index];
+      if(!value || value<=0){
+        clearColWidth(col);
+      } else {
+        const clampedUnit=unit==="px"?"px":"%";
+        col.style.width = value+clampedUnit;
+        col.setAttribute("data-weditor-width-unit", clampedUnit);
+        col.setAttribute("data-weditor-width-value", String(value));
+        if(clampedUnit==="px") col.setAttribute("width", String(value));
+        else col.removeAttribute("width");
+      }
+      ensureAutoColumn(table);
+    }
+    function setBorderColor(table, color){
+      if(!table) return;
+      const cells=table.querySelectorAll("th,td");
+      const borderColor=color ? color : "transparent";
+      table.setAttribute("data-weditor-border", color ? color : "none");
+      table.style.borderCollapse="collapse";
+      table.style.border = "1px solid "+borderColor;
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        cell.style.border = "1px solid "+borderColor;
+        if(!cell.style.padding) cell.style.padding="8px";
+      }
+    }
+    function captureRange(target){
+      if(!target) return null;
+      const doc=target.ownerDocument || document;
+      const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      const container=range.commonAncestorContainer;
+      if(container && container.nodeType===1 && !target.contains(container)) return null;
+      if(container && container.nodeType===3 && !target.contains(container.parentNode||null)) return null;
+      return range.cloneRange();
+    }
+    function restoreRange(target, saved){
+      if(!target || !saved) return;
+      const doc=target.ownerDocument || document;
+      const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel) return;
+      try{
+        sel.removeAllRanges();
+        sel.addRange(saved);
+      } catch(err){}
+    }
+    function focusFirstCell(table){
+      if(!table) return;
+      const firstCell=table.querySelector("td,th");
+      if(!firstCell) return;
+      let focusTarget=null;
+      const paragraph=firstCell.querySelector("p");
+      if(paragraph) focusTarget=paragraph;
+      else focusTarget=firstCell;
+      if(focusTarget){
+        window.setTimeout(function(){ WDom.placeCaretAtEnd(focusTarget); }, 0);
+      }
+    }
+    function createTableStructure(options){
+      const doc=document;
+      const rows=clamp(options.rows||1, 1, 20);
+      const cols=clamp(options.columns||1, 1, 12);
+      const table=doc.createElement("table");
+      table.setAttribute("data-weditor-table","1");
+      table.style.width="100%";
+      table.style.borderCollapse="collapse";
+      table.style.margin="12px 0";
+      table.style.fontSize="inherit";
+      table.style.tableLayout="fixed";
+      const colgroup=doc.createElement("colgroup");
+      for(let c=0;c<cols;c++){ colgroup.appendChild(doc.createElement("col")); }
+      table.appendChild(colgroup);
+      const tbody=doc.createElement("tbody");
+      for(let r=0;r<rows;r++){
+        const tr=doc.createElement("tr");
+        for(let c=0;c<cols;c++){
+          const td=doc.createElement("td");
+          td.style.border="1px solid "+BORDER_DEFAULT;
+          td.style.padding="8px";
+          const p=doc.createElement("p");
+          const br=doc.createElement("br");
+          p.appendChild(br);
+          td.appendChild(p);
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      }
+      table.appendChild(tbody);
+      setBorderColor(table, BORDER_DEFAULT);
+      return table;
+    }
+    function insertTable(inst, ctx, options){
+      const target=getTarget(inst, ctx);
+      if(!target) return;
+      Normalizer.fixStructure(target);
+      const savedRange=captureRange(target);
+      const table=createTableStructure(options||{});
+      const range=savedRange ? savedRange.cloneRange() : null;
+      if(range){
+        restoreRange(target, savedRange);
+        range.deleteContents();
+        range.insertNode(table);
+      } else {
+        target.appendChild(table);
+      }
+      rememberTable(target, table);
+      window.requestAnimationFrame(function(){
+        setAutoFit(table, options && options.autoFit ? options.autoFit : AUTO_FIT_WINDOW, {
+          columns: options && options.columns ? options.columns : getColumnCount(table),
+          widthPercent: options && typeof options.widthPercent==="number" ? options.widthPercent : parseWidthPercent(table)
+        });
+      });
+      focusFirstCell(table);
+      HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+      OutputBinding.syncDebounced(inst);
+    }
+    function openInsertDialog(inst, ctx){
+      const target=getTarget(inst, ctx);
+      if(!target) return;
+      const savedRange=captureRange(target);
+      const existing=document.querySelector('[data-weditor-modal="table-insert"]');
+      if(existing && existing.parentNode){ existing.parentNode.removeChild(existing); }
+      A11y.lockScroll();
+      const bg=document.createElement("div");
+      applyStyles(bg, WCfg.Style.modalBg);
+      bg.setAttribute("data-weditor-modal","table-insert");
+      const panel=document.createElement("div");
+      applyStyles(panel, WCfg.Style.tableModal);
+      panel.setAttribute("role","dialog");
+      panel.setAttribute("aria-modal","true");
+      panel.setAttribute("tabindex","-1");
+      const head=document.createElement("div");
+      applyStyles(head, WCfg.Style.tableModalHead);
+      const title=document.createElement("h2");
+      title.textContent="Insert Table";
+      applyStyles(title, WCfg.Style.tableModalTitle);
+      head.appendChild(title);
+      const desc=document.createElement("div");
+      desc.textContent="設定列與欄，並選擇 AutoFit 模式。";
+      applyStyles(desc, WCfg.Style.tableModalDesc);
+      head.appendChild(desc);
+      panel.appendChild(head);
+      const body=document.createElement("div");
+      applyStyles(body, WCfg.Style.tableModalBody);
+      const grid=document.createElement("div");
+      applyStyles(grid, WCfg.Style.tableModalGrid);
+      const colField=document.createElement("label");
+      applyStyles(colField, WCfg.Style.tableModalField);
+      const colLabel=document.createElement("span");
+      colLabel.textContent="Columns 欄";
+      applyStyles(colLabel, WCfg.Style.tableModalLabel);
+      const colInput=document.createElement("input");
+      colInput.type="number";
+      colInput.min="1"; colInput.max="12"; colInput.value="3";
+      applyStyles(colInput, WCfg.Style.tableModalNumber);
+      colField.appendChild(colLabel);
+      colField.appendChild(colInput);
+      const rowField=document.createElement("label");
+      applyStyles(rowField, WCfg.Style.tableModalField);
+      const rowLabel=document.createElement("span");
+      rowLabel.textContent="Rows 列";
+      applyStyles(rowLabel, WCfg.Style.tableModalLabel);
+      const rowInput=document.createElement("input");
+      rowInput.type="number";
+      rowInput.min="1"; rowInput.max="20"; rowInput.value="3";
+      applyStyles(rowInput, WCfg.Style.tableModalNumber);
+      rowField.appendChild(rowLabel);
+      rowField.appendChild(rowInput);
+      grid.appendChild(colField);
+      grid.appendChild(rowField);
+      const autoField=document.createElement("div");
+      applyStyles(autoField, WCfg.Style.tableModalField);
+      const autoLabel=document.createElement("span");
+      autoLabel.textContent="AutoFit";
+      applyStyles(autoLabel, WCfg.Style.tableModalLabel);
+      const autoHint=document.createElement("div");
+      autoHint.textContent="Fixed 固定欄寬 / Contents 依內容 / Window 依頁面寬";
+      applyStyles(autoHint, WCfg.Style.tableModalHint);
+      const radioWrap=document.createElement("div");
+      applyStyles(radioWrap, WCfg.Style.tableModalRadioGroup);
+      const modes=[
+        { value:AUTO_FIT_FIXED, label:"Fixed column width" },
+        { value:AUTO_FIT_CONTENTS, label:"AutoFit to contents" },
+        { value:AUTO_FIT_WINDOW, label:"AutoFit to window" }
+      ];
+      let selected=AUTO_FIT_WINDOW;
+      modes.forEach(function(mode){
+        const option=document.createElement("label");
+        option.style.display="flex";
+        option.style.alignItems="center";
+        option.style.gap="8px";
+        const radio=document.createElement("input");
+        radio.type="radio"; radio.name="weditor-table-autofit";
+        radio.value=mode.value;
+        radio.checked = mode.value===selected;
+        const text=document.createElement("span");
+        text.textContent=mode.label;
+        option.appendChild(radio);
+        option.appendChild(text);
+        radioWrap.appendChild(option);
+      });
+      autoField.appendChild(autoLabel);
+      autoField.appendChild(autoHint);
+      autoField.appendChild(radioWrap);
+      body.appendChild(grid);
+      body.appendChild(autoField);
+      panel.appendChild(body);
+      const actions=document.createElement("div");
+      applyStyles(actions, WCfg.Style.tableModalActions);
+      const cancelBtn=WDom.btn("Cancel", false, "取消");
+      const insertBtn=WDom.btn("Insert", true, "Insert table");
+      actions.appendChild(cancelBtn);
+      actions.appendChild(insertBtn);
+      panel.appendChild(actions);
+      bg.appendChild(panel);
+      document.body.appendChild(bg);
+      function close(){
+        bg.style.opacity="0";
+        bg.style.pointerEvents="none";
+        window.setTimeout(function(){ if(bg.parentNode) bg.parentNode.removeChild(bg); }, 200);
+        A11y.unlockScroll();
+        bg.removeAttribute("data-weditor-modal");
+        document.removeEventListener("keydown", onKey);
+      }
+      function onKey(ev){ if(ev.key==="Escape"){ ev.preventDefault(); close(); } }
+      document.addEventListener("keydown", onKey);
+      cancelBtn.onclick=function(){ close(); };
+      bg.addEventListener("click", function(e){ if(e.target===bg) close(); });
+      insertBtn.onclick=function(){
+        const cols=clamp(toInt(colInput.value, 3), 1, 12);
+        const rows=clamp(toInt(rowInput.value, 3), 1, 20);
+        let mode=AUTO_FIT_WINDOW;
+        const radios=radioWrap.querySelectorAll('input[type="radio"]');
+        for(let i=0;i<radios.length;i++){ if(radios[i].checked) mode=radios[i].value; }
+        close();
+        restoreRange(target, savedRange);
+        insertTable(inst, ctx, { columns:cols, rows:rows, autoFit:mode, widthPercent:100 });
+      };
+      window.requestAnimationFrame(function(){ bg.style.opacity="1"; panel.focus(); });
+    }
+    function collectColumnInfo(table){
+      const info=[];
+      if(!table) return info;
+      const colgroup=table.querySelector("colgroup");
+      if(!colgroup){
+        const count=getColumnCount(table);
+        for(let i=0;i<count;i++){ info.push({ index:i, widthValue:null, widthUnit:null, auto:i===count-1 }); }
+        return info;
+      }
+      for(let i=0;i<colgroup.children.length;i++){
+        const col=colgroup.children[i];
+        const width=(col.style && col.style.width) || "";
+        const unit=col.getAttribute("data-weditor-width-unit")||null;
+        const valueRaw=col.getAttribute("data-weditor-width-value");
+        const value=valueRaw!=null ? parseFloat(valueRaw) : (width?parseFloat(width):null);
+        const auto=!width;
+        info.push({ index:i, widthValue:!isNaN(value)?value:null, widthUnit:unit, auto });
+      }
+      return info;
+    }
+    function readBorderColor(table){
+      if(!table) return BORDER_DEFAULT;
+      const data=table.getAttribute("data-weditor-border");
+      if(data==="none") return null;
+      if(data) return data;
+      const style=table.style && table.style.borderColor ? table.style.borderColor : null;
+      return style || BORDER_DEFAULT;
+    }
+    function bindSelectionSync(panel, target){
+      if(!panel || !target) return;
+      if(selectionListeners.has(panel)) return;
+      const handler=function(){ window.requestAnimationFrame(function(){ if(panel.__weditorSync) panel.__weditorSync(); }); };
+      target.addEventListener("keyup", handler);
+      target.addEventListener("mouseup", handler);
+      target.addEventListener("input", handler);
+      document.addEventListener("selectionchange", handler);
+      selectionListeners.set(panel, { target, handler });
+    }
+    function createPropertiesPanel(inst, ctx){
+      const group=document.createElement("div");
+      applyStyles(group, WCfg.Style.toolbarGroup);
+      const title=document.createElement("div");
+      title.textContent="Table 工具";
+      applyStyles(title, WCfg.Style.toolbarGroupTitle);
+      group.appendChild(title);
+      const notice=document.createElement("div");
+      notice.textContent="選取表格即可調整寬度、欄寬與邊框。";
+      applyStyles(notice, WCfg.Style.tableNotice);
+      group.appendChild(notice);
+      const widthRow=document.createElement("div");
+      applyStyles(widthRow, WCfg.Style.tableRow);
+      const widthLabel=document.createElement("div");
+      widthLabel.textContent="Table width (% of container)";
+      applyStyles(widthLabel, WCfg.Style.controlLabel);
+      const widthValue=document.createElement("div");
+      applyStyles(widthValue, WCfg.Style.tableNotice);
+      const widthSlider=document.createElement("input");
+      widthSlider.type="range";
+      widthSlider.min="40"; widthSlider.max="100"; widthSlider.value="100";
+      applyStyles(widthSlider, WCfg.Style.tableRange);
+      widthRow.appendChild(widthLabel);
+      widthRow.appendChild(widthSlider);
+      widthRow.appendChild(widthValue);
+      group.appendChild(widthRow);
+      const autoWrap=document.createElement("div");
+      applyStyles(autoWrap, WCfg.Style.tableRow);
+      const autoTitle=document.createElement("div");
+      autoTitle.textContent="AutoFit";
+      applyStyles(autoTitle, WCfg.Style.controlLabel);
+      const autoOptions=document.createElement("div");
+      applyStyles(autoOptions, WCfg.Style.tableInlineInputs);
+      const autoSelect=document.createElement("select");
+      applyStyles(autoSelect, WCfg.Style.tableSelect);
+      [{ value:AUTO_FIT_FIXED, label:"Fixed" }, { value:AUTO_FIT_CONTENTS, label:"Contents" }, { value:AUTO_FIT_WINDOW, label:"Window" }].forEach(function(mode){
+        const opt=document.createElement("option");
+        opt.value=mode.value; opt.textContent=mode.label;
+        autoSelect.appendChild(opt);
+      });
+      autoOptions.appendChild(autoSelect);
+      autoWrap.appendChild(autoTitle);
+      autoWrap.appendChild(autoOptions);
+      group.appendChild(autoWrap);
+      const columnWrap=document.createElement("div");
+      applyStyles(columnWrap, WCfg.Style.tableRow);
+      const columnTitle=document.createElement("div");
+      columnTitle.textContent="Column width";
+      applyStyles(columnTitle, WCfg.Style.controlLabel);
+      const columnInputs=document.createElement("div");
+      applyStyles(columnInputs, WCfg.Style.tableInlineInputs);
+      const columnSelect=document.createElement("select");
+      applyStyles(columnSelect, WCfg.Style.tableSelect);
+      const columnValue=document.createElement("input");
+      columnValue.type="number"; columnValue.min="1"; columnValue.placeholder="Width";
+      applyStyles(columnValue, WCfg.Style.tableNumber);
+      const unitSelect=document.createElement("select");
+      applyStyles(unitSelect, WCfg.Style.tableSelect);
+      [{ value:"px", label:"px" }, { value:"%", label:"%" }].forEach(function(unit){
+        const opt=document.createElement("option"); opt.value=unit.value; opt.textContent=unit.label; unitSelect.appendChild(opt);
+      });
+      const applyColumnBtn=WDom.btn("Apply", false, "套用欄寬");
+      columnInputs.appendChild(columnSelect);
+      columnInputs.appendChild(columnValue);
+      columnInputs.appendChild(unitSelect);
+      columnInputs.appendChild(applyColumnBtn);
+      columnWrap.appendChild(columnTitle);
+      columnWrap.appendChild(columnInputs);
+      group.appendChild(columnWrap);
+      const borderWrap=document.createElement("div");
+      applyStyles(borderWrap, WCfg.Style.tableRow);
+      const borderTitle=document.createElement("div");
+      borderTitle.textContent="Border";
+      applyStyles(borderTitle, WCfg.Style.controlLabel);
+      const borderInputs=document.createElement("div");
+      applyStyles(borderInputs, WCfg.Style.tableInlineInputs);
+      const borderColor=document.createElement("input");
+      borderColor.type="color";
+      borderColor.value=BORDER_DEFAULT;
+      applyStyles(borderColor, WCfg.Style.tableColor);
+      const applyBorderBtn=WDom.btn("Apply Color", false, "套用邊框顏色");
+      const noBorderBtn=WDom.btn("No Border", false, "隱藏邊框");
+      borderInputs.appendChild(borderColor);
+      borderInputs.appendChild(applyBorderBtn);
+      borderInputs.appendChild(noBorderBtn);
+      borderWrap.appendChild(borderTitle);
+      borderWrap.appendChild(borderInputs);
+      group.appendChild(borderWrap);
+      function setDisabled(disabled){
+        const controls=[widthSlider, autoSelect, columnSelect, columnValue, unitSelect, applyColumnBtn, applyBorderBtn, noBorderBtn, borderColor];
+        for(let i=0;i<controls.length;i++){
+          controls[i].disabled=disabled;
+          controls[i].style.opacity=disabled?"0.55":"1";
+          controls[i].style.cursor=disabled?"not-allowed":"pointer";
+        }
+      }
+      function populateColumns(table){
+        while(columnSelect.firstChild){ columnSelect.removeChild(columnSelect.firstChild); }
+        const info=collectColumnInfo(table);
+        if(!info.length){
+          const opt=document.createElement("option"); opt.textContent="--"; opt.value=""; columnSelect.appendChild(opt);
+          columnSelect.disabled=true;
+          applyColumnBtn.disabled=true;
+          return;
+        }
+        columnSelect.disabled=false;
+        applyColumnBtn.disabled=false;
+        info.forEach(function(col){
+          const opt=document.createElement("option");
+          opt.value=String(col.index);
+          opt.textContent = col.auto ? "Column "+(col.index+1)+" (auto)" : "Column "+(col.index+1);
+          if(col.index===info.length-1){ opt.disabled=true; }
+          columnSelect.appendChild(opt);
+        });
+        columnSelect.selectedIndex=0;
+      }
+      function sync(){
+        const table=getActiveTable(inst, ctx);
+        if(!table){
+          setDisabled(true);
+          widthValue.textContent="Select a table";
+          return;
+        }
+        setDisabled(false);
+        const percent=parseWidthPercent(table);
+        widthSlider.value=String(percent);
+        widthValue.textContent=percent+"%";
+        const autoFit=table.getAttribute("data-weditor-autofit")||AUTO_FIT_WINDOW;
+        autoSelect.value=autoFit;
+        borderColor.value=(readBorderColor(table)||BORDER_DEFAULT);
+        populateColumns(table);
+        const options=collectColumnInfo(table);
+        if(options.length){
+          let firstEditable=null;
+          for(let i=0;i<options.length;i++){
+            if(i===options.length-1) continue;
+            firstEditable=options[i]; break;
+          }
+          if(firstEditable){
+            columnSelect.value=String(firstEditable.index);
+            if(firstEditable.widthValue){
+              columnValue.value=String(Math.round(firstEditable.widthValue));
+              unitSelect.value=firstEditable.widthUnit||"px";
+            } else {
+              columnValue.value="";
+              unitSelect.value="px";
+            }
+          }
+        }
+        const disableWidth = autoFit===AUTO_FIT_CONTENTS;
+        widthSlider.disabled=disableWidth;
+        widthSlider.style.cursor=disableWidth?"not-allowed":"pointer";
+        widthSlider.style.opacity=disableWidth?"0.55":"1";
+      }
+      widthSlider.addEventListener("input", function(){ widthValue.textContent=widthSlider.value+"%"; });
+      widthSlider.addEventListener("change", function(){
+        const table=getActiveTable(inst, ctx);
+        if(!table) return;
+        const value=parseFloat(widthSlider.value);
+        setTableWidth(table, value);
+        const mode=table.getAttribute("data-weditor-autofit")||AUTO_FIT_WINDOW;
+        setAutoFit(table, mode, { columns:getColumnCount(table), widthPercent:value });
+        rememberTable(getTarget(inst, ctx), table);
+        HistoryManager.record(inst, getTarget(inst, ctx), { label:"Resize Table", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+        sync();
+      });
+      autoSelect.addEventListener("change", function(){
+        const table=getActiveTable(inst, ctx);
+        if(!table) return;
+        const mode=autoSelect.value;
+        const percent=parseFloat(widthSlider.value);
+        setAutoFit(table, mode, { columns:getColumnCount(table), widthPercent:percent });
+        rememberTable(getTarget(inst, ctx), table);
+        HistoryManager.record(inst, getTarget(inst, ctx), { label:"Table AutoFit", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+        sync();
+      });
+      columnSelect.addEventListener("change", function(){
+        const table=getActiveTable(inst, ctx);
+        if(!table) return;
+        const index=parseInt(columnSelect.value,10);
+        const columns=collectColumnInfo(table);
+        const current=columns.filter(function(col){ return col.index===index; })[0];
+        if(current && current.widthValue){ columnValue.value=String(Math.round(current.widthValue)); unitSelect.value=current.widthUnit||"px"; }
+        else { columnValue.value=""; unitSelect.value="px"; }
+      });
+      applyColumnBtn.addEventListener("click", function(){
+        const table=getActiveTable(inst, ctx);
+        if(!table) return;
+        const index=parseInt(columnSelect.value, 10);
+        if(isNaN(index)) return;
+        const value=parseFloat(columnValue.value);
+        const unit=unitSelect.value;
+        applyColumnWidth(table, index, isNaN(value)?null:value, unit);
+        rememberTable(getTarget(inst, ctx), table);
+        HistoryManager.record(inst, getTarget(inst, ctx), { label:"Update Column Width", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+        sync();
+      });
+      applyBorderBtn.addEventListener("click", function(){
+        const table=getActiveTable(inst, ctx);
+        if(!table) return;
+        setBorderColor(table, borderColor.value);
+        rememberTable(getTarget(inst, ctx), table);
+        HistoryManager.record(inst, getTarget(inst, ctx), { label:"Table Border Color", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+        sync();
+      });
+      noBorderBtn.addEventListener("click", function(){
+        const table=getActiveTable(inst, ctx);
+        if(!table) return;
+        setBorderColor(table, null);
+        rememberTable(getTarget(inst, ctx), table);
+        HistoryManager.record(inst, getTarget(inst, ctx), { label:"Hide Table Border", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+        sync();
+      });
+      group.__weditorSync=sync;
+      bindSelectionSync(group, getTarget(inst, ctx));
+      sync();
+      return group;
+    }
+    return {
+      openInsert:openInsertDialog,
+      createPanel:createPropertiesPanel,
+      getActiveTable,
+      remember:rememberTable
+    };
+  })();
   const HistoryUI=(function(){
     function createUndo(inst, ctx){
       const target=HistoryManager.resolveTarget(inst, ctx);
@@ -4574,6 +5299,18 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.table":{
+      label:"Insert Table",
+      kind:"button",
+      ariaLabel:"Insert table",
+      title:"Insert a table",
+      run:function(inst, arg){ TableTools.openInsert(inst, arg && arg.ctx); }
+    },
+    "table.properties":{
+      kind:"custom",
+      ariaLabel:"Table settings",
+      render:function(inst, ctx){ return TableTools.createPanel(inst, ctx); }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -4622,8 +5359,10 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"table", label:"Table", items:["table.properties"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
     quickActions:["fullscreen.open"]
@@ -4637,8 +5376,10 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"table", label:"Table", items:["table.properties"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ]
   };
