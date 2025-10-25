@@ -3830,6 +3830,21 @@
       if(current && current.nodeType===1 && (current.tagName||"").toLowerCase()==="table") return current;
       return null;
     }
+    function ascendToCell(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="td" || tag==="th") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current && current.nodeType===1){
+        const tag=(current.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th") return current;
+      }
+      return null;
+    }
     function currentSelectionTable(target){
       if(!target || !target.ownerDocument) return null;
       const doc=target.ownerDocument;
@@ -3857,6 +3872,36 @@
         if(!target.contains(node)) continue;
         const table=ascendToTable(node, target);
         if(table) return table;
+      }
+      return null;
+    }
+    function currentSelectionCell(target){
+      if(!target || !target.ownerDocument) return null;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      let sel=null;
+      try{ sel=win.getSelection ? win.getSelection() : window.getSelection(); }
+      catch(err){ sel=null; }
+      const candidates=[];
+      if(sel && sel.rangeCount>0){
+        const range=sel.getRangeAt(0);
+        if(range){
+          candidates.push(range.commonAncestorContainer);
+          candidates.push(range.startContainer);
+          candidates.push(range.endContainer);
+        }
+        candidates.push(sel.anchorNode);
+        candidates.push(sel.focusNode);
+      }
+      if(doc.activeElement && target.contains(doc.activeElement)) candidates.push(doc.activeElement);
+      for(let i=0;i<candidates.length;i++){
+        const candidate=candidates[i];
+        if(!candidate) continue;
+        const node=candidate.nodeType===3 ? candidate.parentNode : candidate;
+        if(!node) continue;
+        if(!target.contains(node)) continue;
+        const cell=ascendToCell(node, target);
+        if(cell) return cell;
       }
       return null;
     }
@@ -3950,6 +3995,53 @@
       applyColorToCells(table, normalized, false);
       return { changed:true, table, hidden:false, color:normalized };
     }
+    function applyCellBorder(inst, ctx, color, sides){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const table=ascendToTable(cell, target);
+      if(!table) return { changed:false };
+      const normalized=normalizeColor(color);
+      if(!normalized) return { changed:false };
+      const sideList=Array.isArray(sides) && sides.length?sides.slice():["top","right","bottom","left"];
+      const doc=cell.ownerDocument || document;
+      const win=doc.defaultView || window;
+      let computed=null;
+      try{ if(win && win.getComputedStyle) computed=win.getComputedStyle(cell); }
+      catch(err){ computed=null; }
+      let changed=false;
+      for(let i=0;i<sideList.length;i++){
+        const side=String(sideList[i]||"").toLowerCase();
+        if(!side) continue;
+        const cap=side.charAt(0).toUpperCase()+side.slice(1);
+        const colorProp="border"+cap+"Color";
+        const widthProp="border"+cap+"Width";
+        const styleProp="border"+cap+"Style";
+        let prevColor="";
+        if(computed){
+          prevColor=normalizeColor(computed[colorProp] || computed.borderColor || "") || "";
+        }
+        const existingInline=normalizeColor(cell.style[colorProp] || "");
+        if(!prevColor && existingInline) prevColor=existingInline;
+        if(prevColor!==normalized) changed=true;
+        const prevWidthInline=cell.style[widthProp] || "";
+        const prevWidthComputed=computed?(computed[widthProp]||""):"";
+        if(!prevWidthInline || parseFloat(prevWidthInline)===0){
+          const widthToApply=(prevWidthComputed && parseFloat(prevWidthComputed)>0)?prevWidthComputed:"1px";
+          if(prevWidthInline!==widthToApply) changed=true;
+          cell.style[widthProp]=widthToApply;
+        }
+        const prevStyleInline=cell.style[styleProp] || "";
+        const prevStyleComputed=computed?(computed[styleProp]||""):"";
+        if(prevStyleInline.toLowerCase()!=="solid" && prevStyleComputed.toLowerCase()!=="solid"){ changed=true; }
+        cell.style[styleProp]="solid";
+        cell.style[colorProp]=normalized;
+      }
+      if(!changed) return { changed:false, table };
+      const state=readTableState(table);
+      return { changed:true, table, cell, hidden:state?state.hidden:false, color:state?state.color:null, sides:sideList, cellColor:normalized };
+    }
     function applyDefault(inst, ctx){
       return applyColor(inst, ctx, WCfg.UI.borderSubtle || "#c8c6c4");
     }
@@ -3979,7 +4071,7 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor };
+    return { applyColor, applyCellBorder, applyDefault, hideBorders, getState, normalizeColor };
   })();
   const ListUI=(function(){
     function createSplitButton(options){
@@ -4720,6 +4812,7 @@
           }
           updatePreviewState(state);
           updateSelectionUI(state.color || null, !!state.hidden);
+          resetCellSides();
           palette.style.display="flex";
           palette.setAttribute("aria-hidden","false");
           button.setAttribute("aria-expanded","true");
@@ -4765,7 +4858,33 @@
       actions.appendChild(defaultBtn);
       actionButtons.hide=hideBtn;
       actionButtons.standard=defaultBtn;
-      function createColorSection(title, colors){
+      const defaultCellSides=["top","right","bottom","left"];
+      let activeCellSides=new Set(defaultCellSides);
+      const cellSideButtons={};
+      function updateCellSideButtons(){
+        setActionActive(cellSideButtons.top, activeCellSides.has("top"));
+        setActionActive(cellSideButtons.right, activeCellSides.has("right"));
+        setActionActive(cellSideButtons.bottom, activeCellSides.has("bottom"));
+        setActionActive(cellSideButtons.left, activeCellSides.has("left"));
+        const allSelected=activeCellSides.size===defaultCellSides.length;
+        setActionActive(cellSideButtons.all, allSelected);
+      }
+      function toggleCellSide(side){
+        if(side==="all"){
+          activeCellSides=new Set(defaultCellSides);
+          updateCellSideButtons();
+          return;
+        }
+        if(activeCellSides.has(side)){
+          if(activeCellSides.size===1) return;
+          activeCellSides.delete(side);
+        } else {
+          activeCellSides.add(side);
+        }
+        updateCellSideButtons();
+      }
+      function resetCellSides(){ activeCellSides=new Set(defaultCellSides); updateCellSideButtons(); }
+      function createColorSection(title, colors, options){
         if(!colors || !colors.length) return null;
         const section=document.createElement("div");
         section.style.display="flex";
@@ -4779,6 +4898,11 @@
         grid.style.display="grid";
         grid.style.gridTemplateColumns="repeat(auto-fill, minmax(24px, 1fr))";
         grid.style.gap="6px";
+        const onSelect=options && typeof options.onSelect==="function" ? options.onSelect : null;
+        const closeOnSelect = options && Object.prototype.hasOwnProperty.call(options,"closeOnSelect") ? !!options.closeOnSelect : true;
+        const skipRegister=options && !!options.skipRegister;
+        const labelSuffix=(options && options.labelSuffix) || ((options && options.mode==="cell")?"cell border":"border");
+        const ariaSuffix=(options && options.ariaLabelSuffix) || ((options && options.mode==="cell")?"cell border":"table border");
         for(let i=0;i<colors.length;i++){
           const swatch=doc.createElement("button");
           swatch.type="button";
@@ -4788,28 +4912,112 @@
           swatch.style.borderRadius="4px";
           swatch.style.background=colors[i].value;
           swatch.style.cursor="pointer";
-          swatch.setAttribute("title", colors[i].label+" border");
-          swatch.setAttribute("aria-label", colors[i].label+" table border");
+          swatch.setAttribute("title", colors[i].label+" "+labelSuffix);
+          swatch.setAttribute("aria-label", colors[i].label+" "+ariaSuffix);
           swatch.setAttribute("role","menuitem");
           swatch.addEventListener("click", function(ev){
             ev.preventDefault();
-            const result=TableStyler.applyColor(inst, ctx, colors[i].value);
-            closePalette();
-            applyResult(result, "Set Table Border Color");
+            if(onSelect){
+              onSelect(colors[i].value);
+            } else {
+              const result=TableStyler.applyColor(inst, ctx, colors[i].value);
+              if(closeOnSelect) closePalette();
+              applyResult(result, "Set Table Border Color");
+            }
           });
           swatch.addEventListener("keydown", function(ev){ if(ev.key==="Escape"){ ev.preventDefault(); closePalette(); button.focus(); } });
-          registerColorButton(colors[i].value, swatch);
+          if(!skipRegister) registerColorButton(colors[i].value, swatch);
           grid.appendChild(swatch);
         }
         section.appendChild(heading);
         section.appendChild(grid);
         return section;
       }
+      function createCellSection(){
+        const section=document.createElement("div");
+        section.style.display="flex";
+        section.style.flexDirection="column";
+        section.style.gap="6px";
+        const heading=document.createElement("div");
+        heading.textContent="Cell border";
+        heading.style.font="11px/1.4 Segoe UI,system-ui";
+        heading.style.color=WCfg.UI.textDim;
+        const hint=document.createElement("div");
+        hint.textContent="Select sides then pick a color.";
+        hint.style.font="11px/1.4 Segoe UI,system-ui";
+        hint.style.color=WCfg.UI.textDim;
+        const sideGrid=document.createElement("div");
+        sideGrid.style.display="flex";
+        sideGrid.style.flexWrap="wrap";
+        sideGrid.style.gap="6px";
+        const topBtn=createActionButton("Top");
+        const rightBtn=createActionButton("Right");
+        const bottomBtn=createActionButton("Bottom");
+        const leftBtn=createActionButton("Left");
+        const allBtn=createActionButton("All sides");
+        cellSideButtons.top=topBtn;
+        cellSideButtons.right=rightBtn;
+        cellSideButtons.bottom=bottomBtn;
+        cellSideButtons.left=leftBtn;
+        cellSideButtons.all=allBtn;
+        const buttons=[topBtn,rightBtn,bottomBtn,leftBtn,allBtn];
+        for(let i=0;i<buttons.length;i++){
+          buttons[i].style.fontSize="11px";
+          buttons[i].style.padding="6px 10px";
+          buttons[i].style.flex="1 1 96px";
+        }
+        topBtn.addEventListener("click", function(e){ e.preventDefault(); toggleCellSide("top"); });
+        rightBtn.addEventListener("click", function(e){ e.preventDefault(); toggleCellSide("right"); });
+        bottomBtn.addEventListener("click", function(e){ e.preventDefault(); toggleCellSide("bottom"); });
+        leftBtn.addEventListener("click", function(e){ e.preventDefault(); toggleCellSide("left"); });
+        allBtn.addEventListener("click", function(e){ e.preventDefault(); toggleCellSide("all"); });
+        sideGrid.appendChild(topBtn);
+        sideGrid.appendChild(rightBtn);
+        sideGrid.appendChild(bottomBtn);
+        sideGrid.appendChild(leftBtn);
+        sideGrid.appendChild(allBtn);
+        const colorsWrap=document.createElement("div");
+        colorsWrap.style.display="flex";
+        colorsWrap.style.flexDirection="column";
+        colorsWrap.style.gap="6px";
+        const themeColorsSection=createColorSection("Cell theme colors", Formatting.FONT_THEME_COLORS || [], {
+          mode:"cell",
+          labelSuffix:"cell border",
+          ariaLabelSuffix:"cell border",
+          skipRegister:true,
+          closeOnSelect:false,
+          onSelect:function(value){
+            const result=TableStyler.applyCellBorder(inst, ctx, value, Array.from(activeCellSides));
+            applyResult(result, "Set Cell Border Color");
+          }
+        });
+        const standardColorsSection=createColorSection("Cell standard colors", Formatting.FONT_STANDARD_COLORS || [], {
+          mode:"cell",
+          labelSuffix:"cell border",
+          ariaLabelSuffix:"cell border",
+          skipRegister:true,
+          closeOnSelect:false,
+          onSelect:function(value){
+            const result=TableStyler.applyCellBorder(inst, ctx, value, Array.from(activeCellSides));
+            applyResult(result, "Set Cell Border Color");
+          }
+        });
+        if(themeColorsSection) colorsWrap.appendChild(themeColorsSection);
+        if(standardColorsSection) colorsWrap.appendChild(standardColorsSection);
+        section.appendChild(heading);
+        section.appendChild(hint);
+        section.appendChild(sideGrid);
+        if(colorsWrap.childNodes.length>0) section.appendChild(colorsWrap);
+        updateCellSideButtons();
+        return section;
+      }
       const themeSection=createColorSection("Theme colors", Formatting.FONT_THEME_COLORS || []);
       const standardSection=createColorSection("Standard colors", Formatting.FONT_STANDARD_COLORS || []);
+      const cellSection=createCellSection();
       palette.appendChild(actions);
       if(themeSection) palette.appendChild(themeSection);
       if(standardSection) palette.appendChild(standardSection);
+      if(cellSection) palette.appendChild(cellSection);
       palette.addEventListener("click", function(e){ e.stopPropagation(); });
       container.appendChild(button);
       container.appendChild(palette);
