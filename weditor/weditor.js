@@ -4231,6 +4231,54 @@
     }
     btn.appendChild(icon);
   }
+  function decorateIndentButton(btn, direction){
+    if(!btn) return;
+    const dir=(direction||"").toLowerCase();
+    const isIncrease=dir==="increase" || dir==="right";
+    btn.textContent="";
+    btn.style.display="inline-flex";
+    btn.style.alignItems="center";
+    btn.style.justifyContent="center";
+    btn.style.minWidth="36px";
+    btn.style.padding="8px 10px";
+    const icon=document.createElement("span");
+    icon.setAttribute("aria-hidden","true");
+    icon.style.display="grid";
+    icon.style.gridAutoFlow="column";
+    icon.style.alignItems="center";
+    icon.style.gap="6px";
+    const arrow=document.createElement("span");
+    arrow.textContent=isIncrease?"→":"←";
+    arrow.style.fontSize="16px";
+    arrow.style.lineHeight="1";
+    arrow.style.color=WCfg.UI.brand;
+    arrow.style.display="flex";
+    arrow.style.alignItems="center";
+    arrow.style.justifyContent="center";
+    const lines=document.createElement("span");
+    lines.style.display="grid";
+    lines.style.gap="3px";
+    lines.style.width="16px";
+    lines.style.justifyItems=isIncrease?"end":"start";
+    const widths=isIncrease?[60,80,100]:[100,80,60];
+    for(let i=0;i<widths.length;i++){
+      const bar=document.createElement("span");
+      bar.style.display="block";
+      bar.style.height="3px";
+      bar.style.borderRadius="999px";
+      bar.style.background=WCfg.UI.text;
+      bar.style.width=widths[i]+"%";
+      lines.appendChild(bar);
+    }
+    if(isIncrease){
+      icon.appendChild(lines);
+      icon.appendChild(arrow);
+    } else {
+      icon.appendChild(arrow);
+      icon.appendChild(lines);
+    }
+    btn.appendChild(icon);
+  }
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -4393,6 +4441,44 @@
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
+    "format.decreaseIndent":{
+      label:"←",
+      kind:"button",
+      ariaLabel:"Decrease Indent (减少缩进)",
+      title:"Decrease Indent ← Moves the entire paragraph closer to the left margin. 用来减少缩进，让段落更靠左。",
+      decorate:function(btn){ decorateIndentButton(btn, "decrease"); },
+      run:function(inst, arg){
+        const changed=Formatting.outdentList(inst, arg && arg.ctx);
+        if(!changed) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Decrease Indent",
+          repeatable:true,
+          repeatId:"outdent",
+          repeatLabel:"Decrease Indent"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
+    "format.increaseIndent":{
+      label:"→",
+      kind:"button",
+      ariaLabel:"Increase Indent (增加缩进)",
+      title:"Increase Indent → Moves the paragraph further from the left margin. 增加缩进，让段落往右移动。",
+      decorate:function(btn){ decorateIndentButton(btn, "increase"); },
+      run:function(inst, arg){
+        const changed=Formatting.indentList(inst, arg && arg.ctx);
+        if(!changed) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Increase Indent",
+          repeatable:true,
+          repeatId:"indent",
+          repeatLabel:"Increase Indent"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.strike":{
       label:"ab",
       kind:"button",
@@ -4461,7 +4547,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
@@ -4476,7 +4562,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
