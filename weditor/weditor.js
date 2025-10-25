@@ -3751,14 +3751,8 @@
             changed:false,
             cursor:info.cursor || "ns-resize"
           };
-          if(mode==="split"){
-            const nextRow=info.nextRow;
-            if(!nextRow) return null;
-            const nextHeight=readRowHeight(nextRow);
-            if(!nextHeight) return null;
-            state.nextRow=nextRow;
-            state.nextHeight=nextHeight;
-            state.total=startHeight+nextHeight;
+          if(mode==="split" && info.nextRow){
+            state.nextRow=info.nextRow;
           }
           applyBodyDragCursor(state.cursor);
           applyRootResizeCursor(state.cursor);
@@ -3830,7 +3824,7 @@
       }
       function applyRowHeights(state, height, nextHeight){
         setRowSize(state.row, height);
-        if(state.mode!="edge" && state.nextRow){
+        if(state.mode!="edge" && state.nextRow && typeof nextHeight==="number"){
           setRowSize(state.nextRow, nextHeight);
         }
       }
@@ -3851,23 +3845,9 @@
         if(active.axis==="row"){
           const delta=event.clientY - active.startY;
           const min=MIN_HEIGHT;
-          if(active.mode==="edge"){
-            let newHeight=active.startHeight + delta;
-            if(newHeight<min) newHeight=min;
-            applyRowHeights(active, newHeight);
-          } else {
-            let newHeight=active.startHeight + delta;
-            let newNext=active.nextHeight - delta;
-            if(newHeight<min){ newHeight=min; newNext=active.total-newHeight; }
-            if(newNext<min){ newNext=min; newHeight=active.total-newNext; }
-            newHeight=Math.max(min, newHeight);
-            newNext=Math.max(min, newNext);
-            if(newHeight+newNext!==active.total){
-              const diff=active.total - (newHeight+newNext);
-              newNext+=diff;
-            }
-            applyRowHeights(active, newHeight, newNext);
-          }
+          let newHeight=active.startHeight + delta;
+          if(newHeight<min) newHeight=min;
+          applyRowHeights(active, newHeight);
         } else {
           const delta=event.clientX - active.startX;
           const min=MIN_WIDTH;
