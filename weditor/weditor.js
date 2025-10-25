@@ -4776,7 +4776,7 @@
         primary.style.padding="0";
         primary.style.width="40px";
         primary.style.minWidth="40px";
-        primary.style.height="40px";
+        primary.style.height="34px";
       }
       const arrow=WDom.btn("", false, options.menuTitle||"More options");
       const menuLabel=options.menuAria||options.menuTitle||"More options";
@@ -4794,7 +4794,7 @@
       arrow.style.borderBottomLeftRadius="0";
       arrow.style.borderLeft="1px solid "+WCfg.UI.borderSubtle;
       if(variant==="compact"){
-        arrow.style.height="40px";
+        arrow.style.height="34px";
       }
       arrow.textContent="";
       const caret=document.createElement("span");
