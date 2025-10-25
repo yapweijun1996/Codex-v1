@@ -2428,6 +2428,12 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const LINE_SPACING_OPTIONS=[
+      { label:"Single", value:"1" },
+      { label:"1.15", value:"1.15" },
+      { label:"1.5", value:"1.5" },
+      { label:"Double", value:"2" }
+    ];
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function focusTarget(target){ if(target && typeof target.focus==="function"){ try{ target.focus({ preventScroll:true }); } catch(e){ target.focus(); } } }
     function ensureSelectionInfo(target){
@@ -2796,6 +2802,113 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
+    function normalizeLineSpacingValue(value){
+      if(value===null || typeof value==="undefined") return null;
+      const str=String(value).trim();
+      return str?str:null;
+    }
+    function isLineSpacingBlock(node){
+      if(!node || node.nodeType!==1) return false;
+      const tag=(node.tagName||"").toUpperCase();
+      if(tag==="P" || tag==="DIV" || tag==="LI" || tag==="BLOCKQUOTE" || tag==="DD" || tag==="DT") return true;
+      if(tag==="TD" || tag==="TH") return true;
+      if(tag.length===2 && tag.charAt(0)==="H" && tag.charAt(1)>="1" && tag.charAt(1)<="6") return true;
+      return false;
+    }
+    function findLineSpacingBlock(node, root){
+      while(node && node!==root){
+        if(isLineSpacingBlock(node)) return node;
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function collectLineSpacingBlocks(target, range){
+      const doc=target ? (target.ownerDocument || document) : document;
+      const blocks=[];
+      const seen=new Set();
+      function add(node){
+        const block=findLineSpacingBlock(node, target);
+        if(block && !seen.has(block)){
+          seen.add(block);
+          blocks.push(block);
+        }
+      }
+      if(range){
+        add(range.startContainer);
+        add(range.endContainer);
+        if(!range.collapsed && doc && typeof doc.createTreeWalker==="function"){
+          const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+            acceptNode:function(node){
+              if(node===target) return NodeFilter.FILTER_SKIP;
+              if(!isLineSpacingBlock(node)) return NodeFilter.FILTER_SKIP;
+              return intersectsRange(range, node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+            }
+          });
+          let current;
+          while((current=walker.nextNode())){
+            add(current);
+          }
+        }
+      }
+      return blocks;
+    }
+    function applyLineSpacing(inst, ctx, spacing){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return false;
+      const range=sel.getRangeAt(0);
+      if(range && range.commonAncestorContainer && !target.contains(range.commonAncestorContainer) && range.commonAncestorContainer!==target){
+        return false;
+      }
+      const normalized=normalizeLineSpacingValue(spacing);
+      const blocks=collectLineSpacingBlocks(target, range);
+      if(!blocks.length){
+        const fallback=findLineSpacingBlock(range ? range.startContainer : null, target);
+        if(fallback) blocks.push(fallback);
+      }
+      if(!blocks.length) return false;
+      let changed=false;
+      for(let i=0;i<blocks.length;i++){
+        const block=blocks[i];
+        if(!block || !block.style) continue;
+        if(normalized){
+          if(block.style.lineHeight!==normalized){
+            block.style.lineHeight=normalized;
+            changed=true;
+          }
+        } else {
+          if(block.style.lineHeight){
+            block.style.removeProperty("line-height");
+            changed=true;
+          }
+        }
+      }
+      if(changed){ Normalizer.fixStructure(target); }
+      return changed;
+    }
+    function clearLineSpacing(inst, ctx){
+      return applyLineSpacing(inst, ctx, null);
+    }
+    function getLineSpacing(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return null;
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(range && range.commonAncestorContainer && !target.contains(range.commonAncestorContainer) && range.commonAncestorContainer!==target){
+        return null;
+      }
+      const block=findLineSpacingBlock(range ? range.startContainer : null, target) || findLineSpacingBlock(range ? range.commonAncestorContainer : null, target);
+      if(block && block.style && block.style.lineHeight){
+        const inline=(block.style.lineHeight||"").trim();
+        return inline?inline:null;
+      }
+      return null;
+    }
     function findListFromSelection(target){
       const info=ensureSelectionInfo(target);
       if(!info) return null;
@@ -2863,6 +2976,7 @@
       FONT_FAMILIES,
       FONT_SIZES,
       HIGHLIGHT_COLORS,
+      LINE_SPACING_OPTIONS,
       FONT_THEME_COLORS,
       FONT_STANDARD_COLORS,
       FONT_COLOR_DEFAULT,
@@ -2876,6 +2990,9 @@
       applyDecorationStyle,
       applySimple,
       applyAlign,
+      applyLineSpacing,
+      clearLineSpacing,
+      getLineSpacing,
       toggleList,
       applyListStyle,
       applyCustomBullet,
@@ -2915,6 +3032,15 @@
           return Formatting.clearHighlight(inst, makeCtx(inst, target));
         }
         return Formatting.clearHighlight(inst, makeCtx(inst, target));
+      },
+      lineSpacing:function(inst, target, args){
+        const ctx=makeCtx(inst, target);
+        if(args && Object.prototype.hasOwnProperty.call(args, "value")){
+          const value=args.value;
+          if(value===null || value===""){ return Formatting.clearLineSpacing(inst, ctx); }
+          return Formatting.applyLineSpacing(inst, ctx, value);
+        }
+        return Formatting.applyLineSpacing(inst, ctx, "1");
       },
       fontColor:function(inst, target, args){
         if(args && Object.prototype.hasOwnProperty.call(args, "color")){
@@ -5464,6 +5590,228 @@
     }
     return { create };
   })();
+  const LineSpacingUI=(function(){
+    function normalize(value){
+      if(value===null || typeof value==="undefined") return null;
+      const str=String(value).trim();
+      return str?str:null;
+    }
+    function labelForValue(value, options){
+      const normalized=normalize(value);
+      if(normalized===null) return "Default";
+      for(let i=0;i<options.length;i++){
+        if(options[i].value===normalized) return options[i].label;
+      }
+      return normalized;
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-block";
+      const button=WDom.btn("Spacing", false, "Line and Paragraph Spacing");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.setAttribute("aria-label","Line and Paragraph Spacing");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.gap="8px";
+      button.style.minWidth="64px";
+      button.style.padding="6px 12px";
+      button.textContent="";
+      const iconWrap=document.createElement("span");
+      iconWrap.style.display="grid";
+      iconWrap.style.gridTemplateColumns="16px 1fr";
+      iconWrap.style.alignItems="center";
+      iconWrap.style.gap="6px";
+      iconWrap.style.pointerEvents="none";
+      const arrows=document.createElement("span");
+      arrows.style.display="flex";
+      arrows.style.flexDirection="column";
+      arrows.style.alignItems="center";
+      arrows.style.fontSize="12px";
+      arrows.style.lineHeight="1";
+      const arrowUp=document.createElement("span"); arrowUp.textContent="↑";
+      const arrowDown=document.createElement("span"); arrowDown.textContent="↓";
+      arrows.appendChild(arrowUp);
+      arrows.appendChild(arrowDown);
+      const lines=document.createElement("span");
+      lines.style.display="grid";
+      lines.style.gap="3px";
+      lines.style.width="16px";
+      lines.style.pointerEvents="none";
+      for(let i=0;i<3;i++){
+        const bar=document.createElement("span");
+        bar.style.display="block";
+        bar.style.height=i===1?"2px":"3px";
+        bar.style.borderRadius="999px";
+        bar.style.background=WCfg.UI.text;
+        lines.appendChild(bar);
+      }
+      iconWrap.appendChild(arrows);
+      iconWrap.appendChild(lines);
+      const textWrap=document.createElement("span");
+      textWrap.style.display="flex";
+      textWrap.style.flexDirection="column";
+      textWrap.style.alignItems="flex-start";
+      textWrap.style.gap="2px";
+      textWrap.style.pointerEvents="none";
+      const title=document.createElement("span");
+      title.textContent="Spacing";
+      title.style.font="12px/1.2 Segoe UI,system-ui";
+      title.style.color=WCfg.UI.text;
+      const valueLabel=document.createElement("span");
+      valueLabel.textContent="Default";
+      valueLabel.style.font="11px/1.2 Segoe UI,system-ui";
+      valueLabel.style.color=WCfg.UI.textDim;
+      textWrap.appendChild(title);
+      textWrap.appendChild(valueLabel);
+      const caret=document.createElement("span");
+      caret.textContent="▼";
+      caret.style.fontSize="11px";
+      caret.style.color=WCfg.UI.textDim;
+      caret.style.pointerEvents="none";
+      button.appendChild(iconWrap);
+      button.appendChild(textWrap);
+      button.appendChild(caret);
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.minWidth="180px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="8px";
+      menu.style.zIndex="24";
+      menu.style.gap="4px";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const baseOptions=(Formatting && Formatting.LINE_SPACING_OPTIONS) ? Formatting.LINE_SPACING_OPTIONS : [];
+      const options=[];
+      for(let i=0;i<baseOptions.length;i++){
+        const item=baseOptions[i];
+        options.push({ label:item.label, value:normalize(item.value), hint:null });
+      }
+      options.push({ label:"Reset", value:null, hint:"Remove custom spacing" });
+      const optionButtons=[];
+      function updateValueLabel(value){
+        valueLabel.textContent=labelForValue(value, options);
+      }
+      function updateActive(value){
+        const normalized=normalize(value);
+        for(let i=0;i<optionButtons.length;i++){
+          const entry=optionButtons[i];
+          const isActive=normalized===entry.value;
+          entry.el.setAttribute("aria-checked", isActive?"true":"false");
+          entry.el.style.background=isActive?"#f0f6ff":"transparent";
+          entry.el.style.borderColor=isActive?WCfg.UI.brand:"transparent";
+        }
+      }
+      let open=false;
+      let currentValue=null;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        button.setAttribute("aria-expanded", open?"true":"false");
+        menu.style.display=open?"flex":"none";
+        menu.setAttribute("aria-hidden", open?"false":"true");
+        caret.textContent=open?"▲":"▼";
+        const doc=button.ownerDocument || document;
+        if(open){
+          currentValue=Formatting.getLineSpacing(inst, ctx);
+          updateValueLabel(currentValue);
+          updateActive(currentValue);
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){ const first=menu.querySelector("button"); if(first) first.focus(); },0);
+        } else {
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(ev){ if(!container.contains(ev.target)){ setOpen(false); } }
+      function onDocKey(ev){ if(ev.key==="Escape"){ ev.preventDefault(); setOpen(false); button.focus(); } }
+      function choose(option, event){
+        if(event){ event.preventDefault(); event.stopPropagation(); }
+        const value=option.value;
+        let changed=false;
+        if(value===null){
+          changed=!!Formatting.clearLineSpacing(inst, ctx);
+        } else {
+          changed=!!Formatting.applyLineSpacing(inst, ctx, value);
+        }
+        setOpen(false);
+        if(!changed && value!==currentValue){
+          currentValue=value;
+          updateValueLabel(currentValue);
+          updateActive(currentValue);
+        }
+        if(!changed) return;
+        currentValue=value;
+        updateValueLabel(currentValue);
+        updateActive(currentValue);
+        const target=HistoryManager.resolveTarget(inst, ctx);
+        const historyLabel=value===null?"Line Spacing Default":"Line Spacing "+option.label;
+        HistoryManager.record(inst, target, {
+          label:historyLabel,
+          repeatable:true,
+          repeatId:"lineSpacing",
+          repeatArgs:{ value:value===null?null:value },
+          repeatLabel:"Line Spacing"
+        });
+        if(inst) OutputBinding.syncDebounced(inst);
+      }
+      for(let i=0;i<options.length;i++){
+        const option=options[i];
+        const optBtn=document.createElement("button");
+        optBtn.type="button";
+        optBtn.setAttribute("role","menuitemradio");
+        optBtn.setAttribute("aria-checked","false");
+        optBtn.setAttribute("data-value", option.value===null?"":option.value);
+        optBtn.style.display="flex";
+        optBtn.style.flexDirection="column";
+        optBtn.style.alignItems="flex-start";
+        optBtn.style.gap="2px";
+        optBtn.style.width="100%";
+        optBtn.style.padding="6px 10px";
+        optBtn.style.borderRadius="6px";
+        optBtn.style.border="1px solid transparent";
+        optBtn.style.background="transparent";
+        optBtn.style.cursor="pointer";
+        optBtn.style.font="12px/1.3 Segoe UI,system-ui";
+        optBtn.style.color=WCfg.UI.text;
+        const optLabel=document.createElement("span");
+        optLabel.textContent=option.label;
+        optLabel.style.fontWeight="600";
+        optLabel.style.color=WCfg.UI.text;
+        const optHint=document.createElement("span");
+        optHint.textContent=option.hint || (option.value ? option.value+" × line height" : "Restore default spacing");
+        optHint.style.fontSize="11px";
+        optHint.style.color=WCfg.UI.textDim;
+        optBtn.appendChild(optLabel);
+        optBtn.appendChild(optHint);
+        optBtn.addEventListener("click", function(ev){ choose(option, ev); });
+        optBtn.addEventListener("keydown", function(ev){ if(ev.key==="Escape"){ ev.preventDefault(); setOpen(false); button.focus(); } });
+        optionButtons.push({ value:option.value, el:optBtn });
+        menu.appendChild(optBtn);
+      }
+      button.addEventListener("click", function(ev){ ev.preventDefault(); ev.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(ev){
+        if(ev.key==="ArrowDown" || ev.key==="Enter" || ev.key===" "){
+          ev.preventDefault();
+          setOpen(true);
+        }
+      });
+      menu.addEventListener("click", function(ev){ ev.stopPropagation(); });
+      container.appendChild(button);
+      container.appendChild(menu);
+      return container;
+    }
+    return { create };
+  })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
     function create(inst, ctx){
@@ -5892,6 +6240,11 @@
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
+    "format.lineSpacing":{
+      kind:"custom",
+      ariaLabel:"Line and Paragraph Spacing",
+      render:function(inst, ctx){ return LineSpacingUI.create(inst, ctx); }
+    },
     "format.decreaseIndent":{
       label:"←",
       kind:"button",
@@ -6074,7 +6427,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -6091,7 +6444,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
