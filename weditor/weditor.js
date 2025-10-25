@@ -6421,7 +6421,7 @@
       }
     },
     "format.blockStyle":{
-      label:"Heading",
+      label:"Formatting",
       kind:"select",
       ariaLabel:"Select paragraph style",
       placeholder:"Heading",
