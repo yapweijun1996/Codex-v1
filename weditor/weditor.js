@@ -4231,6 +4231,50 @@
     }
     btn.appendChild(icon);
   }
+  function decorateIndentButton(btn, direction){
+    if(!btn) return;
+    const dir=(direction||"").toLowerCase();
+    btn.textContent="";
+    btn.style.display="inline-flex";
+    btn.style.alignItems="center";
+    btn.style.justifyContent="center";
+    btn.style.minWidth="36px";
+    btn.style.padding="8px 10px";
+    btn.style.gap="6px";
+    const icon=document.createElement("span");
+    icon.setAttribute("aria-hidden","true");
+    icon.style.display="flex";
+    icon.style.alignItems="center";
+    icon.style.gap="6px";
+    const arrow=document.createElement("span");
+    arrow.textContent = dir==="outdent" ? "\u2190" : "\u2192";
+    arrow.style.fontSize="16px";
+    arrow.style.lineHeight="1";
+    arrow.style.color=WCfg.UI.brand;
+    const lines=document.createElement("span");
+    lines.style.display="grid";
+    lines.style.gap="3px";
+    lines.style.width="18px";
+    lines.style.justifyItems = dir==="indent" ? "end" : "start";
+    const barWidths = dir==="indent" ? [60,80,100] : [100,80,60];
+    for(let i=0;i<barWidths.length;i++){
+      const bar=document.createElement("span");
+      bar.style.display="block";
+      bar.style.height="3px";
+      bar.style.borderRadius="999px";
+      bar.style.background=WCfg.UI.text;
+      bar.style.width = barWidths[i]+"%";
+      lines.appendChild(bar);
+    }
+    if(dir==="outdent"){
+      icon.appendChild(arrow);
+      icon.appendChild(lines);
+    } else {
+      icon.appendChild(lines);
+      icon.appendChild(arrow);
+    }
+    btn.appendChild(icon);
+  }
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -4361,6 +4405,22 @@
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
+    "format.decreaseIndent":{
+      label:"\u2190",
+      kind:"button",
+      ariaLabel:"Decrease Indent (減少縮排)",
+      title:"Decrease Indent (減少縮排)",
+      decorate:function(btn){ decorateIndentButton(btn, "outdent"); },
+      run:function(inst, arg){ Formatting.outdentList(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
+    },
+    "format.increaseIndent":{
+      label:"\u2192",
+      kind:"button",
+      ariaLabel:"Increase Indent (增加縮排)",
+      title:"Increase Indent (增加縮排)",
+      decorate:function(btn){ decorateIndentButton(btn, "indent"); },
+      run:function(inst, arg){ Formatting.indentList(inst, arg && arg.ctx); OutputBinding.syncDebounced(inst); }
+    },
     "format.alignLeft":{
       label:"Left",
       kind:"button",
@@ -4461,7 +4521,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
@@ -4476,7 +4536,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
