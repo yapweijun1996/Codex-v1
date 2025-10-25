@@ -2681,6 +2681,132 @@
       if(success && inst){ inst.fontColor=null; }
       return success;
     }
+    function collectNodesInRange(target, range){
+      const doc=target ? (target.ownerDocument || document) : document;
+      if(!doc || !range) return [];
+      const nodes=[];
+      const seen=new Set();
+      function consider(node){
+        if(!node || node.nodeType!==1) return;
+        if(!target.contains(node)) return;
+        if(!intersectsRange(range, node)) return;
+        if(seen.has(node)) return;
+        seen.add(node);
+        nodes.push(node);
+      }
+      const root=range.commonAncestorContainer;
+      if(root){
+        if(root.nodeType===1){ consider(root); }
+        else if(root.parentNode && root.parentNode.nodeType===1){ consider(root.parentNode); }
+      }
+      if(range.startContainer && range.startContainer.nodeType===1){ consider(range.startContainer); }
+      else if(range.startContainer && range.startContainer.parentNode){ consider(range.startContainer.parentNode); }
+      if(range.endContainer && range.endContainer.nodeType===1){ consider(range.endContainer); }
+      else if(range.endContainer && range.endContainer.parentNode){ consider(range.endContainer.parentNode); }
+      const walkerRoot=(root && root.nodeType===1) ? root : target;
+      if(doc.createTreeWalker){
+        const walker=doc.createTreeWalker(walkerRoot, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==walkerRoot){ consider(current); }
+        while((current=walker.nextNode())){ consider(current); }
+      }
+      return nodes;
+    }
+    function stripResidualFormatting(target, range){
+      if(!target || !range) return false;
+      const nodes=collectNodesInRange(target, range);
+      if(!nodes.length) return false;
+      const doc=target.ownerDocument || document;
+      const STYLE_RESET_TAGS={ SPAN:1, P:1, DIV:1, LI:1, UL:1, OL:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1, STRONG:1, EM:1, B:1, I:1, U:1, S:1, SUP:1, SUB:1, MARK:1, CODE:1, FONT:1, SMALL:1, BIG:1, DEL:1, INS:1, A:1 };
+      const INLINE_UNWRAP_TAGS={ SPAN:1, STRONG:1, EM:1, B:1, I:1, U:1, S:1, SUP:1, SUB:1, MARK:1, CODE:1, FONT:1, SMALL:1, BIG:1, DEL:1, INS:1, A:1 };
+      const BLOCK_TO_PARAGRAPH_TAGS={ H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1 };
+      const lists=new Set();
+      const unwrap=new Set();
+      const toParagraph=new Set();
+      let changed=false;
+      for(let i=0;i<nodes.length;i++){
+        const node=nodes[i];
+        if(!node || node.nodeType!==1) continue;
+        if(node===target) continue;
+        const tag=(node.tagName||"").toUpperCase();
+        const fullyCovered=rangeCoversNode(range, node);
+        if(STYLE_RESET_TAGS[tag] && fullyCovered){
+          if(node.hasAttribute("style")){ node.removeAttribute("style"); changed=true; }
+          if(node.hasAttribute("class")){ node.removeAttribute("class"); changed=true; }
+          if(node.hasAttribute("color")){ node.removeAttribute("color"); changed=true; }
+          if(node.hasAttribute("face")){ node.removeAttribute("face"); changed=true; }
+          if(node.hasAttribute("size")){ node.removeAttribute("size"); changed=true; }
+          if(node.hasAttribute("bgcolor")){ node.removeAttribute("bgcolor"); changed=true; }
+          if(node.hasAttribute("align")){ node.removeAttribute("align"); changed=true; }
+          if(tag==="A" && node.hasAttribute("href")){ node.removeAttribute("href"); changed=true; }
+          if(tag==="A" && node.hasAttribute("title")){ node.removeAttribute("title"); changed=true; }
+          if(node.hasAttribute("name")){ node.removeAttribute("name"); changed=true; }
+          const attrs=node.attributes ? Array.prototype.slice.call(node.attributes) : [];
+          for(let j=0;j<attrs.length;j++){
+            const attr=attrs[j];
+            const name=attr && attr.name ? attr.name.toLowerCase() : "";
+            if(name.indexOf("data-")==0){ node.removeAttribute(attr.name); changed=true; }
+            if(name.indexOf("mso")==0){ node.removeAttribute(attr.name); changed=true; }
+          }
+        }
+        if(fullyCovered && BLOCK_TO_PARAGRAPH_TAGS[tag]){ toParagraph.add(node); }
+        if(fullyCovered && (tag==="UL" || tag==="OL")){ lists.add(node); }
+        if(fullyCovered && INLINE_UNWRAP_TAGS[tag]){ unwrap.add(node); }
+      }
+      lists.forEach(function(list){
+        if(!list || !list.parentNode) return;
+        const parent=list.parentNode;
+        const reference=list.nextSibling;
+        while(list.firstChild){
+          const child=list.firstChild;
+          if(child.nodeType===1 && (child.tagName||"").toUpperCase()==="LI"){
+            const paragraph=doc.createElement("p");
+            while(child.firstChild){ paragraph.appendChild(child.firstChild); }
+            parent.insertBefore(paragraph, reference);
+            list.removeChild(child);
+            changed=true;
+          } else {
+            list.removeChild(child);
+          }
+        }
+        parent.removeChild(list);
+        changed=true;
+      });
+      toParagraph.forEach(function(node){
+        if(!node || !node.parentNode) return;
+        const paragraph=doc.createElement("p");
+        while(node.firstChild){ paragraph.appendChild(node.firstChild); }
+        node.parentNode.replaceChild(paragraph, node);
+        changed=true;
+      });
+      unwrap.forEach(function(node){
+        if(!node || !node.parentNode) return;
+        if(node.attributes && node.attributes.length){ return; }
+        const parent=node.parentNode;
+        while(node.firstChild){ parent.insertBefore(node.firstChild, node); }
+        parent.removeChild(node);
+        changed=true;
+      });
+      return changed;
+    }
+    function clearFormatting(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let changed=false;
+      try{ if(document.execCommand("removeFormat", false, null)) changed=true; }
+      catch(err){ }
+      if(clearHighlight(inst, ctx)) changed=true;
+      if(clearFontColor(inst, ctx)) changed=true;
+      if(clearLineSpacing(inst, ctx)) changed=true;
+      const selection=getSelectionWithin(target);
+      const range=selection ? selection.range : null;
+      if(range && stripResidualFormatting(target, range)) changed=true;
+      if(changed){
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+      }
+      return changed;
+    }
     function fallbackApplyAlign(target, align){
       const info=ensureSelectionInfo(target); if(!info) return false;
       const { range }=info;
@@ -3133,7 +3259,8 @@
       outdentList,
       applyBlockFormat,
       getBlockFormat,
-      BLOCK_FORMATS
+      BLOCK_FORMATS,
+      clearFormatting
     };
   })();
   const HistoryManager=(function(){
@@ -6603,6 +6730,19 @@
       decorate:function(btn){ btn.style.textDecoration="line-through"; btn.style.textDecorationThickness="2px"; },
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "strikeThrough"); OutputBinding.syncDebounced(inst); }
     },
+    "format.clearAll":{
+      label:"Clear",
+      kind:"button",
+      ariaLabel:"Clear all formatting",
+      title:"Clear all formatting",
+      run:function(inst, arg){
+        const changed=Formatting.clearFormatting(inst, arg && arg.ctx);
+        if(!changed) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, { label:"Clear Formatting", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.subscript":{
       label:"x₂",
       kind:"button",
@@ -6742,7 +6882,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearAll"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
@@ -6759,7 +6899,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearAll"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
