@@ -3499,7 +3499,7 @@
   })();
   const TableResizer=(function(){
     const HANDLE_BUFFER=6;
-    const MIN_WIDTH=48;
+    const MIN_WIDTH=10;
     function firstBodyRow(table){
       if(!table) return null;
       const sections=[table.tHead, table.tBodies && table.tBodies[0], table.tFoot];
