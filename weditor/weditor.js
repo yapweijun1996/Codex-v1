@@ -1396,6 +1396,8 @@
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
       enableImageResizer(editor);
+      TableResizer.enable(editor);
+      TableResizer.refresh(editor);
       function reattachImageOverlay(){
         const overlay=editor.__weditorImageOverlay;
         if(overlay && !editor.contains(overlay)) editor.appendChild(overlay);
@@ -2227,6 +2229,324 @@
     }
     return { build };
   })();
+  const TableResizer=(function(){
+    const EDGE_ZONE=12;
+    const MIN_COL_WIDTH=48;
+    const AUTO_MIN_WIDTH=48;
+    const MIN_TABLE_WIDTH=160;
+    const roots=new WeakMap();
+    function collectTables(node, set){
+      if(!node || node.nodeType!==1) return;
+      if((node.tagName||"").toLowerCase()==="table") set.add(node);
+      if(node.querySelectorAll){
+        const list=node.querySelectorAll("table");
+        for(let i=0;i<list.length;i++) set.add(list[i]);
+      }
+    }
+    function ensureColgroup(table){
+      if(!table || table.nodeType!==1) return null;
+      const doc=table.ownerDocument || document;
+      let colgroup=null;
+      for(let child=table.firstChild; child; child=child.nextSibling){
+        if(child.nodeType===1 && (child.tagName||"").toLowerCase()==="colgroup"){ colgroup=child; break; }
+      }
+      if(!colgroup){
+        colgroup=doc.createElement("colgroup");
+        if(table.firstChild) table.insertBefore(colgroup, table.firstChild);
+        else table.appendChild(colgroup);
+      }
+      const firstRow=table.rows && table.rows[0];
+      const colCount=firstRow && firstRow.cells ? firstRow.cells.length : 0;
+      if(colCount<=0){
+        while(colgroup.firstChild) colgroup.removeChild(colgroup.firstChild);
+        return colgroup;
+      }
+      for(let i=colgroup.children.length;i<colCount;i++) colgroup.appendChild(doc.createElement("col"));
+      while(colgroup.children.length>colCount) colgroup.removeChild(colgroup.lastChild);
+      colgroup.setAttribute("data-weditor-table-colgroup","1");
+      return colgroup;
+    }
+    function getAutoIndex(table, count){
+      if(!count || count<=0) return 0;
+      let idx=parseInt(table.getAttribute("data-weditor-table-auto-index"), 10);
+      if(!isFinite(idx) || idx<0 || idx>=count){
+        idx = count>1 ? count-1 : 0;
+        table.setAttribute("data-weditor-table-auto-index", String(idx));
+      }
+      return idx;
+    }
+    function measureColumns(table, count){
+      const widths=new Array(count);
+      const firstRow=table.rows && table.rows[0];
+      const rect=table.getBoundingClientRect();
+      const fallback=Math.max(48, Math.round((rect.width || table.clientWidth || (count*96)) / Math.max(count,1)));
+      if(firstRow && firstRow.cells){
+        for(let i=0;i<count;i++){
+          const cell=firstRow.cells[i];
+          if(cell){
+            const cellRect=cell.getBoundingClientRect();
+            widths[i]=Math.max(1, Math.round(cellRect.width || fallback));
+          } else {
+            widths[i]=fallback;
+          }
+        }
+      } else {
+        for(let i=0;i<count;i++) widths[i]=fallback;
+      }
+      return widths;
+    }
+    function syncStructure(table){
+      if(!table || table.nodeType!==1) return;
+      const colgroup=ensureColgroup(table);
+      if(!colgroup) return;
+      const cols=Array.prototype.slice.call(colgroup.children);
+      if(!cols.length) return;
+      const autoIndex=getAutoIndex(table, cols.length);
+      const widths=measureColumns(table, cols.length);
+      let fixedSum=0;
+      for(let i=0;i<cols.length;i++){
+        const col=cols[i];
+        if(!col) continue;
+        if(i===autoIndex){
+          col.style.width="auto";
+        } else {
+          const target=Math.max(MIN_COL_WIDTH, widths[i]||0);
+          col.style.width=target+"px";
+          fixedSum+=target;
+        }
+        col.setAttribute("data-weditor-table-col","1");
+      }
+      table.__weditorTableFixedWidths = widths;
+      table.setAttribute("data-weditor-table-fixed-sum", String(Math.round(fixedSum)));
+      table.setAttribute("data-weditor-table-ready","1");
+      table.style.maxWidth="100%";
+      if(!table.style.width) table.style.width="100%";
+      table.style.boxSizing="border-box";
+    }
+    function prepare(table){
+      if(!table || table.nodeType!==1) return;
+      ensureColgroup(table);
+      syncStructure(table);
+      if(typeof window!=="undefined" && typeof window.requestAnimationFrame==="function"){
+        window.requestAnimationFrame(function(){ if(table.isConnected) syncStructure(table); });
+      }
+    }
+    function refresh(root){
+      if(!root || root.nodeType!==1) return;
+      const tables=root.querySelectorAll ? root.querySelectorAll("table") : [];
+      for(let i=0;i<tables.length;i++) prepare(tables[i]);
+    }
+    function clearHover(state){
+      if(!state) return;
+      if(state.hoverTable){
+        state.hoverTable.style.cursor="";
+        state.hoverTable.removeAttribute("data-weditor-table-hover");
+      }
+      if(state.root) state.root.style.cursor="";
+      state.hoverTable=null;
+    }
+    function applyWidth(state, width){
+      if(!state || !state.active) return;
+      const active=state.active;
+      const table=active.table;
+      if(!table) return;
+      table.style.width=Math.round(width)+"px";
+      table.style.maxWidth="100%";
+      const colgroup=ensureColgroup(table);
+      if(colgroup){
+        const cols=Array.prototype.slice.call(colgroup.children);
+        for(let i=0;i<cols.length;i++){
+          const col=cols[i];
+          if(!col) continue;
+          if(i===active.autoIndex){
+            col.style.width="auto";
+          } else {
+            const stored=active.fixedWidths[i];
+            const px=Math.max(MIN_COL_WIDTH, Math.round(stored||MIN_COL_WIDTH));
+            col.style.width=px+"px";
+          }
+        }
+      }
+      active.latestWidth=width;
+    }
+    function notifyChange(root){
+      if(!root) return;
+      try{
+        const ev=new Event("input", { bubbles:true });
+        root.dispatchEvent(ev);
+      } catch(err){
+        if(document && document.createEvent){
+          const ev=document.createEvent("Event");
+          ev.initEvent("input", true, false);
+          root.dispatchEvent(ev);
+        }
+      }
+    }
+    function finishResize(state){
+      if(!state || !state.active) return;
+      const active=state.active;
+      const table=active.table;
+      const doc=active.doc || (table && (table.ownerDocument || document));
+      if(doc){
+        doc.removeEventListener("pointermove", state.docMove);
+        doc.removeEventListener("pointerup", state.docUp);
+        doc.removeEventListener("pointercancel", state.docUp);
+      }
+      if(active.pointerId!=null && table && typeof table.releasePointerCapture==="function"){
+        try{ table.releasePointerCapture(active.pointerId); } catch(e){}
+      }
+      if(table){
+        table.removeAttribute("data-weditor-table-resizing");
+        table.setAttribute("data-weditor-table-width", String(Math.round(active.latestWidth || active.startWidth)));
+        if(typeof window!=="undefined" && typeof window.requestAnimationFrame==="function"){
+          window.requestAnimationFrame(function(){ if(table.isConnected) syncStructure(table); });
+        } else {
+          syncStructure(table);
+        }
+      }
+      const root=state.root;
+      state.active=null;
+      clearHover(state);
+      if(root) notifyChange(root);
+    }
+    function handleDrag(state, ev){
+      if(!state || !state.active) return;
+      const active=state.active;
+      ev.preventDefault();
+      const delta=ev.clientX - active.startX;
+      let width=active.startWidth + delta;
+      const min=active.minWidth;
+      const max=Math.max(min, active.maxWidth);
+      if(width<min) width=min;
+      if(width>max) width=max;
+      applyWidth(state, width);
+    }
+    function setHover(state, table){
+      if(state.hoverTable===table) return;
+      clearHover(state);
+      state.hoverTable=table;
+      if(state.root) state.root.style.cursor="col-resize";
+      if(table){
+        table.style.cursor="col-resize";
+        table.setAttribute("data-weditor-table-hover","right");
+      }
+    }
+    function pointerMove(state, ev){
+      if(!state) return;
+      if(state.active){ handleDrag(state, ev); return; }
+      const target=ev.target;
+      const table=(target && typeof target.closest==="function") ? target.closest("table") : null;
+      if(!table || !state.root.contains(table)){ clearHover(state); return; }
+      if(!table.hasAttribute("data-weditor-table-ready")) prepare(table);
+      const rect=table.getBoundingClientRect();
+      const distRight=Math.abs(rect.right - ev.clientX);
+      if(distRight<=EDGE_ZONE){ setHover(state, table); }
+      else if(state.hoverTable===table){ clearHover(state); }
+      else if(state.hoverTable){ clearHover(state); }
+    }
+    function computeFixed(table, autoIndex){
+      const colgroup=ensureColgroup(table);
+      const cols=colgroup ? Array.prototype.slice.call(colgroup.children) : [];
+      const widths=measureColumns(table, cols.length);
+      const fixedWidths=new Array(cols.length);
+      let sum=0;
+      for(let i=0;i<cols.length;i++){
+        if(i===autoIndex){ fixedWidths[i]=null; }
+        else {
+          const px=Math.max(MIN_COL_WIDTH, widths[i]||0);
+          fixedWidths[i]=px;
+          sum+=px;
+        }
+        if(cols[i]){
+          if(i===autoIndex) cols[i].style.width="auto";
+          else cols[i].style.width=Math.max(MIN_COL_WIDTH, widths[i]||0)+"px";
+        }
+      }
+      table.setAttribute("data-weditor-table-fixed-sum", String(Math.round(sum)));
+      table.__weditorTableFixedWidths = widths;
+      return { widths:fixedWidths, sum };
+    }
+    function pointerDown(state, ev){
+      if(!state || state.active) return;
+      if(ev.button!=null && ev.button!==0) return;
+      const table=state.hoverTable;
+      if(!table || !state.root.contains(table)) return;
+      prepare(table);
+      const colgroup=ensureColgroup(table);
+      const cols=colgroup ? colgroup.children.length : 0;
+      if(!cols) return;
+      const autoIndex=getAutoIndex(table, cols);
+      const fixedInfo=computeFixed(table, autoIndex);
+      const rect=table.getBoundingClientRect();
+      const startWidth=Math.max(rect.width || 0, fixedInfo.sum + AUTO_MIN_WIDTH);
+      const parent=table.parentElement;
+      let maxWidth=startWidth;
+      if(parent){ maxWidth=Math.max(startWidth, parent.clientWidth || startWidth); }
+      const doc=table.ownerDocument || document;
+      const baseMin=fixedInfo.sum + AUTO_MIN_WIDTH;
+      const currentWidth=Math.round(rect.width || baseMin);
+      const minWidth=Math.max(baseMin, Math.min(MIN_TABLE_WIDTH, currentWidth));
+      state.active={
+        table,
+        pointerId:ev.pointerId,
+        startX:ev.clientX,
+        startWidth,
+        fixedWidths:fixedInfo.widths,
+        autoIndex,
+        minWidth,
+        maxWidth:Math.max(minWidth, maxWidth),
+        doc,
+        latestWidth:startWidth
+      };
+      state.root.style.cursor="col-resize";
+      table.setAttribute("data-weditor-table-resizing","1");
+      try{ table.setPointerCapture(ev.pointerId); } catch(err){}
+      if(!state.docMove) state.docMove=function(e){ handleDrag(state, e); };
+      if(!state.docUp) state.docUp=function(){ finishResize(state); };
+      doc.addEventListener("pointermove", state.docMove);
+      doc.addEventListener("pointerup", state.docUp);
+      doc.addEventListener("pointercancel", state.docUp);
+      ev.preventDefault();
+      ev.stopPropagation();
+    }
+    function pointerLeave(state){
+      if(!state || state.active) return;
+      clearHover(state);
+    }
+    function attachRoot(root){
+      if(!root || root.nodeType!==1) return;
+      if(roots.has(root)){
+        refresh(root);
+        return;
+      }
+      const state={ root, hoverTable:null, active:null, docMove:null, docUp:null, observer:null };
+      const onMove=function(ev){ pointerMove(state, ev); };
+      const onLeave=function(){ pointerLeave(state); };
+      const onDown=function(ev){ pointerDown(state, ev); };
+      root.addEventListener("pointermove", onMove);
+      root.addEventListener("pointerleave", onLeave);
+      root.addEventListener("pointerdown", onDown);
+      const observer=new MutationObserver(function(records){
+        const tables=new Set();
+        for(let i=0;i<records.length;i++){
+          const rec=records[i];
+          if(rec.target && (rec.target.tagName||"").toLowerCase()==="table") tables.add(rec.target);
+          if(rec.addedNodes){
+            for(let j=0;j<rec.addedNodes.length;j++) collectTables(rec.addedNodes[j], tables);
+          }
+        }
+        tables.forEach(function(tbl){ if(root.contains(tbl)) prepare(tbl); });
+      });
+      observer.observe(root, { childList:true, subtree:true });
+      state.onMove=onMove;
+      state.onLeave=onLeave;
+      state.onDown=onDown;
+      state.observer=observer;
+      roots.set(root, state);
+      refresh(root);
+    }
+    return { enable:attachRoot, prepare, refresh };
+  })();
   const Fullscreen=(function(){
     function open(inst){
       A11y.lockScroll();
@@ -2249,6 +2569,8 @@
       area.innerHTML=Breaks.serialize(inst.el);
       Breaks.ensurePlaceholders(area);
       HistoryManager.init(inst, area);
+      TableResizer.enable(area);
+      TableResizer.refresh(area);
       rightWrap.appendChild(area);
       const ctx={
         area,
@@ -4574,6 +4896,78 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      run:function(inst, arg){
+        const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
+        if(!target) return;
+        try{ target.focus({ preventScroll:true }); }
+        catch(err){ if(typeof target.focus==="function") target.focus(); }
+        const colInput=window.prompt("Enter number of columns", "3");
+        if(colInput===null) return;
+        const cols=parseInt(colInput, 10);
+        if(!cols || cols<1 || cols>12){ window.alert("Please enter a whole number of columns between 1 and 12."); return; }
+        const rowInput=window.prompt("Enter number of rows", "3");
+        if(rowInput===null) return;
+        const rows=parseInt(rowInput, 10);
+        if(!rows || rows<1 || rows>20){ window.alert("Please enter a whole number of rows between 1 and 20."); return; }
+        const doc=target.ownerDocument || document;
+        const win=doc.defaultView || window;
+        let sel=win.getSelection ? win.getSelection() : window.getSelection();
+        if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+          WDom.placeCaretAtEnd(target);
+          sel=win.getSelection ? win.getSelection() : window.getSelection();
+        }
+        const baseRange=(sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+        const table=doc.createElement("table");
+        table.style.width="100%";
+        table.style.borderCollapse="collapse";
+        table.style.tableLayout="fixed";
+        table.style.margin="12px 0";
+        table.style.border="1px solid "+WCfg.UI.borderSubtle;
+        for(let r=0;r<rows;r++){
+          const tr=doc.createElement("tr");
+          for(let c=0;c<cols;c++){
+            const td=doc.createElement("td");
+            td.style.border="1px solid "+WCfg.UI.borderSubtle;
+            td.style.padding="8px";
+            td.style.verticalAlign="top";
+            td.style.wordBreak="break-word";
+            const block=doc.createElement("p");
+            block.appendChild(doc.createElement("br"));
+            td.appendChild(block);
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+        const fragment=doc.createDocumentFragment();
+        fragment.appendChild(table);
+        const spacer=doc.createElement("p");
+        spacer.appendChild(doc.createElement("br"));
+        fragment.appendChild(spacer);
+        if(baseRange){
+          const range=baseRange.cloneRange();
+          range.deleteContents();
+          range.insertNode(fragment);
+        } else {
+          target.appendChild(fragment);
+        }
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        TableResizer.prepare(table);
+        TableResizer.refresh(target);
+        const selection=win.getSelection ? win.getSelection() : window.getSelection();
+        const firstCell=table.querySelector("td");
+        if(firstCell && selection && doc.createRange){
+          const focusTarget=firstCell.querySelector("p") || firstCell;
+          const cellRange=doc.createRange();
+          cellRange.selectNodeContents(focusTarget);
+          cellRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(cellRange);
+        }
+        HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      } },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -4622,6 +5016,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4637,6 +5032,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4705,6 +5101,8 @@
     this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
     this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
     HistoryManager.init(this, this.el);
+    TableResizer.enable(this.el);
+    TableResizer.refresh(this.el);
     this.el.__winst = this;
   };
   WEditorInstance.prototype.loadState=function(state){
