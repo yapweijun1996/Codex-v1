@@ -2595,6 +2595,64 @@
       }
       return changed;
     }
+    function fallbackRemoveFormatting(target){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const { range }=info;
+      const doc=target.ownerDocument || document;
+      const nodes=[];
+      if(range.commonAncestorContainer && range.commonAncestorContainer.nodeType===1 && target.contains(range.commonAncestorContainer)){
+        nodes.push(range.commonAncestorContainer);
+      }
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==range.commonAncestorContainer && target.contains(current) && intersectsRange(range, current)){
+          nodes.push(current);
+        }
+        while((current=walker.nextNode())){
+          if(!target.contains(current)) continue;
+          if(!intersectsRange(range, current)) continue;
+          nodes.push(current);
+        }
+      }
+      const unwrap=[];
+      const inlineUnwrap={ B:1, STRONG:1, I:1, EM:1, U:1, S:1, STRIKE:1, SUB:1, SUP:1, MARK:1, CODE:1, TT:1 };
+      let changed=false;
+      for(let i=0;i<nodes.length;i++){
+        const el=nodes[i];
+        if(!el || el===target || el.nodeType!==1) continue;
+        let modified=false;
+        if(el.hasAttribute && el.hasAttribute("style")){
+          el.removeAttribute("style");
+          modified=true;
+        }
+        if(el.hasAttribute){
+          if(el.hasAttribute("color")){ el.removeAttribute("color"); modified=true; }
+          if(el.hasAttribute("face")){ el.removeAttribute("face"); modified=true; }
+          if(el.hasAttribute("size")){ el.removeAttribute("size"); modified=true; }
+        }
+        const tag=(el.tagName||"").toUpperCase();
+        if(tag==="FONT"){
+          unwrap.push(el);
+          modified=true;
+        } else if(inlineUnwrap[tag]){
+          unwrap.push(el);
+          modified=true;
+        } else if(tag==="SPAN" && el.attributes && el.attributes.length===0){
+          unwrap.push(el);
+        }
+        if(modified) changed=true;
+      }
+      for(let i=0;i<unwrap.length;i++){
+        const node=unwrap[i];
+        const parent=node.parentNode;
+        if(!parent) continue;
+        while(node.firstChild){ parent.insertBefore(node.firstChild, node); }
+        parent.removeChild(node);
+        changed=true;
+      }
+      return changed;
+    }
     function execCommand(target, command, value, useCss){
       if(!target){ return false; }
       focusTarget(target);
@@ -2679,6 +2737,21 @@
       try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
       if(fallbackClearFontColor(target)) success=true;
       if(success && inst){ inst.fontColor=null; }
+      return success;
+    }
+    function clearFormatting(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let success=false;
+      try{ success=document.execCommand("removeFormat", false, null); }
+      catch(err){ success=false; }
+      if(fallbackRemoveFormatting(target)) success=true;
+      Normalizer.fixStructure(target);
+      Breaks.ensurePlaceholders(target);
+      if(success && inst){
+        inst.highlightColor=null;
+        inst.fontColor=null;
+      }
       return success;
     }
     function fallbackApplyAlign(target, align){
@@ -3125,6 +3198,7 @@
       applyAlign,
       applyLineSpacing,
       clearLineSpacing,
+      clearFormatting,
       getLineSpacing,
       toggleList,
       applyListStyle,
@@ -6495,6 +6569,22 @@
         OutputBinding.syncDebounced(inst);
       }
     },
+    "format.clearFormatting":{
+      label:"Clear",
+      kind:"button",
+      ariaLabel:"Clear formatting",
+      title:"Clear Formatting",
+      run:function(inst, arg){
+        const changed=Formatting.clearFormatting(inst, arg && arg.ctx);
+        if(!changed) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Clear Formatting",
+          repeatable:false
+        });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "format.bulletedList":{
       kind:"custom",
       ariaLabel:"Bulleted List (項目符號清單)",
@@ -6742,7 +6832,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
@@ -6759,7 +6849,7 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
