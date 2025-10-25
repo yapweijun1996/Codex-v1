@@ -2883,6 +2883,151 @@
       outdentList
     };
   })();
+  const TableTools=(function(){
+    function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function getSelection(target){
+      if(!target || !target.ownerDocument){ return null; }
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      if(!win || typeof win.getSelection!=="function"){ return null; }
+      return win.getSelection();
+    }
+    function ascendToTable(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="table"){ return current; }
+        }
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function locateTable(target){
+      const sel=getSelection(target);
+      if(!sel || sel.rangeCount===0){ return null; }
+      const range=sel.getRangeAt(0);
+      let container=range.startContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && target.contains(container)){ const found=ascendToTable(container, target); if(found) return found; }
+      container=range.endContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && target.contains(container)){ const found=ascendToTable(container, target); if(found) return found; }
+      container=range.commonAncestorContainer;
+      if(container && container.nodeType===3){ container=container.parentNode; }
+      if(container && target.contains(container)){ const found=ascendToTable(container, target); if(found) return found; }
+      const doc=target.ownerDocument || document;
+      if(container && doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        while(current){
+          if(target.contains(current)){
+            const tag=(current.tagName||"").toLowerCase();
+            if(tag==="table"){ return current; }
+          }
+          current=walker.nextNode();
+        }
+      }
+      return null;
+    }
+    function normalizeColor(value){
+      if(!value){ return null; }
+      let input=value.trim();
+      if(!input){ return null; }
+      const hexMatch=input.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+      if(hexMatch){
+        if(input.length===4){
+          return ("#"+hexMatch[1][0]+hexMatch[1][0]+hexMatch[1][1]+hexMatch[1][1]+hexMatch[1][2]+hexMatch[1][2]).toLowerCase();
+        }
+        return input.toLowerCase();
+      }
+      const rgbMatch=input.match(/^rgba?\((\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*([0-9.]+))?\)$/i);
+      if(rgbMatch){
+        const clamp=function(num){
+          const n=parseInt(num, 10);
+          if(Number.isNaN(n)){ return 0; }
+          return Math.max(0, Math.min(255, n));
+        };
+        const toHex=function(num){ const h=num.toString(16); return h.length===1?"0"+h:h; };
+        const r=clamp(rgbMatch[1]);
+        const g=clamp(rgbMatch[2]);
+        const b=clamp(rgbMatch[3]);
+        if(rgbMatch[4] && parseFloat(rgbMatch[4])===0){ return null; }
+        return ("#"+toHex(r)+toHex(g)+toHex(b)).toLowerCase();
+      }
+      if(input.toLowerCase()==="transparent"){ return null; }
+      return input.toLowerCase();
+    }
+    function setElementBorder(el, color){
+      if(!el || !el.style){ return false; }
+      const prev=el.style.border || "";
+      if(color){
+        const next="1px solid "+color;
+        if(prev===next){ return false; }
+        el.style.border=next;
+        return true;
+      }
+      if(prev==="0" || prev==="0px" || prev==="none"){ return false; }
+      el.style.border="0";
+      return true;
+    }
+    function applyBorderToTable(table, color){
+      if(!table){ return { changed:false, table:null, color:null }; }
+      let changed=false;
+      if(color){
+        if((table.style.borderCollapse||"").toLowerCase()!=="collapse"){ table.style.borderCollapse="collapse"; changed=true; }
+        if(setElementBorder(table, color)) changed=true;
+      } else {
+        if(setElementBorder(table, null)) changed=true;
+      }
+      const cells=table.querySelectorAll("th,td");
+      for(let i=0;i<cells.length;i++){
+        if(color){
+          if(setElementBorder(cells[i], color)) changed=true;
+        } else {
+          if(setElementBorder(cells[i], null)) changed=true;
+        }
+      }
+      return { changed, table, color:color||null };
+    }
+    function applyBorder(inst, ctx, color){
+      const target=resolveTarget(inst, ctx);
+      if(!target){ return { changed:false, table:null, color:null }; }
+      const table=locateTable(target);
+      if(!table){ return { changed:false, table:null, color:null }; }
+      const normalized=color?normalizeColor(color):null;
+      const result=applyBorderToTable(table, normalized);
+      if(result.changed && typeof TableResizer!=="undefined" && TableResizer && typeof TableResizer.ensureTable==="function"){
+        TableResizer.ensureTable(table);
+      }
+      return result;
+    }
+    function findActiveTable(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target){ return null; }
+      return locateTable(target);
+    }
+    function getBorderColor(inst, ctx){
+      const table=findActiveTable(inst, ctx);
+      if(!table){ return null; }
+      const doc=table.ownerDocument || document;
+      const win=doc.defaultView || window;
+      if(!win || typeof win.getComputedStyle!=="function"){ return null; }
+      const computed=win.getComputedStyle(table);
+      if(!computed){ return null; }
+      const width=parseFloat(computed.borderTopWidth||computed.borderWidth||"0") || 0;
+      const style=(computed.borderTopStyle||computed.borderStyle||"").toLowerCase();
+      if(width<=0 || style==="none" || style==="hidden"){ return null; }
+      return normalizeColor(computed.borderTopColor || computed.borderColor || "");
+    }
+    return {
+      applyBorderColor:function(inst, ctx, color){ return applyBorder(inst, ctx, color); },
+      clearBorders:function(inst, ctx){ return applyBorder(inst, ctx, null); },
+      getBorderColor,
+      findActiveTable,
+      normalizeColor
+    };
+  })();
   const HistoryManager=(function(){
     const MAX_ENTRIES=200;
     const states=new WeakMap();
@@ -2925,7 +3070,16 @@
       },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
-      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
+      fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; },
+      tableBorder:function(inst, target, args){
+        const ctx=makeCtx(inst, target);
+        if(args && Object.prototype.hasOwnProperty.call(args, "color")){
+          const result=args.color ? TableTools.applyBorderColor(inst, ctx, args.color) : TableTools.clearBorders(inst, ctx);
+          return !!(result && result.changed);
+        }
+        const outcome=TableTools.clearBorders(inst, ctx);
+        return !!(outcome && outcome.changed);
+      }
     };
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
     function cloneInstState(inst){
@@ -4410,6 +4564,228 @@
     }
     return { create };
   })();
+  const TableBorderUI=(function(){
+    const NO_BORDER_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
+    const COLORS=[
+      { label:"Default Gray", value:WCfg.UI.borderSubtle },
+      { label:"Light Gray", value:"#d2d0ce" },
+      { label:"Dark Gray", value:"#8a8886" },
+      { label:"Black", value:"#201f1e" },
+      { label:"Blue", value:"#0f6cbd" },
+      { label:"Teal", value:"#038387" },
+      { label:"Green", value:"#107c10" },
+      { label:"Orange", value:"#ca5010" },
+      { label:"Red", value:"#d13438" },
+      { label:"Purple", value:"#5c2d91" }
+    ].map(function(item){
+      return { label:item.label, value:TableTools.normalizeColor(item.value)||item.value };
+    });
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("Table Border", false, "Set table border color or hide borders");
+      button.setAttribute("title","Table Border (設定 / 隱藏 表格邊框顏色)");
+      button.setAttribute("data-command","table.border");
+      button.setAttribute("aria-label","Table Border (設定 / 隱藏 表格邊框顏色)");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="64px";
+      button.style.padding="6px 12px";
+      const preview=document.createElement("span");
+      preview.style.width="18px";
+      preview.style.height="18px";
+      preview.style.borderRadius="4px";
+      preview.style.border="2px solid "+WCfg.UI.borderSubtle;
+      preview.style.background=NO_BORDER_PATTERN;
+      preview.setAttribute("aria-hidden","true");
+      const label=document.createElement("span");
+      label.textContent="Table Border";
+      label.style.font="12px/1.3 Segoe UI,system-ui";
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(preview);
+      button.appendChild(label);
+      button.appendChild(arrow);
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      menu.style.padding="12px";
+      menu.style.zIndex="20";
+      menu.style.minWidth="220px";
+      menu.style.flexDirection="column";
+      menu.style.gap="10px";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const info=document.createElement("div");
+      info.textContent="Select a table cell to adjust its borders.";
+      info.style.font="12px/1.4 Segoe UI,system-ui";
+      info.style.color=WCfg.UI.textDim;
+      info.style.display="none";
+      const controls=document.createElement("div");
+      controls.style.display="flex";
+      controls.style.flexDirection="column";
+      controls.style.gap="10px";
+      const hideBtn=WDom.btn("Hide Borders", false, "Remove table borders");
+      hideBtn.setAttribute("role","menuitem");
+      hideBtn.style.width="100%";
+      hideBtn.style.justifyContent="center";
+      hideBtn.style.font="12px/1.3 Segoe UI,system-ui";
+      const colorsWrap=document.createElement("div");
+      colorsWrap.style.display="grid";
+      colorsWrap.style.gridTemplateColumns="repeat(auto-fill, minmax(28px, 1fr))";
+      colorsWrap.style.gap="8px";
+      const colorButtons=[];
+      function registerColor(value, el){ colorButtons.push({ value, el }); }
+      function updatePreview(color){
+        if(color){
+          preview.style.background="#ffffff";
+          preview.style.backgroundImage="none";
+          preview.style.border="2px solid "+color;
+        } else {
+          preview.style.background=NO_BORDER_PATTERN;
+          preview.style.border="2px solid "+WCfg.UI.borderSubtle;
+        }
+      }
+      function updateSelectionUI(selected, hasTable){
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const isActive=hasTable && selected && selected===entry.value;
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+          entry.el.disabled = !hasTable;
+          entry.el.setAttribute("aria-disabled", hasTable?"false":"true");
+          entry.el.style.opacity = hasTable ? "1" : "0.6";
+        }
+        hideBtn.disabled = !hasTable;
+        hideBtn.setAttribute("aria-disabled", hasTable?"false":"true");
+        hideBtn.style.opacity = hasTable ? "1" : "0.6";
+        const hideActive = hasTable && !selected;
+        hideBtn.style.borderColor = hideActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        hideBtn.style.boxShadow = hideActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      function applyColor(value){
+        const table=TableTools.findActiveTable(inst, ctx);
+        if(!table){
+          window.alert("Please place the caret inside a table cell before changing borders.");
+          return;
+        }
+        setOpen(false);
+        const result=value ? TableTools.applyBorderColor(inst, ctx, value) : TableTools.clearBorders(inst, ctx);
+        if(!result || !result.changed){ return; }
+        const normalized=result.color || null;
+        updatePreview(normalized);
+        updateSelectionUI(normalized, true);
+        const target=HistoryManager.resolveTarget(inst, ctx);
+        HistoryManager.record(inst, target, {
+          label:value ? "Table Border Color" : "Hide Table Borders",
+          repeatable:true,
+          repeatId:"tableBorder",
+          repeatArgs:{ color:value || null },
+          repeatLabel:value ? "Table Border Color" : "Hide Table Borders"
+        });
+        if(ctx && typeof ctx.refreshPreview==="function"){ ctx.refreshPreview(); }
+        if(inst) OutputBinding.syncDebounced(inst);
+      }
+      hideBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); applyColor(null); });
+      hideBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      for(let i=0;i<COLORS.length;i++){
+        const swatch=doc.createElement("button");
+        swatch.type="button";
+        swatch.setAttribute("role","menuitem");
+        swatch.setAttribute("aria-label", COLORS[i].label+" border color");
+        swatch.title=COLORS[i].label;
+        swatch.style.width="28px";
+        swatch.style.height="28px";
+        swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+        swatch.style.borderRadius="4px";
+        swatch.style.background="#fff";
+        swatch.style.display="inline-flex";
+        swatch.style.alignItems="center";
+        swatch.style.justifyContent="center";
+        const mini=document.createElement("span");
+        mini.style.width="18px";
+        mini.style.height="18px";
+        mini.style.border="2px solid "+COLORS[i].value;
+        mini.style.borderRadius="3px";
+        mini.style.backgroundColor="#ffffff";
+        mini.setAttribute("aria-hidden","true");
+        swatch.appendChild(mini);
+        swatch.addEventListener("click", (function(color){
+          return function(e){ e.preventDefault(); e.stopPropagation(); applyColor(color); };
+        })(COLORS[i].value));
+        swatch.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+        registerColor(COLORS[i].value, swatch);
+        colorsWrap.appendChild(swatch);
+      }
+      controls.appendChild(hideBtn);
+      const colorsLabel=document.createElement("div");
+      colorsLabel.textContent="Border Colors";
+      colorsLabel.style.font="12px/1.4 Segoe UI,system-ui";
+      colorsLabel.style.color=WCfg.UI.textDim;
+      controls.appendChild(colorsLabel);
+      controls.appendChild(colorsWrap);
+      menu.appendChild(info);
+      menu.appendChild(controls);
+      function syncState(){
+        const table=TableTools.findActiveTable(inst, ctx);
+        const hasTable=!!table;
+        const current=hasTable ? TableTools.getBorderColor(inst, ctx) : null;
+        updatePreview(current);
+        updateSelectionUI(current, hasTable);
+        info.style.display = hasTable ? "none" : "block";
+        controls.style.display = hasTable ? "flex" : "none";
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        button.setAttribute("aria-expanded", state?"true":"false");
+        if(state){
+          syncState();
+          menu.style.display="flex";
+          menu.setAttribute("aria-hidden","false");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            const first=menu.querySelector("button:not([disabled])");
+            if(first){ first.focus(); }
+          },0);
+        } else {
+          menu.style.display="none";
+          menu.setAttribute("aria-hidden","true");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      menu.addEventListener("click", function(e){ e.stopPropagation(); });
+      menu.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      container.appendChild(button);
+      container.appendChild(menu);
+      return container;
+    }
+    return { create };
+  })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
     function create(inst, ctx){
@@ -4969,6 +5345,11 @@
         HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "table.border":{
+      kind:"custom",
+      ariaLabel:"Table border options",
+      render:function(inst, ctx){ return TableBorderUI.create(inst, ctx); }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -5017,7 +5398,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Table", compact:true, items:["insert.table","table.border"] }] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -5033,7 +5414,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Table", compact:true, items:["insert.table","table.border"] }] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
