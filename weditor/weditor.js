@@ -3917,7 +3917,23 @@
           if(!el || !el.style) continue;
           el.style.marginTop=formatPixels(info.marginTop);
           el.style.marginBottom=formatPixels(info.marginBottom);
-          if(info.lineHeight){ el.style.lineHeight=info.lineHeight; }
+          if(info.lineHeight){
+            el.style.lineHeight=info.lineHeight;
+          } else {
+            el.style.removeProperty("line-height");
+          }
+        }
+      }
+      function applyChildLineHeight(cell, metrics, value){
+        if(!cell || !metrics || !metrics.children || metrics.children.length===0) return;
+        const safe=Math.max(MIN_HEIGHT, Number.isFinite(value)?value:MIN_HEIGHT);
+        const px=formatPixels(safe);
+        const list=metrics.children;
+        for(let i=0;i<list.length;i++){
+          const info=list[i];
+          const el=info && info.el;
+          if(!el || !el.style) continue;
+          el.style.lineHeight=px;
         }
       }
       function adjustChildMargins(cell, metrics, allowance){
@@ -4013,13 +4029,17 @@
               const marginAllowance=Math.max(0, targetForExtras - padUsed);
               const marginUsed=adjustChildMargins(cell, metrics, marginAllowance);
               const remaining=Math.max(MIN_HEIGHT, spaceForContent - padUsed - marginUsed);
-              cell.style.lineHeight=formatPixels(remaining);
+              const remainingPx=formatPixels(remaining);
+              cell.style.lineHeight=remainingPx;
+              applyChildLineHeight(cell, metrics, remaining);
               applyCellPadding(cell, padTop, padBottom);
             } else {
               const marginAllowance=Math.max(0, targetForExtras);
               const marginUsed=adjustChildMargins(cell, metrics, marginAllowance);
               const remaining=Math.max(MIN_HEIGHT, spaceForContent - marginUsed);
-              cell.style.lineHeight=formatPixels(remaining);
+              const remainingPx=formatPixels(remaining);
+              cell.style.lineHeight=remainingPx;
+              applyChildLineHeight(cell, metrics, remaining);
               applyCellPadding(cell, 0, 0);
             }
           } else {
