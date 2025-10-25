@@ -2249,6 +2249,11 @@
       area.innerHTML=Breaks.serialize(inst.el);
       Breaks.ensurePlaceholders(area);
       HistoryManager.init(inst, area);
+      TableResizer.attach(inst, {
+        root:area,
+        getRecordTarget:function(){ return area; },
+        onChange:function(){}
+      });
       rightWrap.appendChild(area);
       const ctx={
         area,
@@ -3594,10 +3599,21 @@
       }
       return null;
     }
-    function createState(inst){
-      const root=inst && inst.el;
+    function createState(inst, options){
+      const root=(options && options.root) ? options.root : (inst && inst.el);
       if(!root) return;
       const doc=root.ownerDocument || document;
+      const ctx={};
+      ctx.inst=inst || null;
+      ctx.root=root;
+      ctx.record = (options && typeof options.record==="function") ? options.record : function(instance, target){
+        if(!instance) return;
+        HistoryManager.record(instance, target || (instance.el || null), { label:"Resize Table Column", repeatable:false });
+      };
+      ctx.onChange = (options && typeof options.onChange==="function") ? options.onChange : function(instance){
+        if(instance) OutputBinding.syncDebounced(instance);
+      };
+      ctx.getRecordTarget = (options && typeof options.getRecordTarget==="function") ? options.getRecordTarget : function(){ return ctx.root; };
       let hover=null;
       let active=null;
       let storedRootCursor=null;
@@ -3643,15 +3659,20 @@
         const colgroup=ensureTable(table);
         if(!colgroup) return null;
         const colCount=colgroup.children.length;
-        if(colCount<2) return null;
+        if(colCount<1) return null;
         const cellIndex=cell.cellIndex;
-        if(cellIndex<0 || cellIndex>=colCount-1) return null;
+        if(cellIndex<0 || cellIndex>=colCount) return null;
         const rect=cell.getBoundingClientRect();
-        const distance=rect ? rect.right - event.clientX : HANDLE_BUFFER+1;
-        if(distance<0 || distance>HANDLE_BUFFER) return null;
+        if(!rect) return null;
+        const edgeDistance=Math.abs(rect.right - event.clientX);
+        if(edgeDistance>HANDLE_BUFFER) return null;
+        const isLast=cellIndex===colCount-1;
+        if(isLast){
+          return { table, colgroup, colIndex:cellIndex, handleType:"edge" };
+        }
         const nextCol=colgroup.children[cellIndex+1];
         if(!nextCol) return null;
-        return { table, colgroup, colIndex:cellIndex };
+        return { table, colgroup, colIndex:cellIndex, handleType:"split" };
       }
       function onMouseMove(event){
         if(active){
@@ -3662,48 +3683,92 @@
         if(info){ handleHover(info); }
         else if(hover){ clearHover(); }
       }
+      function readColumnWidth(table, colgroup, index){
+        const col=colgroup.children[index];
+        if(!col) return 0;
+        const width=parseFloat(col.style.width);
+        if(width && !Number.isNaN(width)) return width;
+        return measureColumn(table, index);
+      }
       function prepareActive(info, event){
         const col=info.colgroup.children[info.colIndex];
-        const nextCol=info.colgroup.children[info.colIndex+1];
-        if(!col || !nextCol) return null;
-        const startWidth=parseFloat(col.style.width) || measureColumn(info.table, info.colIndex);
-        const nextWidth=parseFloat(nextCol.style.width) || measureColumn(info.table, info.colIndex+1);
-        if(!startWidth || !nextWidth) return null;
+        if(!col) return null;
+        const mode=info.handleType || "split";
+        const widths=[];
+        for(let i=0;i<info.colgroup.children.length;i++){
+          const w=readColumnWidth(info.table, info.colgroup, i);
+          if(!w){ return null; }
+          widths.push(w);
+        }
+        const startWidth=widths[info.colIndex];
         const state={
-          inst,
+          ctx,
+          mode,
           table:info.table,
           colgroup:info.colgroup,
           col,
-          nextCol,
           startWidth,
-          nextWidth,
-          total:startWidth+nextWidth,
           startX:event.clientX,
-          changed:false
+          changed:false,
+          widths
         };
+        if(mode==="split"){
+          const nextCol=info.colgroup.children[info.colIndex+1];
+          if(!nextCol) return null;
+          const nextWidth=widths[info.colIndex+1];
+          if(!nextWidth) return null;
+          state.nextCol=nextCol;
+          state.nextWidth=nextWidth;
+          state.total=startWidth+nextWidth;
+        } else {
+          state.otherTotal=0;
+          for(let i=0;i<widths.length;i++){
+            if(i===info.colIndex) continue;
+            state.otherTotal+=widths[i];
+          }
+          state.total=startWidth+state.otherTotal;
+          const explicitWidth=parseFloat(info.table.style.width);
+          if(!info.table.style.width || Number.isNaN(explicitWidth) || !/px$/i.test(info.table.style.width.trim())){
+            info.table.style.width=Math.max(MIN_WIDTH, Math.round(state.total))+"px";
+          }
+        }
         applyBodyDragCursor();
         applyRootResizeCursor();
         return state;
       }
       function applyWidths(state, width, nextWidth){
+        if(state.mode==="edge"){
+          state.col.style.width=Math.round(width)+"px";
+          if(state.table){
+            const total=Math.max(width + (state.otherTotal||0), MIN_WIDTH);
+            state.table.style.width=Math.round(total)+"px";
+          }
+          return;
+        }
         state.col.style.width=Math.round(width)+"px";
         state.nextCol.style.width=Math.round(nextWidth)+"px";
       }
       function onDrag(event){
         if(!active) return;
         const delta=event.clientX - active.startX;
-        let newWidth=active.startWidth + delta;
-        let newNext=active.nextWidth - delta;
         const min=MIN_WIDTH;
-        if(newWidth<min){ newWidth=min; newNext=active.total-newWidth; }
-        if(newNext<min){ newNext=min; newWidth=active.total-newNext; }
-        newWidth=Math.max(min, newWidth);
-        newNext=Math.max(min, newNext);
-        if(newWidth+newNext!==active.total){
-          const diff=active.total - (newWidth+newNext);
-          newNext+=diff;
+        if(active.mode==="edge"){
+          let newWidth=active.startWidth + delta;
+          if(newWidth<min) newWidth=min;
+          applyWidths(active, newWidth);
+        } else {
+          let newWidth=active.startWidth + delta;
+          let newNext=active.nextWidth - delta;
+          if(newWidth<min){ newWidth=min; newNext=active.total-newWidth; }
+          if(newNext<min){ newNext=min; newWidth=active.total-newNext; }
+          newWidth=Math.max(min, newWidth);
+          newNext=Math.max(min, newNext);
+          if(newWidth+newNext!==active.total){
+            const diff=active.total - (newWidth+newNext);
+            newNext+=diff;
+          }
+          applyWidths(active, newWidth, newNext);
         }
-        applyWidths(active, newWidth, newNext);
         active.changed=true;
         event.preventDefault();
       }
@@ -3712,15 +3777,16 @@
         doc.removeEventListener("mousemove", onDrag, true);
         doc.removeEventListener("mouseup", onMouseUp, true);
         const changed=active.changed;
-        const instRef=active.inst;
+        const ctxRef=active.ctx;
+        const instRef=ctxRef ? ctxRef.inst : null;
         active=null;
         hover=null;
         restoreBodyCursor();
         restoreRootCursor();
-        if(changed && instRef){
-          const target=instRef.el || null;
-          HistoryManager.record(instRef, target, { label:"Resize Table Column", repeatable:false });
-          OutputBinding.syncDebounced(instRef);
+        if(changed && ctxRef){
+          const target=ctxRef.getRecordTarget ? ctxRef.getRecordTarget(instRef) : (instRef ? instRef.el : null);
+          if(ctxRef.record) ctxRef.record(instRef, target);
+          if(ctxRef.onChange) ctxRef.onChange(instRef, target);
         }
       }
       function onMouseUp(){
@@ -3748,7 +3814,7 @@
       root.addEventListener("mouseleave", clearHover);
       root.addEventListener("focusin", onFocus);
     }
-    return { attach:function(inst){ if(inst) createState(inst); }, ensureTable };
+    return { attach:function(inst, options){ if(inst || (options && options.root)) createState(inst, options); }, ensureTable };
   })();
   const ListUI=(function(){
     function createSplitButton(options){
