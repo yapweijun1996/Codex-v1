@@ -3816,6 +3816,134 @@
     }
     return { attach:function(inst, options){ if(inst || (options && options.root)) createState(inst, options); }, ensureTable };
   })();
+  const TableStyling=(function(){
+    const TRANSPARENT="transparent";
+    function normalizeColor(value){
+      if(!value && value!==0) return null;
+      let input=String(value).trim();
+      if(!input){ return null; }
+      input=input.toLowerCase();
+      if(input==="transparent" || input==="none") return null;
+      const rgb=input.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)$/);
+      if(rgb){
+        const alpha=rgb[4];
+        if(alpha && parseFloat(alpha)===0){ return null; }
+        const r=Math.min(255, parseInt(rgb[1],10));
+        const g=Math.min(255, parseInt(rgb[2],10));
+        const b=Math.min(255, parseInt(rgb[3],10));
+        const toHex=function(num){ const h=num.toString(16); return h.length===1?"0"+h:h; };
+        return "#"+toHex(r)+toHex(g)+toHex(b);
+      }
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/.test(input)){ if(input.length===4){ return "#"+input.charAt(1)+input.charAt(1)+input.charAt(2)+input.charAt(2)+input.charAt(3)+input.charAt(3); } return input; }
+      return input;
+    }
+    function editingRoot(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function ascendToTable(root, node){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1 && String(current.tagName).toLowerCase()==="table" && (!root || root.contains(current))){
+          return current;
+        }
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function resolveTable(inst, ctx){
+      const root=editingRoot(inst, ctx);
+      if(!root || !root.ownerDocument) return null;
+      const doc=root.ownerDocument;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return null;
+      const nodes=[sel.anchorNode, sel.focusNode];
+      for(let i=0;i<nodes.length;i++){
+        const found=ascendToTable(root, nodes[i]);
+        if(found) return found;
+      }
+      const range=sel.getRangeAt(0);
+      if(range){
+        const common=range.commonAncestorContainer;
+        const table=ascendToTable(root, common);
+        if(table) return table;
+      }
+      return null;
+    }
+    function readTableState(table){
+      if(!table) return { color:null, hidden:false };
+      const stored=table.getAttribute("data-weditor-border-color");
+      if(stored){
+        if(stored==="none") return { color:null, hidden:true };
+        const normalized=normalizeColor(stored);
+        return { color:normalized, hidden:!normalized };
+      }
+      const inline=normalizeColor(table.style && table.style.borderColor ? table.style.borderColor : "");
+      if(inline){
+        return { color:inline, hidden:false };
+      }
+      const doc=table.ownerDocument || document;
+      if(doc && doc.defaultView && doc.defaultView.getComputedStyle){
+        const computed=normalizeColor(doc.defaultView.getComputedStyle(table).borderColor);
+        if(computed){
+          return { color:computed, hidden:false };
+        }
+      }
+      return { color:null, hidden:true };
+    }
+    function writeTableState(table, normalizedColor){
+      if(!table) return;
+      const color=normalizedColor || TRANSPARENT;
+      const doc=table.ownerDocument || document;
+      const borderWidth="1px";
+      const borderStyle="solid";
+      table.style.borderColor=color;
+      table.style.borderWidth=borderWidth;
+      table.style.borderStyle=borderStyle;
+      table.style.border=borderWidth+" "+borderStyle+" "+color;
+      if(!table.style.borderCollapse){ table.style.borderCollapse="collapse"; }
+      const cells=table.querySelectorAll("th,td");
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        cell.style.borderColor=color;
+        cell.style.borderWidth=borderWidth;
+        cell.style.borderStyle=borderStyle;
+        cell.style.border=borderWidth+" "+borderStyle+" "+color;
+      }
+      table.setAttribute("data-weditor-border-color", normalizedColor ? normalizedColor : "none");
+      if(doc && doc.createEvent){
+        try{
+          const evt=doc.createEvent("HTMLEvents");
+          evt.initEvent("input", true, false);
+          table.dispatchEvent(evt);
+        } catch(e){}
+      }
+    }
+    function applyColor(inst, ctx, color){
+      const table=resolveTable(inst, ctx);
+      if(!table) return { changed:false, table:null, color:null, hidden:false };
+      const normalized=normalizeColor(color);
+      const targetColor=normalized || null;
+      const prev=readTableState(table);
+      const prevValue=prev.hidden ? null : prev.color;
+      if(prevValue===targetColor) return { changed:false, table, color:prev.color, hidden:prev.hidden };
+      writeTableState(table, targetColor);
+      return { changed:true, table, color:targetColor, hidden:!targetColor };
+    }
+    function hideBorders(inst, ctx){
+      return applyColor(inst, ctx, null);
+    }
+    function read(inst, ctx){
+      const table=resolveTable(inst, ctx);
+      if(!table) return { table:null, color:null, hidden:false };
+      const state=readTableState(table);
+      return { table, color:state.color, hidden:state.hidden };
+    }
+    function applyDirect(table, color){
+      const normalized=normalizeColor(color);
+      writeTableState(table, normalized || null);
+      return true;
+    }
+    return { resolveTable, read, applyColor, hideBorders, applyDirect, normalizeColor };
+  })();
   const ListUI=(function(){
     function createSplitButton(options){
       const variant=(options && options.variant) || "default";
@@ -4408,6 +4536,232 @@
       container.appendChild(palette);
       return container;
     }
+    return { create }; 
+  })();
+  const TableBorderUI=(function(){
+    const TRANSPARENT_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
+    function buildColorList(){
+      const seen={};
+      function pushUnique(arr, item){
+        const key=(item.value||"").toLowerCase();
+        if(!key || seen[key]) return;
+        seen[key]=true;
+        arr.push({ label:item.label, value:key });
+      }
+      const preset=[];
+      pushUnique(preset, { label:"Subtle Gray", value:WCfg.UI.borderSubtle.toLowerCase() });
+      pushUnique(preset, { label:"Dark Gray", value:"#8a8886" });
+      pushUnique(preset, { label:"Black", value:"#000000" });
+      pushUnique(preset, { label:"Brand Blue", value:WCfg.UI.brand.toLowerCase() });
+      const theme=(Formatting && Formatting.FONT_THEME_COLORS) ? Formatting.FONT_THEME_COLORS : [];
+      for(let i=0;i<theme.length;i++){ pushUnique(preset, { label:theme[i].label, value:String(theme[i].value||"").toLowerCase() }); }
+      pushUnique(preset, { label:"Emerald", value:"#00b050" });
+      pushUnique(preset, { label:"Soft Orange", value:"#f79646" });
+      pushUnique(preset, { label:"Purple", value:"#8064a2" });
+      return preset;
+    }
+    function updateIndicator(indicator, state){
+      if(!indicator) return;
+      if(!state || !state.table){
+        indicator.style.background=WCfg.UI.borderSubtle;
+        indicator.style.boxShadow="0 0 0 1px "+WCfg.UI.borderSubtle;
+        return;
+      }
+      if(state.hidden){
+        indicator.style.background=TRANSPARENT_PATTERN;
+        indicator.style.boxShadow="0 0 0 1px "+WCfg.UI.borderSubtle;
+      } else if(state.color){
+        indicator.style.background=state.color;
+        indicator.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      } else {
+        indicator.style.background=WCfg.UI.borderSubtle;
+        indicator.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      }
+    }
+    function updateSelectionButtons(state, buttons, hideBtn){
+      for(let i=0;i<buttons.length;i++){
+        const entry=buttons[i];
+        const isActive=!state.hidden && state.color===entry.value;
+        entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      if(hideBtn){
+        const active=!!(state && state.hidden);
+        hideBtn.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        hideBtn.style.background = active ? "#e6f2fb" : "#fff";
+      }
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Table border color / 隐藏边框");
+      button.setAttribute("data-command","table.border");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="72px";
+      button.style.padding="6px 12px";
+      const indicator=document.createElement("span");
+      indicator.setAttribute("aria-hidden","true");
+      indicator.style.width="18px";
+      indicator.style.height="18px";
+      indicator.style.borderRadius="4px";
+      indicator.style.boxShadow="0 0 0 1px "+WCfg.UI.borderSubtle;
+      indicator.style.background=WCfg.UI.borderSubtle;
+      const label=document.createElement("span");
+      label.textContent="Border";
+      label.style.fontSize="13px";
+      label.style.lineHeight="1";
+      label.style.color=WCfg.UI.text;
+      button.textContent="";
+      button.appendChild(indicator);
+      button.appendChild(label);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.display="none";
+      palette.style.flexDirection="column";
+      palette.style.gap="10px";
+      palette.style.padding="12px";
+      palette.style.minWidth="220px";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      palette.style.zIndex="24";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      const title=document.createElement("div");
+      title.textContent="Table Border (表格边框)";
+      title.style.font="12px/1.4 Segoe UI,system-ui";
+      title.style.color=WCfg.UI.textDim;
+      palette.appendChild(title);
+      const swatchWrap=document.createElement("div");
+      swatchWrap.style.display="flex";
+      swatchWrap.style.flexWrap="wrap";
+      swatchWrap.style.gap="8px";
+      swatchWrap.setAttribute("role","group");
+      palette.appendChild(swatchWrap);
+      const buttons=[];
+      const colors=buildColorList();
+      for(let i=0;i<colors.length;i++){
+        const item=colors[i];
+        const swatch=document.createElement("button");
+        swatch.type="button";
+        swatch.setAttribute("role","menuitem");
+        swatch.setAttribute("aria-label", item.label+" table border color");
+        swatch.title=item.label;
+        swatch.style.width="28px";
+        swatch.style.height="28px";
+        swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+        swatch.style.borderRadius="4px";
+        swatch.style.background=item.value;
+        swatch.style.cursor="pointer";
+        swatch.style.padding="0";
+        swatch.style.display="inline-flex";
+        swatch.style.alignItems="center";
+        swatch.style.justifyContent="center";
+        swatch.addEventListener("click", function(e){
+          e.preventDefault();
+          const result=TableStyling.applyColor(inst, ctx, item.value);
+          handleResult(result, "Table Border Color");
+        });
+        swatchWrap.appendChild(swatch);
+        buttons.push({ value:item.value, el:swatch });
+      }
+      const actions=document.createElement("div");
+      actions.style.display="flex";
+      actions.style.flexWrap="wrap";
+      actions.style.gap="8px";
+      palette.appendChild(actions);
+      const hideBtn=WDom.btn("Hide", false, "Hide table borders / 隐藏表格边框");
+      hideBtn.type="button";
+      hideBtn.setAttribute("role","menuitem");
+      hideBtn.style.flex="1 1 100%";
+      hideBtn.style.justifyContent="center";
+      hideBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        const result=TableStyling.hideBorders(inst, ctx);
+        handleResult(result, "Hide Table Borders");
+      });
+      actions.appendChild(hideBtn);
+      const defaultBtn=WDom.btn("Default", false, "Reset to default border color / 恢复默认颜色");
+      defaultBtn.type="button";
+      defaultBtn.setAttribute("role","menuitem");
+      defaultBtn.style.flex="1 1 auto";
+      defaultBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        const result=TableStyling.applyColor(inst, ctx, WCfg.UI.borderSubtle);
+        handleResult(result, "Table Border Color");
+      });
+      actions.appendChild(defaultBtn);
+      const doc=button.ownerDocument || document;
+      let open=false;
+      function closePalette(){
+        open=false;
+        palette.style.display="none";
+        palette.setAttribute("aria-hidden","true");
+        button.setAttribute("aria-expanded","false");
+        doc.removeEventListener("mousedown", onDocPointer, true);
+        doc.removeEventListener("keydown", onDocKey);
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ closePalette(); } }
+      function onDocKey(e){ if(e.key==="Escape"){ closePalette(); button.focus(); } }
+      function openPalette(){
+        const state=TableStyling.read(inst, ctx);
+        if(!state.table){
+          window.alert("请先把光标放在表格中 (Place cursor inside a table first)");
+          return;
+        }
+        open=true;
+        palette.style.display="flex";
+        palette.setAttribute("aria-hidden","false");
+        button.setAttribute("aria-expanded","true");
+        updateIndicator(indicator, state);
+        updateSelectionButtons(state, buttons, hideBtn);
+        doc.addEventListener("mousedown", onDocPointer, true);
+        doc.addEventListener("keydown", onDocKey);
+      }
+      function handleResult(result, label){
+        if(!result || !result.table){
+          window.alert("请先把光标放在表格中 (Place cursor inside a table first)");
+          closePalette();
+          return;
+        }
+        if(result.changed){
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, { label:label, repeatable:false });
+          updateIndicator(indicator, result);
+          updateSelectionButtons(result, buttons, hideBtn);
+          OutputBinding.syncDebounced(inst);
+        } else {
+          updateIndicator(indicator, result);
+          updateSelectionButtons(result, buttons, hideBtn);
+        }
+        closePalette();
+      }
+      button.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        if(open){
+          closePalette();
+        } else {
+          openPalette();
+        }
+      });
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      container.appendChild(button);
+      container.appendChild(palette);
+      const initialState=TableStyling.read(inst, ctx);
+      updateIndicator(indicator, initialState);
+      return container;
+    }
     return { create };
   })();
   const HighlightUI=(function(){
@@ -4806,6 +5160,11 @@
       ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
+    "table.border":{
+      kind:"custom",
+      ariaLabel:"Table border color or hide (表格边框颜色/隐藏)",
+      render:function(inst, ctx){ return TableBorderUI.create(inst, ctx); }
+    },
     "format.alignLeft":{
       label:"Left",
       kind:"button",
@@ -4941,6 +5300,7 @@
           }
           table.appendChild(tr);
         }
+        TableStyling.applyDirect(table, WCfg.UI.borderSubtle);
         const fragment=doc.createDocumentFragment();
         fragment.appendChild(table);
         const spacer=doc.createElement("p");
@@ -5015,6 +5375,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Table", compact:true, items:["table.border"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
@@ -5031,6 +5392,7 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Table", compact:true, items:["table.border"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
