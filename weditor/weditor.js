@@ -4574,6 +4574,76 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      run:function(inst, arg){
+        const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
+        if(!target) return;
+        try{ target.focus({ preventScroll:true }); }
+        catch(err){ if(typeof target.focus==="function") target.focus(); }
+        const colInput=window.prompt("Enter number of columns", "3");
+        if(colInput===null) return;
+        const cols=parseInt(colInput, 10);
+        if(!cols || cols<1 || cols>12){ window.alert("Please enter a whole number of columns between 1 and 12."); return; }
+        const rowInput=window.prompt("Enter number of rows", "3");
+        if(rowInput===null) return;
+        const rows=parseInt(rowInput, 10);
+        if(!rows || rows<1 || rows>20){ window.alert("Please enter a whole number of rows between 1 and 20."); return; }
+        const doc=target.ownerDocument || document;
+        const win=doc.defaultView || window;
+        let sel=win.getSelection ? win.getSelection() : window.getSelection();
+        if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+          WDom.placeCaretAtEnd(target);
+          sel=win.getSelection ? win.getSelection() : window.getSelection();
+        }
+        const baseRange=(sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+        const table=doc.createElement("table");
+        table.style.width="100%";
+        table.style.borderCollapse="collapse";
+        table.style.tableLayout="fixed";
+        table.style.margin="12px 0";
+        table.style.border="1px solid "+WCfg.UI.borderSubtle;
+        for(let r=0;r<rows;r++){
+          const tr=doc.createElement("tr");
+          for(let c=0;c<cols;c++){
+            const td=doc.createElement("td");
+            td.style.border="1px solid "+WCfg.UI.borderSubtle;
+            td.style.padding="8px";
+            td.style.verticalAlign="top";
+            td.style.wordBreak="break-word";
+            const block=doc.createElement("p");
+            block.appendChild(doc.createElement("br"));
+            td.appendChild(block);
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+        const fragment=doc.createDocumentFragment();
+        fragment.appendChild(table);
+        const spacer=doc.createElement("p");
+        spacer.appendChild(doc.createElement("br"));
+        fragment.appendChild(spacer);
+        if(baseRange){
+          const range=baseRange.cloneRange();
+          range.deleteContents();
+          range.insertNode(fragment);
+        } else {
+          target.appendChild(fragment);
+        }
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        const selection=win.getSelection ? win.getSelection() : window.getSelection();
+        const firstCell=table.querySelector("td");
+        if(firstCell && selection && doc.createRange){
+          const focusTarget=firstCell.querySelector("p") || firstCell;
+          const cellRange=doc.createRange();
+          cellRange.selectNodeContents(focusTarget);
+          cellRange.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(cellRange);
+        }
+        HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      } },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -4622,6 +4692,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4637,6 +4708,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
