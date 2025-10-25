@@ -2960,7 +2960,23 @@
       if(!success){ success=fallbackApplyAlign(target, normalized); }
       return success;
     }
-    const BLOCK_TAGS={ P:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1, PRE:1 };
+    const BLOCK_TAGS={
+      P:1,
+      H1:1,
+      H2:1,
+      H3:1,
+      H4:1,
+      H5:1,
+      H6:1,
+      BLOCKQUOTE:1,
+      PRE:1,
+      DIV:1,
+      LI:1,
+      TD:1,
+      TH:1,
+      DT:1,
+      DD:1
+    };
     function findBlockNode(node, root){
       while(node && node!==root){
         if(node.nodeType===1){
