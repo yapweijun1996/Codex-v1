@@ -397,7 +397,7 @@
       marker.setAttribute("tabindex","0");
       applyStyles(marker, WCfg.Style.breakMarker);
       const label=document.createElement("span");
-      label.textContent="Page Break 分頁線";
+      label.textContent="Page Break";
       marker.appendChild(label);
       return marker;
     }
@@ -1249,7 +1249,7 @@
         decorateTimer=window.setTimeout(function(){ decorateTokens(editor); notifyChange(); }, 120);
       });
       const tokenRow=document.createElement("div"); applyStyles(tokenRow, WCfg.Style.hfTokenRow);
-      const tokenLabel=document.createElement("span"); applyStyles(tokenLabel, WCfg.Style.hfTokenLabel); tokenLabel.textContent="🧩 Smart Tokens 智慧變量";
+      const tokenLabel=document.createElement("span"); applyStyles(tokenLabel, WCfg.Style.hfTokenLabel); tokenLabel.textContent="🧩 Smart Tokens";
       tokenRow.appendChild(tokenLabel);
       const tokenButtons=[];
       for(let i=0;i<TOKEN_OPTIONS.length;i++){
@@ -1270,7 +1270,7 @@
       wrap.appendChild(tokenRow);
       const alignRow=document.createElement("div"); applyStyles(alignRow, WCfg.Style.hfAlignRow);
       const alignLabel=document.createElement("span");
-      alignLabel.textContent="Align 對齊";
+      alignLabel.textContent="Alignment";
       alignLabel.style.font="12px/1.4 Segoe UI,system-ui";
       alignLabel.style.color=WCfg.UI.textDim;
       const alignGroup=document.createElement("div"); applyStyles(alignGroup, WCfg.Style.hfAlignGroup);
@@ -1278,9 +1278,9 @@
       alignGroup.setAttribute("aria-label", titleText+" alignment controls");
       const alignButtons=[];
       const alignOptions=[
-        { value:"left", label:"Left", title:"Align left / 靠左" },
-        { value:"center", label:"Center", title:"Align center / 置中" },
-        { value:"right", label:"Right", title:"Align right / 靠右" }
+        { value:"left", label:"Left", title:"Align left" },
+        { value:"center", label:"Center", title:"Align center" },
+        { value:"right", label:"Right", title:"Align right" }
       ];
       for(let i=0;i<alignOptions.length;i++){
         const opt=alignOptions[i];
@@ -1303,8 +1303,8 @@
       const templates=TEMPLATE_LIBRARY[kind]||[];
       if(templates.length){
         const templateBox=document.createElement("div"); applyStyles(templateBox, WCfg.Style.hfTemplateSection);
-        const templateTitle=document.createElement("div"); applyStyles(templateTitle, WCfg.Style.hfTemplateHeader); templateTitle.textContent="Template Library 模板庫";
-        const templateHint=document.createElement("div"); applyStyles(templateHint, WCfg.Style.hfTemplateHint); templateHint.textContent="點擊直接套用常見商務樣式";
+        const templateTitle=document.createElement("div"); applyStyles(templateTitle, WCfg.Style.hfTemplateHeader); templateTitle.textContent="Template Library";
+        const templateHint=document.createElement("div"); applyStyles(templateHint, WCfg.Style.hfTemplateHint); templateHint.textContent="Click to instantly apply popular business layouts.";
         const templateGrid=document.createElement("div"); applyStyles(templateGrid, WCfg.Style.hfTemplateGrid);
         for(let i=0;i<templates.length;i++){
           const tpl=templates[i];
@@ -1358,7 +1358,7 @@
       updateAlignUI();
       const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.hfCanvas);
       const guide=document.createElement("div"); applyStyles(guide, WCfg.Style.hfCanvasGuide);
-      guide.textContent="EDITABLE AREA · 寬度約 "+(WCfg.A4W-36)+"px";
+      guide.textContent="EDITABLE AREA · Approximate width "+(WCfg.A4W-36)+"px";
       canvas.appendChild(guide);
       const stage=document.createElement("div"); applyStyles(stage, WCfg.Style.hfCanvasStage);
       const pageBox=document.createElement("div"); applyStyles(pageBox, WCfg.Style.hfCanvasPage);
@@ -1387,7 +1387,7 @@
       fileInput.accept="image/png,image/jpeg";
       fileInput.style.display="none";
       const tip=document.createElement("div");
-      tip.textContent="Upload .png / .jpg 會自動插入 <img>，可直接在上方編輯區拖曳調整；點擊 Stretch images 讓圖片自動撐滿寬度";
+      tip.textContent="Uploading .png or .jpg files automatically inserts an <img> element. Drag images in the editor above to reposition, or click Stretch images to make them full width.";
       tip.style.font="12px/1.4 Segoe UI,system-ui";
       tip.style.color=WCfg.UI.textDim;
       uploaderRow.appendChild(uploadBtn);
@@ -1593,8 +1593,8 @@
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
-      const previewTitle=document.createElement("div"); applyStyles(previewTitle, WCfg.Style.hfPreviewTitle); previewTitle.textContent="Live Preview 即時預覽";
-      const previewHint=document.createElement("div"); applyStyles(previewHint, WCfg.Style.hfPreviewHint); previewHint.textContent="依照目前模板與 token 值即時呈現";
+      const previewTitle=document.createElement("div"); applyStyles(previewTitle, WCfg.Style.hfPreviewTitle); previewTitle.textContent="Live Preview";
+      const previewHint=document.createElement("div"); applyStyles(previewHint, WCfg.Style.hfPreviewHint); previewHint.textContent="Updates instantly based on the current template and token values.";
       const previewCanvas=document.createElement("div"); applyStyles(previewCanvas, WCfg.Style.hfPreviewCanvas);
       const previewPage=document.createElement("div"); applyStyles(previewPage, WCfg.Style.hfPreviewPage);
       const previewHeader=document.createElement("div"); applyStyles(previewHeader, WCfg.Style.hfPreviewHeader);
@@ -1645,9 +1645,9 @@
           previewHeader.innerHTML=Sanitizer.clean(replacePreviewTokens(headerHTML));
           HFAlign.applyHeader(previewHeader, headerSection.getAlign());
         } else if(headerEnabled){
-          setPreviewMessage(previewHeader, "Header 無內容 · 請在左側編輯區輸入");
+          setPreviewMessage(previewHeader, "Header empty · Enter text in the left editor.");
         } else {
-          setPreviewMessage(previewHeader, "Header disabled · 尚未啟用");
+          setPreviewMessage(previewHeader, "Header disabled · Not enabled yet.");
         }
         if(footerEnabled && footerHTML){
           previewFooter.style.justifyContent="";
@@ -1655,9 +1655,9 @@
           previewFooter.innerHTML=Sanitizer.clean(replacePreviewTokens(footerHTML));
           applyFooterAlign(previewFooter, footerSection.getAlign());
         } else if(footerEnabled){
-          setPreviewMessage(previewFooter, "Footer 無內容 · 請在左側編輯區輸入");
+          setPreviewMessage(previewFooter, "Footer empty · Enter text in the left editor.");
         } else {
-          setPreviewMessage(previewFooter, "Footer disabled · 尚未啟用");
+          setPreviewMessage(previewFooter, "Footer disabled · Not enabled yet.");
         }
       }
       headerSection.onChange(renderPreview);
@@ -5054,8 +5054,8 @@
     function createBulleted(inst, ctx){
       const split=createSplitButton({
         primaryLabel:"Bulleted",
-        primaryTitle:"Bulleted List (項目符號清單)",
-        primaryAria:"Bulleted List (項目符號清單)",
+        primaryTitle:"Bulleted List",
+        primaryAria:"Bulleted List",
         menuTitle:"Bulleted List styles",
         variant:"compact"
       });
@@ -5122,8 +5122,8 @@
     function createNumbered(inst, ctx){
       const split=createSplitButton({
         primaryLabel:"Numbered",
-        primaryTitle:"Numbered List (編號清單)",
-        primaryAria:"Numbered List (編號清單)",
+        primaryTitle:"Numbered List",
+        primaryAria:"Numbered List",
         menuTitle:"Numbered List styles",
         variant:"compact"
       });
@@ -5192,8 +5192,8 @@
     function createMultilevel(inst, ctx){
       const split=createSplitButton({
         primaryLabel:"Multilevel",
-        primaryTitle:"Multilevel List (多層次清單)",
-        primaryAria:"Multilevel List (多層次清單)",
+        primaryTitle:"Multilevel List",
+        primaryAria:"Multilevel List",
         menuTitle:"Multilevel controls",
         variant:"compact"
       });
@@ -5219,8 +5219,8 @@
       let currentStyle="decimal";
       split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
       const controls=[
-        { label:"Increase level (升階)", action:function(){ return Formatting.indentList(inst, ctx); } },
-        { label:"Decrease level (降階)", action:function(){ return Formatting.outdentList(inst, ctx); } },
+        { label:"Increase level", action:function(){ return Formatting.indentList(inst, ctx); } },
+        { label:"Decrease level", action:function(){ return Formatting.outdentList(inst, ctx); } },
         { label:"Reset numbering style", action:function(){ return Formatting.applyListStyle(inst, ctx, currentStyle, "ordered"); } }
       ];
       for(let i=0;i<controls.length;i++){
@@ -5271,10 +5271,10 @@
       container.style.position="relative";
       container.style.display="inline-flex";
       container.style.alignItems="center";
-      const button=WDom.btn("", false, "Font Color (字体颜色 / 文字颜色)");
-      button.setAttribute("title","Font Color (字体颜色 / 文字颜色)");
+      const button=WDom.btn("", false, "Font Color");
+      button.setAttribute("title","Font Color");
       button.setAttribute("data-command","format.fontColor");
-      button.setAttribute("aria-label","Font Color (字体颜色 / 文字颜色)");
+      button.setAttribute("aria-label","Font Color");
       button.setAttribute("aria-haspopup","true");
       button.setAttribute("aria-expanded","false");
       button.style.display="inline-flex";
@@ -6273,10 +6273,10 @@
       container.style.position="relative";
       container.style.display="inline-flex";
       container.style.alignItems="center";
-      const button=WDom.btn("", false, "Text Highlight Color (文字底色 / 文本荧光笔)");
-      button.setAttribute("title","Text Highlight Color (文字底色 / 文本荧光笔)");
+      const button=WDom.btn("", false, "Text Highlight Color");
+      button.setAttribute("title","Text Highlight Color");
       button.setAttribute("data-command","format.highlight");
-      button.setAttribute("aria-label","Text Highlight Color (文字底色 / 文本荧光笔)");
+      button.setAttribute("aria-label","Text Highlight Color");
       button.setAttribute("aria-haspopup","true");
       button.setAttribute("aria-expanded","false");
       button.style.display="inline-flex";
@@ -6662,58 +6662,58 @@
     },
     "format.bulletedList":{
       kind:"custom",
-      ariaLabel:"Bulleted List (項目符號清單)",
+      ariaLabel:"Bulleted List",
       render:function(inst, ctx){ return ListUI.createBulleted(inst, ctx); }
     },
     "format.numberedList":{
       kind:"custom",
-      ariaLabel:"Numbered List (編號清單)",
+      ariaLabel:"Numbered List",
       render:function(inst, ctx){ return ListUI.createNumbered(inst, ctx); }
     },
     "format.multilevelList":{
       kind:"custom",
-      ariaLabel:"Multilevel List (多層次清單)",
+      ariaLabel:"Multilevel List",
       render:function(inst, ctx){ return ListUI.createMultilevel(inst, ctx); }
     },
     "format.fontColor":{
       kind:"custom",
-      ariaLabel:"Font Color (字体颜色 / 文字颜色)",
+      ariaLabel:"Font Color",
       render:function(inst, ctx){ return FontColorUI.create(inst, ctx); }
     },
     "format.highlight":{
       kind:"custom",
-      ariaLabel:"Text Highlight Color (文字底色 / 文本荧光笔)",
+      ariaLabel:"Text Highlight Color",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
     },
     "format.alignLeft":{
       label:"Left",
       kind:"button",
-      ariaLabel:"Align Left (靠左對齊)",
-      title:"Align Left (靠左對齊)",
+      ariaLabel:"Align Left",
+      title:"Align Left",
       decorate:function(btn){ decorateAlignButton(btn, "left"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "left"); OutputBinding.syncDebounced(inst); }
     },
     "format.alignCenter":{
       label:"Center",
       kind:"button",
-      ariaLabel:"Align Center (置中對齊)",
-      title:"Align Center (置中對齊)",
+      ariaLabel:"Align Center",
+      title:"Align Center",
       decorate:function(btn){ decorateAlignButton(btn, "center"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "center"); OutputBinding.syncDebounced(inst); }
     },
     "format.alignRight":{
       label:"Right",
       kind:"button",
-      ariaLabel:"Align Right (靠右對齊)",
-      title:"Align Right (靠右對齊)",
+      ariaLabel:"Align Right",
+      title:"Align Right",
       decorate:function(btn){ decorateAlignButton(btn, "right"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "right"); OutputBinding.syncDebounced(inst); }
     },
     "format.alignJustify":{
       label:"Justify",
       kind:"button",
-      ariaLabel:"Justify (左右對齊)",
-      title:"Justify (左右對齊)",
+      ariaLabel:"Justify",
+      title:"Justify",
       decorate:function(btn){ decorateAlignButton(btn, "justify"); },
       run:function(inst, arg){ Formatting.applyAlign(inst, arg && arg.ctx, "justify"); OutputBinding.syncDebounced(inst); }
     },
@@ -6725,8 +6725,8 @@
     "format.decreaseIndent":{
       label:"←",
       kind:"button",
-      ariaLabel:"Decrease Indent (减少缩进)",
-      title:"Decrease Indent ← Moves the entire paragraph closer to the left margin. 用来减少缩进，让段落更靠左。",
+      ariaLabel:"Decrease Indent",
+      title:"Decrease Indent ← Moves the entire paragraph closer to the left margin.",
       decorate:function(btn){ decorateIndentButton(btn, "decrease"); },
       run:function(inst, arg){
         const changed=Formatting.outdentList(inst, arg && arg.ctx);
@@ -6744,8 +6744,8 @@
     "format.increaseIndent":{
       label:"→",
       kind:"button",
-      ariaLabel:"Increase Indent (增加缩进)",
-      title:"Increase Indent → Moves the paragraph further from the left margin. 增加缩进，让段落往右移动。",
+      ariaLabel:"Increase Indent",
+      title:"Increase Indent → Moves the paragraph further from the left margin.",
       decorate:function(btn){ decorateIndentButton(btn, "increase"); },
       run:function(inst, arg){
         const changed=Formatting.indentList(inst, arg && arg.ctx);
