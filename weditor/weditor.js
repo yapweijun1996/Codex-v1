@@ -3908,7 +3908,8 @@
           return totalBase;
         }
         let used=0;
-        const scale=safeAllowance>0 ? safeAllowance/totalBase : 0;
+        const scale=safeAllowance>0 ? Math.min(1, safeAllowance/totalBase) : 0;
+        let lastAdjustable=null;
         for(let i=0;i<list.length;i++){
           const info=list[i];
           const el=info && info.el;
@@ -3917,34 +3918,27 @@
           const baseBottom=Math.max(0, info.marginBottom||0);
           let top=0, bottom=0;
           if(scale>0){
-            top=Math.floor(baseTop*scale);
-            bottom=Math.floor(baseBottom*scale);
+            top=baseTop*scale;
+            bottom=baseBottom*scale;
           }
           el.style.marginTop=formatPixels(top);
           el.style.marginBottom=formatPixels(bottom);
           used+=top+bottom;
+          lastAdjustable=el;
         }
-        if(list.length>0 && used!==safeAllowance){
-          const diff=Math.round(safeAllowance-used);
-          if(diff!==0){
-            for(let i=0;i<list.length;i++){
-              const info=list[i];
-              const el=info && info.el;
-              if(!el || !el.style) continue;
-              const current=parseFloat(el.style.marginBottom)||0;
-              const adjusted=Math.max(0, current+diff);
-              el.style.marginBottom=formatPixels(adjusted);
-              used+=adjusted-current;
-              break;
-            }
-          }
+        const diff=safeAllowance-used;
+        if(lastAdjustable && Math.abs(diff)>0.01){
+          const current=parseFloat(lastAdjustable.style.marginBottom)||0;
+          const adjusted=Math.max(0, current+diff);
+          lastAdjustable.style.marginBottom=formatPixels(adjusted);
+          used+=adjusted-current;
         }
         return Math.min(used, safeAllowance);
       }
       function setRowSize(row, value){
         if(!row) return;
-        const finalValue=Math.max(MIN_HEIGHT, Math.round(value));
-        const px=finalValue+"px";
+        const finalValue=Math.max(MIN_HEIGHT, Math.round(value*100)/100);
+        const px=formatPixels(finalValue);
         row.style.boxSizing="border-box";
         row.style.height=px;
         row.style.minHeight=px;
@@ -3967,18 +3961,15 @@
           if(spaceForContent < basePaddingTotal + MIN_HEIGHT){
             const availableForPadding=Math.max(0, spaceForContent - MIN_HEIGHT);
             if(basePaddingTotal>0){
-              const scale=availableForPadding/basePaddingTotal;
-              padTop=Math.floor(basePadTop*scale);
-              padBottom=Math.floor(basePadBottom*scale);
+              const scale=Math.max(0, Math.min(1, availableForPadding/basePaddingTotal));
+              padTop=basePadTop*scale;
+              padBottom=basePadBottom*scale;
               let used=padTop+padBottom;
-              if(used<availableForPadding){
-                const remainder=Math.round(availableForPadding-used);
-                if(basePadTop>=basePadBottom){ padTop+=remainder; }
-                else { padBottom+=remainder; }
-              } else if(used>availableForPadding){
-                const overflow=used-availableForPadding;
-                if(padTop>=padBottom){ padTop=Math.max(0, padTop-overflow); }
-                else { padBottom=Math.max(0, padBottom-overflow); }
+              if(Math.abs(used-availableForPadding)>0.01){
+                const remainder=availableForPadding-used;
+                if(basePadTop>=basePadBottom){ padTop=Math.max(0, padTop+remainder); }
+                else { padBottom=Math.max(0, padBottom+remainder); }
+                used=padTop+padBottom;
               }
             } else {
               padTop=0;
