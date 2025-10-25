@@ -2047,14 +2047,15 @@
       const tabButtons=[]; const tabPanels=[];
       const quickActionIds = Array.isArray(config && config.quickActions) ? config.quickActions.slice() : [];
       let quickWrap=null;
-      function setActive(index){
-        if(index<0 || index>=tabButtons.length){ return; }
+      let activeIndex=null;
+      function applyActiveState(){
+        const hasActive = activeIndex!==null;
         for(let i=0;i<tabButtons.length;i++){
           const btn=tabButtons[i]; const panel=tabPanels[i];
-          const isActive = (i===index);
+          const isActive = (activeIndex===i);
           btn.setAttribute("data-active", isActive?"1":"0");
-          btn.setAttribute("aria-selected", isActive?"true":"false");
-          btn.setAttribute("tabindex", isActive?"0":"-1");
+          btn.setAttribute("aria-selected", (hasActive && isActive)?"true":"false");
+          btn.setAttribute("tabindex", (isActive || (!hasActive && i===0))?"0":"-1");
           if(isActive){
             btn.style.background = WCfg.UI.brand;
             btn.style.color = "#fff";
@@ -2067,6 +2068,19 @@
           panel.style.display = isActive ? "flex" : "none";
           panel.setAttribute("aria-hidden", isActive?"false":"true");
         }
+      }
+      function setActive(index, toggle){
+        if(index==null || index<0 || index>=tabButtons.length){
+          activeIndex=null;
+          applyActiveState();
+          return;
+        }
+        if(toggle && activeIndex===index){
+          activeIndex=null;
+        } else {
+          activeIndex=index;
+        }
+        applyActiveState();
       }
       for(let i=0;i<tabs.length;i++){
         const tab=tabs[i];
@@ -2137,7 +2151,7 @@
         for(let j=0;j<items.length;j++){
           appendItem(panel, items[j]);
         }
-        tabBtn.onclick=(function(idx){ return function(){ setActive(idx); tabButtons[idx].focus(); }; })(i);
+        tabBtn.onclick=(function(idx){ return function(){ setActive(idx, true); if(tabButtons[idx]) tabButtons[idx].focus(); }; })(i);
         tabBtn.onkeydown=(function(idx){
           return function(e){
             let targetIndex = null;
@@ -2150,7 +2164,9 @@
             } else if(e.key === "End"){
               targetIndex = tabButtons.length-1;
             } else if(e.key === "Enter" || e.key === " "){
-              targetIndex = idx;
+              e.preventDefault();
+              setActive(idx, true);
+              return;
             }
             if(targetIndex!==null){
               e.preventDefault();
@@ -2187,7 +2203,15 @@
       }
       bar.appendChild(headerRow); bar.appendChild(panelsWrap);
       container.appendChild(bar);
-      setActive(0);
+      let defaultActive = (config && Object.prototype.hasOwnProperty.call(config, "defaultActiveTab")) ? config.defaultActiveTab : 0;
+      if(typeof defaultActive === "string"){
+        const foundIndex = tabs.findIndex(function(tab){ return tab && tab.id === defaultActive; });
+        defaultActive = foundIndex>=0 ? foundIndex : null;
+      }
+      if(typeof defaultActive === "number" && (defaultActive<0 || defaultActive>=tabButtons.length)){
+        defaultActive = null;
+      }
+      setActive(defaultActive);
       return bar;
     }
     return { build };
@@ -4428,6 +4452,7 @@
   };
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
+    defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
@@ -4442,6 +4467,7 @@
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
+    defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
