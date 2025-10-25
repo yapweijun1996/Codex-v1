@@ -2595,6 +2595,95 @@
       }
       return changed;
     }
+    function fallbackClearFormatting(target){
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const { range }=info;
+      const doc=target.ownerDocument || document;
+      if(!doc) return false;
+      const seen=new Set();
+      const nodes=[];
+      function add(node){
+        if(!node || node.nodeType!==1) return;
+        if(!target.contains(node)) return;
+        if(!intersectsRange(range, node)) return;
+        if(seen.has(node)) return;
+        seen.add(node);
+        nodes.push(node);
+      }
+      const root=range.commonAncestorContainer;
+      if(root && root.nodeType===1){ add(root); }
+      if(doc.createTreeWalker){
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(node){
+            if(node===target) return NodeFilter.FILTER_SKIP;
+            return intersectsRange(range, node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        let current=walker.nextNode();
+        while(current){
+          add(current);
+          current=walker.nextNode();
+        }
+      }
+      const inlineTags={ A:1,B:1,STRONG:1,I:1,EM:1,U:1,S:1,STRIKE:1,SPAN:1,FONT:1,MARK:1,SUP:1,SUB:1,CODE:1,TT:1,DEL:1,INS:1 };
+      let changed=false;
+      const unwrap=[];
+      for(let i=0;i<nodes.length;i++){
+        const el=nodes[i];
+        if(!el || el.nodeType!==1) continue;
+        const tag=(el.tagName||"").toUpperCase();
+        let modified=false;
+        if(el.hasAttribute && el.hasAttribute("style")){ el.removeAttribute("style"); modified=true; }
+        if(el.hasAttribute && el.hasAttribute("class") && inlineTags[tag]){ el.removeAttribute("class"); modified=true; }
+        if(el.hasAttribute && el.hasAttribute("color")){ el.removeAttribute("color"); modified=true; }
+        if(el.hasAttribute && el.hasAttribute("face")){ el.removeAttribute("face"); modified=true; }
+        if(el.hasAttribute && el.hasAttribute("size")){ el.removeAttribute("size"); modified=true; }
+        if(el.hasAttribute && el.hasAttribute("bgcolor")){ el.removeAttribute("bgcolor"); modified=true; }
+        if(el.hasAttribute && el.hasAttribute("font")){ el.removeAttribute("font"); modified=true; }
+        if(tag==="A"){
+          if(el.hasAttribute && el.hasAttribute("href")){ el.removeAttribute("href"); modified=true; }
+          if(el.hasAttribute && el.hasAttribute("target")){ el.removeAttribute("target"); modified=true; }
+          if(el.hasAttribute && el.hasAttribute("rel")){ el.removeAttribute("rel"); modified=true; }
+        }
+        if(Object.prototype.hasOwnProperty.call(inlineTags, tag)){
+          if(!el.attributes || el.attributes.length===0){ unwrap.push(el); }
+        }
+        if(modified) changed=true;
+      }
+      for(let i=0;i<unwrap.length;i++){
+        const node=unwrap[i];
+        const parent=node.parentNode;
+        if(!parent) continue;
+        while(node.firstChild){ parent.insertBefore(node.firstChild, node); }
+        parent.removeChild(node);
+        changed=true;
+      }
+      return changed;
+    }
+    function clearFormatting(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let changed=false;
+      try{ if(document.execCommand("removeFormat", false, null)) changed=true; }
+      catch(err){}
+      try{ if(document.execCommand("unlink", false, null)) changed=true; }
+      catch(err){}
+      if(clearHighlight(inst, ctx)) changed=true;
+      if(clearFontColor(inst, ctx)) changed=true;
+      if(clearLineSpacing(inst, ctx)) changed=true;
+      if(fallbackClearFormatting(target)) changed=true;
+      const selection=getSelectionWithin(target);
+      if(selection){
+        const startBlock=findBlockNode(selection.range.startContainer, target);
+        const endBlock=findBlockNode(selection.range.endContainer, target);
+        const needsParagraph=(startBlock && (startBlock.tagName||"").toLowerCase()!=="p") || (endBlock && (endBlock.tagName||"").toLowerCase()!=="p");
+        if(needsParagraph){ if(applyBlockFormat(inst, ctx, "p")) changed=true; }
+      }
+      Normalizer.fixStructure(target);
+      Breaks.ensurePlaceholders(target);
+      if(inst){ inst.highlightColor=null; inst.fontColor=null; }
+      return changed;
+    }
     function execCommand(target, command, value, useCss){
       if(!target){ return false; }
       focusTarget(target);
@@ -3296,6 +3385,7 @@
       applyCustomBullet,
       indentList,
       outdentList,
+      clearFormatting,
       applyBlockFormat,
       getBlockFormat,
       BLOCK_FORMATS
@@ -3350,6 +3440,7 @@
         }
         return Formatting.clearFontColor(inst, makeCtx(inst, target));
       },
+      clearFormatting:function(inst, target){ return Formatting.clearFormatting(inst, makeCtx(inst, target)); },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
       fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
@@ -6797,6 +6888,24 @@
       ariaLabel:"Superscript",
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
+    },
+    "format.clearFormatting":{
+      label:"Clear",
+      kind:"button",
+      ariaLabel:"Clear Formatting (清除所有格式)",
+      title:"Clear Formatting (清除所有格式)",
+      run:function(inst, arg){
+        const changed=Formatting.clearFormatting(inst, arg && arg.ctx);
+        if(!changed) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, {
+          label:"Clear Formatting",
+          repeatable:true,
+          repeatId:"clearFormatting",
+          repeatLabel:"Clear Formatting"
+        });
+        OutputBinding.syncDebounced(inst);
+      }
     },
     "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
       run:function(inst, arg){
