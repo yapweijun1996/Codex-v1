@@ -27,8 +27,10 @@
       controlSelect:{ padding:"6px 10px", border:"1px solid "+UI.borderSubtle, borderRadius:"4px", background:"#fff", color:UI.text, font:"13px/1.3 Segoe UI,system-ui", cursor:"pointer" },
       controlLabel:{ font:"12px/1.3 Segoe UI,system-ui", color:UI.textDim },
       toolbarGroup:{ display:"flex", flexDirection:"column", gap:"10px", padding:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#fafafa", flex:"1 1 240px", boxSizing:"border-box" },
+      toolbarGroupCompact:{ flex:"1 1 180px", gap:"8px", padding:"10px" },
       toolbarGroupTitle:{ font:"12px/1.4 Segoe UI,system-ui", textTransform:"uppercase", letterSpacing:".06em", color:UI.textDim },
       toolbarGroupRow:{ display:"flex", flexWrap:"wrap", gap:"8px", alignItems:"center" },
+      toolbarGroupRowCompact:{ gap:"6px" },
       editor:{ minHeight:"260px", border:"1px solid "+UI.borderSubtle, borderRadius:"6px", margin:"12px", padding:"14px", background:"#fff", font:"15px/1.6 Segoe UI,system-ui" },
       title:{ font:"13px Segoe UI,system-ui", color:UI.textDim, padding:"8px 12px", background:"#fafafa", borderBottom:"1px solid "+UI.border },
       modalBg:{ position:"fixed", left:"0", top:"0", width:"100vw", height:"100vh", background:"rgba(0,0,0,.35)", zIndex:"2147483000", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"32px 16px", boxSizing:"border-box", opacity:"0", transition:"opacity .2s ease", overflowY:"auto" },
@@ -2129,6 +2131,9 @@
           if(entry && typeof entry==="object" && Array.isArray(entry.items) && entry.items.length){
             const group=document.createElement("div");
             applyStyles(group, WCfg.Style.toolbarGroup);
+            if(entry.compact){
+              applyStyles(group, WCfg.Style.toolbarGroupCompact);
+            }
             if(entry.label){
               const title=document.createElement("div");
               title.textContent=entry.label;
@@ -2137,6 +2142,9 @@
             }
             const row=document.createElement("div");
             applyStyles(row, WCfg.Style.toolbarGroupRow);
+            if(entry.compact){
+              applyStyles(row, WCfg.Style.toolbarGroupRowCompact);
+            }
             for(let k=0;k<entry.items.length;k++){
               const child=entry.items[k];
               if(!child) continue;
@@ -3486,37 +3494,66 @@
   })();
   const ListUI=(function(){
     function createSplitButton(options){
+      const variant=(options && options.variant) || "default";
       const container=document.createElement("div");
       container.style.position="relative";
       container.style.display="inline-flex";
       container.style.alignItems="stretch";
       container.style.gap="0";
+      container.setAttribute("data-variant", variant);
       const primary=WDom.btn(options.primaryLabel||"", false, options.primaryTitle);
       primary.setAttribute("aria-label", options.primaryAria||options.primaryTitle||options.primaryLabel||"");
       primary.style.display="inline-flex";
       primary.style.alignItems="center";
       primary.style.justifyContent="center";
-      primary.style.gap="8px";
+      primary.style.position="relative";
+      primary.style.gap = variant==="compact" ? "0" : "8px";
       primary.style.borderTopRightRadius="0";
       primary.style.borderBottomRightRadius="0";
       primary.style.marginRight="0";
       primary.style.borderRight="0";
-      const arrow=WDom.btn("▼", false, options.menuTitle||"More options");
+      if(variant==="compact"){
+        primary.style.padding="0";
+        primary.style.width="40px";
+        primary.style.minWidth="40px";
+        primary.style.height="40px";
+      }
+      const arrow=WDom.btn("", false, options.menuTitle||"More options");
+      const menuLabel=options.menuAria||options.menuTitle||"More options";
+      arrow.setAttribute("aria-label", menuLabel);
+      arrow.title = menuLabel;
       arrow.setAttribute("aria-haspopup","true");
       arrow.setAttribute("aria-expanded","false");
-      arrow.style.minWidth="34px";
-      arrow.style.padding="0 10px";
+      arrow.style.display="inline-flex";
+      arrow.style.alignItems="center";
+      arrow.style.justifyContent="center";
+      arrow.style.minWidth = variant==="compact" ? "28px" : "34px";
+      arrow.style.padding = variant==="compact" ? "0" : "0 10px";
       arrow.style.fontSize="12px";
       arrow.style.borderTopLeftRadius="0";
       arrow.style.borderBottomLeftRadius="0";
       arrow.style.borderLeft="1px solid "+WCfg.UI.borderSubtle;
+      if(variant==="compact"){
+        arrow.style.height="40px";
+      }
+      arrow.textContent="";
+      const caret=document.createElement("span");
+      caret.textContent="▾";
+      caret.setAttribute("aria-hidden","true");
+      caret.style.fontSize="12px";
+      arrow.appendChild(caret);
       const menu=document.createElement("div");
       menu.style.position="absolute";
       menu.style.top="calc(100% + 6px)";
       menu.style.left="0";
       menu.style.display="none";
       menu.style.flexDirection="column";
-      menu.style.minWidth="220px";
+      const rawMenuWidth = options && options.menuWidth;
+      if(rawMenuWidth){
+        menu.style.minWidth = typeof rawMenuWidth === "number" ? rawMenuWidth+"px" : String(rawMenuWidth);
+      } else {
+        menu.style.minWidth = (variant==="compact"?200:220)+"px";
+      }
       menu.style.background="#fff";
       menu.style.border="1px solid "+WCfg.UI.borderSubtle;
       menu.style.borderRadius="8px";
@@ -3553,7 +3590,7 @@
       container.appendChild(primary);
       container.appendChild(arrow);
       container.appendChild(menu);
-      return { container, primary, arrow, menu, setOpen, setPrimaryHandler };
+      return { container, primary, arrow, menu, setOpen, setPrimaryHandler, variant };
     }
     function createMenuButton(label){
       const btn=document.createElement("button");
@@ -3574,26 +3611,48 @@
       btn.addEventListener("mouseleave", function(){ btn.style.background="transparent"; });
       return btn;
     }
+    function addHiddenLabel(target, text){
+      if(!target || !text) return;
+      const span=document.createElement("span");
+      span.textContent=text;
+      span.style.position="absolute";
+      span.style.width="1px";
+      span.style.height="1px";
+      span.style.padding="0";
+      span.style.margin="-1px";
+      span.style.overflow="hidden";
+      span.style.clip="rect(0,0,0,0)";
+      span.style.whiteSpace="nowrap";
+      span.style.border="0";
+      target.appendChild(span);
+    }
     function createBulleted(inst, ctx){
       const split=createSplitButton({
         primaryLabel:"Bulleted",
         primaryTitle:"Bulleted List (項目符號清單)",
         primaryAria:"Bulleted List (項目符號清單)",
-        menuTitle:"Bulleted List styles"
+        menuTitle:"Bulleted List styles",
+        variant:"compact"
       });
-      const { container, primary, menu, setOpen }=split;
+      const { container, primary, menu, setOpen, variant }=split;
+      const isCompact=variant==="compact";
       const icon=document.createElement("span");
       icon.textContent="•";
-      icon.style.fontSize="18px";
+      icon.style.fontSize=isCompact?"18px":"18px";
       icon.style.lineHeight="1";
       icon.setAttribute("aria-hidden","true");
-      const label=document.createElement("span");
-      label.textContent="Bulleted List";
-      label.style.fontSize="13px";
-      label.style.lineHeight="1";
       primary.textContent="";
       primary.appendChild(icon);
-      primary.appendChild(label);
+      if(isCompact){
+        addHiddenLabel(primary, "Bulleted List");
+      } else {
+        const label=document.createElement("span");
+        label.textContent="Bulleted List";
+        label.style.fontSize="13px";
+        label.style.lineHeight="1";
+        primary.style.gap="8px";
+        primary.appendChild(label);
+      }
       let currentStyle="disc";
       let currentPreview="•";
       function updatePreview(preview){
@@ -3640,22 +3699,29 @@
         primaryLabel:"Numbered",
         primaryTitle:"Numbered List (編號清單)",
         primaryAria:"Numbered List (編號清單)",
-        menuTitle:"Numbered List styles"
+        menuTitle:"Numbered List styles",
+        variant:"compact"
       });
-      const { container, primary, menu, setOpen }=split;
+      const { container, primary, menu, setOpen, variant }=split;
+      const isCompact=variant==="compact";
       const icon=document.createElement("span");
       icon.textContent="1.";
-      icon.style.fontSize="16px";
+      icon.style.fontSize=isCompact?"16px":"16px";
       icon.style.lineHeight="1";
       icon.style.fontWeight="600";
       icon.setAttribute("aria-hidden","true");
-      const label=document.createElement("span");
-      label.textContent="Numbered List";
-      label.style.fontSize="13px";
-      label.style.lineHeight="1";
       primary.textContent="";
       primary.appendChild(icon);
-      primary.appendChild(label);
+      if(isCompact){
+        addHiddenLabel(primary, "Numbered List");
+      } else {
+        const label=document.createElement("span");
+        label.textContent="Numbered List";
+        label.style.fontSize="13px";
+        label.style.lineHeight="1";
+        primary.style.gap="8px";
+        primary.appendChild(label);
+      }
       let currentStyle="decimal";
       function updatePreview(preview){
         const text=preview.length>6 ? preview.slice(0,6)+"…" : preview;
@@ -3703,21 +3769,28 @@
         primaryLabel:"Multilevel",
         primaryTitle:"Multilevel List (多層次清單)",
         primaryAria:"Multilevel List (多層次清單)",
-        menuTitle:"Multilevel controls"
+        menuTitle:"Multilevel controls",
+        variant:"compact"
       });
-      const { container, primary, menu, setOpen }=split;
+      const { container, primary, menu, setOpen, variant }=split;
+      const isCompact=variant==="compact";
       const icon=document.createElement("span");
       icon.textContent="1. a. i.";
-      icon.style.fontSize="12px";
+      icon.style.fontSize=isCompact?"11px":"12px";
       icon.style.lineHeight="1";
       icon.setAttribute("aria-hidden","true");
-      const label=document.createElement("span");
-      label.textContent="Multilevel";
-      label.style.fontSize="13px";
-      label.style.lineHeight="1";
       primary.textContent="";
       primary.appendChild(icon);
-      primary.appendChild(label);
+      if(isCompact){
+        addHiddenLabel(primary, "Multilevel List");
+      } else {
+        const label=document.createElement("span");
+        label.textContent="Multilevel";
+        label.style.fontSize="13px";
+        label.style.lineHeight="1";
+        primary.style.gap="8px";
+        primary.appendChild(label);
+      }
       let currentStyle="decimal";
       split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
       const controls=[
@@ -4545,9 +4618,9 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
-        { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
@@ -4560,9 +4633,9 @@
     defaultActiveTab:null,
     tabs:[
       { id:"format", label:"Format", items:[
-        { label:"Text Style", items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
-        { label:"Color & Emphasis", items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
