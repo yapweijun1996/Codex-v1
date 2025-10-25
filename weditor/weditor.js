@@ -4575,6 +4575,113 @@
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
+    "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      run:function(inst, arg){
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        if(!target) return;
+        const colsRaw=window.prompt("Number of columns (1-10)", "3");
+        if(colsRaw===null) return;
+        const cols=parseInt(colsRaw, 10);
+        if(!Number.isFinite(cols) || cols<1 || cols>10){
+          window.alert("Please enter a whole number between 1 and 10 for columns.");
+          return;
+        }
+        const rowsRaw=window.prompt("Number of rows (1-20)", "3");
+        if(rowsRaw===null) return;
+        const rows=parseInt(rowsRaw, 10);
+        if(!Number.isFinite(rows) || rows<1 || rows>20){
+          window.alert("Please enter a whole number between 1 and 20 for rows.");
+          return;
+        }
+        if(typeof target.focus==="function"){
+          try{ target.focus({ preventScroll:true }); }
+          catch(e){ target.focus(); }
+        }
+        const doc=target.ownerDocument || document;
+        const view=(doc.defaultView && doc.defaultView.getSelection) ? doc.defaultView : window;
+        const selection=view.getSelection ? view.getSelection() : window.getSelection();
+        let range=null;
+        if(selection && selection.rangeCount>0){
+          const candidate=selection.getRangeAt(0);
+          if(target.contains(candidate.commonAncestorContainer || candidate.startContainer)){
+            range=candidate.cloneRange();
+          }
+        }
+        if(!range && doc.createRange){
+          range=doc.createRange();
+          range.selectNodeContents(target);
+          range.collapse(false);
+        }
+        if(!range) return;
+        const table=doc.createElement("table");
+        table.style.width="100%";
+        table.style.maxWidth="100%";
+        table.style.borderCollapse="collapse";
+        table.style.borderSpacing="0";
+        table.style.tableLayout="fixed";
+        table.style.boxSizing="border-box";
+        table.style.margin="12px 0";
+        table.style.border="1px solid "+WCfg.UI.borderSubtle;
+        for(let r=0;r<rows;r++){
+          const tr=doc.createElement("tr");
+          for(let c=0;c<cols;c++){
+            const td=doc.createElement("td");
+            td.style.border="1px solid "+WCfg.UI.borderSubtle;
+            td.style.padding="8px";
+            td.style.verticalAlign="top";
+            td.style.minHeight="32px";
+            td.style.wordBreak="break-word";
+            td.style.backgroundColor="#fff";
+            td.style.boxSizing="border-box";
+            const p=doc.createElement("p");
+            p.style.margin="0";
+            const br=doc.createElement("br");
+            p.appendChild(br);
+            td.appendChild(p);
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+        range.deleteContents();
+        const frag=doc.createDocumentFragment();
+        frag.appendChild(table);
+        range.insertNode(frag);
+        let focusCell=table.querySelector("td");
+        if(selection && doc.createRange){
+          selection.removeAllRanges();
+          const caretRange=doc.createRange();
+          if(focusCell && focusCell.firstChild){
+            caretRange.selectNodeContents(focusCell.firstChild);
+            caretRange.collapse(true);
+          } else if(focusCell){
+            caretRange.selectNodeContents(focusCell);
+            caretRange.collapse(true);
+          } else {
+            caretRange.setStartAfter(table);
+            caretRange.collapse(true);
+          }
+          selection.addRange(caretRange);
+        }
+        let host=table.parentNode;
+        while(host && host!==target && host.parentNode){
+          if(host.nodeName==="TD" || host.nodeName==="TH") break;
+          const parent=host.parentNode;
+          parent.insertBefore(table, host.nextSibling);
+          if(host.childNodes.length===0){ parent.removeChild(host); }
+          host=table.parentNode;
+        }
+        if(!table.nextSibling && table.parentNode){
+          const placeholder=doc.createElement("p");
+          placeholder.style.margin="12px 0";
+          placeholder.appendChild(doc.createElement("br"));
+          table.parentNode.insertBefore(placeholder, table.nextSibling);
+        }
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
@@ -4622,6 +4729,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -4637,6 +4745,7 @@
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
       ] },
+      { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
