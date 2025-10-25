@@ -1,5 +1,8 @@
 (function(){
   "use strict";
+  const FeatureFlags={
+    exportButton:false
+  };
   const WCfg=(function(){
     const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
     const HDR_MIN=24, FTR_MIN=20;
@@ -4450,6 +4453,7 @@
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
+  const OUTPUT_ITEMS=FeatureFlags.exportButton?["print","export"]:["print"];
   const TOOLBAR_PAGE={
     idPrefix:"weditor-page",
     defaultActiveTab:null,
@@ -4461,7 +4465,7 @@
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] }
+      { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
     quickActions:["fullscreen.open"]
   };
@@ -4476,7 +4480,7 @@
       ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
-      { id:"output", label:"Output", items:["print","export"] },
+      { id:"output", label:"Output", items:OUTPUT_ITEMS },
       { id:"session", label:"Session", items:["fullscreen.saveClose","fullscreen.close"] }
     ]
   };
