@@ -3816,6 +3816,167 @@
     }
     return { attach:function(inst, options){ if(inst || (options && options.root)) createState(inst, options); }, ensureTable };
   })();
+  const TableStyler=(function(){
+    function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
+    function ascendToTable(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="table") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current && current.nodeType===1 && (current.tagName||"").toLowerCase()==="table") return current;
+      return null;
+    }
+    function currentSelectionTable(target){
+      if(!target || !target.ownerDocument) return null;
+      const doc=target.ownerDocument;
+      const win=doc.defaultView || window;
+      let sel=null;
+      try{ sel=win.getSelection ? win.getSelection() : window.getSelection(); }
+      catch(err){ sel=null; }
+      const candidates=[];
+      if(sel && sel.rangeCount>0){
+        const range=sel.getRangeAt(0);
+        if(range){
+          candidates.push(range.commonAncestorContainer);
+          candidates.push(range.startContainer);
+          candidates.push(range.endContainer);
+        }
+        candidates.push(sel.anchorNode);
+        candidates.push(sel.focusNode);
+      }
+      if(doc.activeElement && target.contains(doc.activeElement)) candidates.push(doc.activeElement);
+      for(let i=0;i<candidates.length;i++){
+        const candidate=candidates[i];
+        if(!candidate) continue;
+        const node=candidate.nodeType===3 ? candidate.parentNode : candidate;
+        if(!node) continue;
+        if(!target.contains(node)) continue;
+        const table=ascendToTable(node, target);
+        if(table) return table;
+      }
+      return null;
+    }
+    function normalizeColor(input){
+      if(!input) return null;
+      let value=input.trim();
+      if(!value) return null;
+      if(/^rgba?\s*\(/i.test(value)){
+        const parts=value.replace(/^rgba?\s*\(/i,"").replace(/\)$/,"").split(/\s*,\s*/);
+        if(parts.length>=3){
+          const r=Math.min(255, Math.max(0, parseInt(parts[0],10)));
+          const g=Math.min(255, Math.max(0, parseInt(parts[1],10)));
+          const b=Math.min(255, Math.max(0, parseInt(parts[2],10)));
+          if(!Number.isNaN(r) && !Number.isNaN(g) && !Number.isNaN(b)){
+            const toHex=function(num){ const hex=num.toString(16); return hex.length===1?"0"+hex:hex; };
+            return "#"+toHex(r)+toHex(g)+toHex(b);
+          }
+        }
+      }
+      if(value.charAt(0)!=="#") value="#"+value;
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)){
+        if(value.length===4){
+          return "#"+value.charAt(1)+value.charAt(1)+value.charAt(2)+value.charAt(2)+value.charAt(3)+value.charAt(3);
+        }
+        return value.toLowerCase();
+      }
+      return null;
+    }
+    function readTableState(table){
+      if(!table) return null;
+      const hiddenAttr=table.getAttribute("data-weditor-border-hidden");
+      const hidden=hiddenAttr==="1" || hiddenAttr==="true" || hiddenAttr==="yes" || hiddenAttr==="on" || (table.style.borderWidth && parseFloat(table.style.borderWidth)===0);
+      let colorAttr=table.getAttribute("data-weditor-border-color");
+      if(!colorAttr && hidden){
+        colorAttr=table.getAttribute("data-weditor-border-last-color");
+      }
+      let color=normalizeColor(colorAttr || table.style.borderColor || "");
+      if(!color && !hidden){
+        try{
+          const win=table.ownerDocument ? table.ownerDocument.defaultView : window;
+          if(win && win.getComputedStyle){
+            const computed=win.getComputedStyle(table);
+            if(computed){
+              color=normalizeColor(computed.borderTopColor || computed.borderColor || "");
+            }
+          }
+        }catch(err){ color=null; }
+      }
+      return { table, hidden, color };
+    }
+    function applyColorToCells(table, colorValue, hidden){
+      if(!table) return;
+      const cells=table.querySelectorAll("th,td");
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(hidden){
+          cell.style.border="0";
+          cell.style.borderColor="transparent";
+          cell.style.borderWidth="0";
+          cell.style.borderStyle="solid";
+        } else {
+          cell.style.border="1px solid "+colorValue;
+          cell.style.borderColor=colorValue;
+          cell.style.borderWidth="1px";
+          cell.style.borderStyle="solid";
+        }
+      }
+    }
+    function applyColor(inst, ctx, color){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const table=currentSelectionTable(target);
+      if(!table) return { changed:false };
+      const normalized=normalizeColor(color);
+      if(!normalized) return { changed:false };
+      const state=readTableState(table);
+      if(state && !state.hidden && state.color===normalized) return { changed:false, table };
+      TableResizer.ensureTable(table);
+      table.setAttribute("data-weditor-border-hidden","0");
+      table.setAttribute("data-weditor-border-color", normalized);
+      table.setAttribute("data-weditor-border-last-color", normalized);
+      table.style.borderCollapse="collapse";
+      table.style.border="1px solid "+normalized;
+      table.style.borderColor=normalized;
+      table.style.borderWidth="1px";
+      table.style.borderStyle="solid";
+      applyColorToCells(table, normalized, false);
+      return { changed:true, table, hidden:false, color:normalized };
+    }
+    function applyDefault(inst, ctx){
+      return applyColor(inst, ctx, WCfg.UI.borderSubtle || "#c8c6c4");
+    }
+    function hideBorders(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const table=currentSelectionTable(target);
+      if(!table) return { changed:false };
+      const state=readTableState(table);
+      if(state && state.hidden) return { changed:false, table };
+      if(state && state.color){
+        table.setAttribute("data-weditor-border-last-color", state.color);
+      }
+      table.setAttribute("data-weditor-border-hidden","1");
+      table.removeAttribute("data-weditor-border-color");
+      table.style.border="0";
+      table.style.borderWidth="0";
+      table.style.borderColor="transparent";
+      table.style.borderStyle="solid";
+      applyColorToCells(table, "transparent", true);
+      return { changed:true, table, hidden:true, lastColor:state?state.color:null };
+    }
+    function getState(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return null;
+      const table=currentSelectionTable(target);
+      if(!table) return null;
+      return readTableState(table);
+    }
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor };
+  })();
   const ListUI=(function(){
     function createSplitButton(options){
       const variant=(options && options.variant) || "default";
@@ -4410,6 +4571,249 @@
     }
     return { create };
   })();
+  const TableBorderUI=(function(){
+    const NO_BORDER_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
+    function createActionButton(label){
+      const btn=document.createElement("button");
+      btn.type="button";
+      btn.style.padding="6px 10px";
+      btn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      btn.style.borderRadius="6px";
+      btn.style.background="#fff";
+      btn.style.color=WCfg.UI.text;
+      btn.style.font="12px/1.4 Segoe UI,system-ui";
+      btn.style.cursor="pointer";
+      btn.style.display="inline-flex";
+      btn.style.alignItems="center";
+      btn.style.justifyContent="center";
+      btn.style.gap="6px";
+      btn.textContent=label;
+      btn.setAttribute("data-active","0");
+      btn.onmouseenter=function(){ if(btn.getAttribute("data-active")==="1") return; btn.style.background=WCfg.UI.canvas; };
+      btn.onmouseleave=function(){ if(btn.getAttribute("data-active")==="1") return; btn.style.background="#fff"; };
+      return btn;
+    }
+    function setActionActive(btn, active){
+      if(!btn) return;
+      if(active){
+        btn.style.background="#e6f2fb";
+        btn.style.borderColor=WCfg.UI.brand;
+        btn.style.color=WCfg.UI.brand;
+        btn.setAttribute("data-active","1");
+      } else {
+        btn.style.background="#fff";
+        btn.style.borderColor=WCfg.UI.borderSubtle;
+        btn.style.color=WCfg.UI.text;
+        btn.setAttribute("data-active","0");
+      }
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Table border color or visibility");
+      button.setAttribute("data-command","table.borderColor");
+      button.setAttribute("aria-label","Table border color or visibility");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.gap="8px";
+      button.style.padding="6px 12px";
+      const label=document.createElement("span");
+      label.textContent="Table Border";
+      label.style.fontWeight="600";
+      label.setAttribute("aria-hidden","true");
+      const preview=document.createElement("span");
+      preview.style.width="18px";
+      preview.style.height="18px";
+      preview.style.borderRadius="4px";
+      preview.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      preview.setAttribute("aria-hidden","true");
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      arrow.setAttribute("aria-hidden","true");
+      button.textContent="";
+      button.appendChild(label);
+      button.appendChild(preview);
+      button.appendChild(arrow);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.display="none";
+      palette.style.flexDirection="column";
+      palette.style.gap="12px";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 12px 24px rgba(0,0,0,.16)";
+      palette.style.padding="12px";
+      palette.style.zIndex="25";
+      palette.style.minWidth="220px";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const colorButtons=[];
+      const actionButtons={ hide:null, standard:null };
+      const defaultColor=TableStyler.normalizeColor(WCfg.UI.borderSubtle || "#c8c6c4");
+      function registerColorButton(value, el){ colorButtons.push({ value, el }); }
+      function updateSelectionUI(selectedColor, hidden){
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const active=!hidden && selectedColor && entry.value===selectedColor;
+          entry.el.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+        setActionActive(actionButtons.hide, !!hidden);
+        const isDefault=!hidden && selectedColor && defaultColor && selectedColor===defaultColor;
+        setActionActive(actionButtons.standard, !!isDefault);
+      }
+      function updatePreviewState(state){
+        if(!state){
+          preview.style.background=WCfg.UI.borderSubtle;
+          preview.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+          return;
+        }
+        if(state.hidden){
+          preview.style.background=NO_BORDER_PATTERN;
+          preview.style.boxShadow="0 0 0 1px "+WCfg.UI.borderSubtle;
+          return;
+        }
+        if(state.color){
+          preview.style.background=state.color;
+          preview.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+          return;
+        }
+        preview.style.background=WCfg.UI.borderSubtle;
+        preview.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      }
+      function closePalette(){
+        palette.style.display="none";
+        palette.setAttribute("aria-hidden","true");
+        button.setAttribute("aria-expanded","false");
+        doc.removeEventListener("mousedown", onDocClick, true);
+        doc.removeEventListener("keydown", onDocKey);
+      }
+      function applyResult(result, labelText){
+        if(!result || !result.changed) return;
+        updatePreviewState(result);
+        updateSelectionUI(result.color || null, !!result.hidden);
+        const target=HistoryManager.resolveTarget(inst, ctx);
+        HistoryManager.record(inst, target, { label:labelText, repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      }
+      function setOpen(open){
+        if(open){
+          const state=TableStyler.getState(inst, ctx);
+          if(!state){
+            closePalette();
+            window.alert("Place the caret inside a table to adjust borders.");
+            return;
+          }
+          updatePreviewState(state);
+          updateSelectionUI(state.color || null, !!state.hidden);
+          palette.style.display="flex";
+          palette.setAttribute("aria-hidden","false");
+          button.setAttribute("aria-expanded","true");
+          doc.addEventListener("mousedown", onDocClick, true);
+          doc.addEventListener("keydown", onDocKey);
+        } else {
+          closePalette();
+        }
+      }
+      function onDocClick(e){ if(!palette.contains(e.target) && !button.contains(e.target)){ closePalette(); } }
+      function onDocKey(e){ if(e.key==="Escape"){ e.preventDefault(); closePalette(); button.focus(); } }
+      button.addEventListener("click", function(e){
+        e.preventDefault();
+        if(palette.style.display==="none" || palette.getAttribute("aria-hidden")==="true") setOpen(true);
+        else closePalette();
+      });
+      const actions=document.createElement("div");
+      actions.style.display="flex";
+      actions.style.flexDirection="column";
+      actions.style.gap="6px";
+      const actionsLabel=document.createElement("div");
+      actionsLabel.textContent="Quick actions";
+      actionsLabel.style.font="11px/1.4 Segoe UI,system-ui";
+      actionsLabel.style.color=WCfg.UI.textDim;
+      const hideBtn=createActionButton("Hide Borders");
+      hideBtn.setAttribute("role","menuitem");
+      hideBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        const result=TableStyler.hideBorders(inst, ctx);
+        closePalette();
+        applyResult(result, "Hide Table Borders");
+      });
+      const defaultBtn=createActionButton("Default Border");
+      defaultBtn.setAttribute("role","menuitem");
+      defaultBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        const result=TableStyler.applyDefault(inst, ctx);
+        closePalette();
+        applyResult(result, "Set Table Border Color");
+      });
+      actions.appendChild(actionsLabel);
+      actions.appendChild(hideBtn);
+      actions.appendChild(defaultBtn);
+      actionButtons.hide=hideBtn;
+      actionButtons.standard=defaultBtn;
+      function createColorSection(title, colors){
+        if(!colors || !colors.length) return null;
+        const section=document.createElement("div");
+        section.style.display="flex";
+        section.style.flexDirection="column";
+        section.style.gap="6px";
+        const heading=document.createElement("div");
+        heading.textContent=title;
+        heading.style.font="11px/1.4 Segoe UI,system-ui";
+        heading.style.color=WCfg.UI.textDim;
+        const grid=document.createElement("div");
+        grid.style.display="grid";
+        grid.style.gridTemplateColumns="repeat(auto-fill, minmax(24px, 1fr))";
+        grid.style.gap="6px";
+        for(let i=0;i<colors.length;i++){
+          const swatch=doc.createElement("button");
+          swatch.type="button";
+          swatch.style.width="24px";
+          swatch.style.height="24px";
+          swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+          swatch.style.borderRadius="4px";
+          swatch.style.background=colors[i].value;
+          swatch.style.cursor="pointer";
+          swatch.setAttribute("title", colors[i].label+" border");
+          swatch.setAttribute("aria-label", colors[i].label+" table border");
+          swatch.setAttribute("role","menuitem");
+          swatch.addEventListener("click", function(ev){
+            ev.preventDefault();
+            const result=TableStyler.applyColor(inst, ctx, colors[i].value);
+            closePalette();
+            applyResult(result, "Set Table Border Color");
+          });
+          swatch.addEventListener("keydown", function(ev){ if(ev.key==="Escape"){ ev.preventDefault(); closePalette(); button.focus(); } });
+          registerColorButton(colors[i].value, swatch);
+          grid.appendChild(swatch);
+        }
+        section.appendChild(heading);
+        section.appendChild(grid);
+        return section;
+      }
+      const themeSection=createColorSection("Theme colors", Formatting.FONT_THEME_COLORS || []);
+      const standardSection=createColorSection("Standard colors", Formatting.FONT_STANDARD_COLORS || []);
+      palette.appendChild(actions);
+      if(themeSection) palette.appendChild(themeSection);
+      if(standardSection) palette.appendChild(standardSection);
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      container.appendChild(button);
+      container.appendChild(palette);
+      updatePreviewState(TableStyler.getState(inst, ctx));
+      return container;
+    }
+    return { create };
+  })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
     function create(inst, ctx){
@@ -4969,6 +5373,11 @@
         HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "table.borderColor":{
+      kind:"custom",
+      ariaLabel:"Table border color or visibility",
+      render:function(inst, ctx){ return TableBorderUI.create(inst, ctx); }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -5015,7 +5424,8 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -5031,7 +5441,8 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.bold","format.italic","format.underline","format.underlineStyle","format.strike"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] }
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify"] },
+        { label:"Table", compact:true, items:["table.borderColor"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
