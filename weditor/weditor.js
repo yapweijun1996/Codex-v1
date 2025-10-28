@@ -5953,7 +5953,7 @@
       }
       return container;
     }
-    return { createBulleted, createNumbered, createMultilevel };
+    return { createBulleted, createNumbered, createMultilevel, createSplitButton, createMenuButton };
   })();
   const ImageInsertUI=(function(){
     function normalizeAltName(name, fallback){
@@ -6039,45 +6039,57 @@
       reader.readAsDataURL(file);
     }
     function create(inst, ctx){
-      const wrap=document.createElement("div");
-      wrap.style.display="flex";
-      wrap.style.flexDirection="column";
-      wrap.style.gap="6px";
-      wrap.setAttribute("role","group");
-      wrap.setAttribute("aria-label","Insert image controls");
-      const row=document.createElement("div");
-      row.style.display="flex";
-      row.style.flexWrap="wrap";
-      row.style.gap="8px";
-      const uploadBtn=WDom.btn("Upload Image", false, "Upload an image from your device");
-      uploadBtn.style.fontSize="12px";
-      uploadBtn.style.padding="6px 10px";
-      uploadBtn.style.lineHeight="1.2";
-      const urlBtn=WDom.btn("Image from URL", false, "Insert image from a URL");
-      urlBtn.style.fontSize="12px";
-      urlBtn.style.padding="6px 10px";
-      urlBtn.style.lineHeight="1.2";
+      const split=ListUI.createSplitButton({
+        primaryLabel:"Insert Image",
+        primaryTitle:"Insert image",
+        primaryAria:"Insert image",
+        menuTitle:"Insert image options",
+        menuAria:"Insert image options",
+        menuWidth:220
+      });
+      const { container, primary, menu, setOpen, setPrimaryHandler }=split;
+      container.setAttribute("role","group");
+      container.setAttribute("aria-label","Insert image controls");
+      container.style.minWidth="0";
+      container.style.maxWidth="100%";
+      container.style.alignItems="center";
+      primary.textContent="Insert Image";
+      primary.title="Upload an image from your device";
       const fileInput=document.createElement("input");
       fileInput.type="file";
       fileInput.accept="image/*";
       fileInput.style.display="none";
-      uploadBtn.addEventListener("click", function(){ fileInput.click(); });
+      const triggerUpload=function(){ fileInput.click(); };
+      setPrimaryHandler(function(e, helpers){
+        e.preventDefault();
+        triggerUpload();
+        if(helpers && typeof helpers.closeMenu==="function"){ helpers.closeMenu(); }
+      });
+      const uploadOption=ListUI.createMenuButton("Upload from device");
+      uploadOption.setAttribute("role","menuitem");
+      uploadOption.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        triggerUpload();
+      });
+      const urlOption=ListUI.createMenuButton("Link from URL");
+      urlOption.setAttribute("role","menuitem");
+      urlOption.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+        promptForURL(inst, ctx);
+      });
+      menu.appendChild(uploadOption);
+      menu.appendChild(urlOption);
       fileInput.addEventListener("change", function(){
         const file=fileInput.files && fileInput.files[0];
         if(file) handleFile(inst, ctx, file);
         fileInput.value="";
       });
-      urlBtn.addEventListener("click", function(){ promptForURL(inst, ctx); });
-      row.appendChild(uploadBtn);
-      row.appendChild(urlBtn);
-      wrap.appendChild(row);
-      wrap.appendChild(fileInput);
-      const helper=document.createElement("div");
-      helper.style.font="11px/1.4 Segoe UI,system-ui";
-      helper.style.color=WCfg.UI.textDim;
-      helper.textContent="Upload from your computer or paste a link. Drag the image or use the corner handles to resize.";
-      wrap.appendChild(helper);
-      return wrap;
+      container.appendChild(fileInput);
+      return container;
     }
     return { create };
   })();
