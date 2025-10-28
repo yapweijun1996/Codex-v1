@@ -1158,25 +1158,92 @@
     }
     return { open, render };
   })();
-  const HFEditor=(function(){
-    function enableImageResizer(editor){
-      if(!editor) return;
-      if(editor.__weditorImageResizer){
-        const overlay=editor.__weditorImageOverlay;
-        if(overlay && !editor.contains(overlay)){
-          editor.appendChild(overlay);
-          if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
-        }
-        return;
+  const ImageTools=(function(){
+    const HANDLE_SPECS=[
+      { dir:"nw", kind:"corner", cursor:"nwse-resize", top:"-7px", left:"-7px" },
+      { dir:"n", kind:"edge", axis:"y", cursor:"ns-resize", top:"-7px", left:"calc(50% - 6px)" },
+      { dir:"ne", kind:"corner", cursor:"nesw-resize", top:"-7px", right:"-7px" },
+      { dir:"e", kind:"edge", axis:"x", cursor:"ew-resize", top:"calc(50% - 6px)", right:"-7px" },
+      { dir:"se", kind:"corner", cursor:"nwse-resize", bottom:"-7px", right:"-7px" },
+      { dir:"s", kind:"edge", axis:"y", cursor:"ns-resize", bottom:"-7px", left:"calc(50% - 6px)" },
+      { dir:"sw", kind:"corner", cursor:"nesw-resize", bottom:"-7px", left:"-7px" },
+      { dir:"w", kind:"edge", axis:"x", cursor:"ew-resize", top:"calc(50% - 6px)", left:"-7px" }
+    ];
+    const MIN_SIZE=32;
+    const STYLE_ID="weditor-image-style";
+    function ensureStyle(){
+      if(document.getElementById(STYLE_ID)) return;
+      const style=document.createElement("style");
+      style.id=STYLE_ID;
+      style.textContent=".weditor-hf-img-active{outline:2px solid "+WCfg.UI.brand+";outline-offset:2px;}"+
+        ".weditor-overlay-moving{cursor:move!important;}";
+      document.head.appendChild(style);
+    }
+    function insideOverlay(node, overlay){
+      let current=node;
+      while(current){
+        if(current===overlay) return true;
+        if(current.nodeType===1 && current.hasAttribute && current.hasAttribute("data-weditor-overlay")) return true;
+        current=current.parentNode;
       }
-      editor.__weditorImageResizer = true;
-      if(!document.getElementById("weditor-hf-img-style")){
-        const style=document.createElement("style");
-        style.id="weditor-hf-img-style";
-        style.textContent=".weditor-hf-img-active{outline:2px solid "+WCfg.UI.brand+";outline-offset:2px;}";
-        document.head.appendChild(style);
+      return false;
+    }
+    function caretRangeAt(doc, x, y){
+      if(doc.caretRangeFromPoint){
+        const range=doc.caretRangeFromPoint(x, y);
+        return range || null;
       }
+      if(doc.caretPositionFromPoint){
+        const pos=doc.caretPositionFromPoint(x, y);
+        if(!pos) return null;
+        const range=doc.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+        return range;
+      }
+      return null;
+    }
+    function clampSize(value){ return isFinite(value) ? Math.max(MIN_SIZE, value) : MIN_SIZE; }
+    function formatReadout(width, height, hostWidth){
+      const safeHost=Math.max(1, hostWidth||1);
+      const percent=Math.min(999, Math.round((width/safeHost)*100));
+      return Math.round(width)+"×"+Math.round(height)+" · "+percent+"%";
+    }
+    function attach(editor){
+      if(!editor) return null;
+      if(editor.__weditorImageTools){
+        const existing=editor.__weditorImageTools;
+        const overlay=existing.overlay;
+        if(overlay && overlay.parentNode!==editor) editor.appendChild(overlay);
+        editor.__weditorCleanup=existing.cleanup || editor.__weditorCleanup;
+        editor.__weditorHideOverlay=existing.hide || editor.__weditorHideOverlay;
+        editor.__weditorSelectImage=existing.select || editor.__weditorSelectImage;
+        return existing;
+      }
+      ensureStyle();
+      const doc=editor.ownerDocument || document;
       const computed=window.getComputedStyle(editor);
+      const inst=editor.__winst || editor.__weditorInst || null;
+      const ctx=editor.__weditorCtx || null;
+      const recordTarget=editor.__weditorRecordTarget || (ctx && ctx.area) || (inst && inst.el) || editor;
+      const changeHook=typeof editor.__weditorImageChanged==="function" ? editor.__weditorImageChanged : null;
+      function syncOutputs(img){
+        const picture=img || activeImg;
+        if(changeHook){
+          try { changeHook({ editor, image:picture }); }
+          catch(err){}
+        }
+        if(inst && typeof OutputBinding!=="undefined" && OutputBinding && typeof OutputBinding.syncDebounced==="function"){
+          OutputBinding.syncDebounced(inst);
+        }
+        if(ctx && typeof ctx.refreshPreview==="function"){ ctx.refreshPreview(); }
+      }
+      function commitChange(label, img){
+        if(inst && typeof HistoryManager!=="undefined" && HistoryManager && typeof HistoryManager.record==="function"){
+          HistoryManager.record(inst, recordTarget, { label:label||"Edit Image", repeatable:false });
+        }
+        syncOutputs(img);
+      }
       if(computed.position === "static") editor.style.position="relative";
       const overlay=document.createElement("div");
       overlay.setAttribute("data-weditor-overlay","1");
@@ -1189,25 +1256,45 @@
       overlay.style.zIndex="10";
       overlay.style.left="0";
       overlay.style.top="0";
-      const handle=document.createElement("div");
-      handle.setAttribute("data-weditor-overlay","1");
-      handle.style.position="absolute";
-      handle.style.width="14px";
-      handle.style.height="14px";
-      handle.style.borderRadius="50%";
-      handle.style.background=WCfg.UI.brand;
-      handle.style.border="2px solid #fff";
-      handle.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
-      handle.style.right="-7px";
-      handle.style.bottom="-7px";
-      handle.style.cursor="nwse-resize";
-      handle.style.pointerEvents="auto";
-      overlay.appendChild(handle);
+      const moveArea=document.createElement("div");
+      moveArea.setAttribute("data-weditor-overlay","1");
+      moveArea.style.position="absolute";
+      moveArea.style.left="0";
+      moveArea.style.top="0";
+      moveArea.style.width="100%";
+      moveArea.style.height="100%";
+      moveArea.style.cursor="move";
+      moveArea.style.pointerEvents="auto";
+      moveArea.style.zIndex="1";
+      overlay.appendChild(moveArea);
+      const handles=[];
+      for(let i=0;i<HANDLE_SPECS.length;i++){
+        const spec=HANDLE_SPECS[i];
+        const handle=document.createElement("div");
+        handle.setAttribute("data-weditor-overlay","1");
+        handle.setAttribute("data-direction", spec.dir);
+        handle.style.position="absolute";
+        handle.style.width="12px";
+        handle.style.height="12px";
+        handle.style.borderRadius="50%";
+        handle.style.background=WCfg.UI.brand;
+        handle.style.border="2px solid #fff";
+        handle.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
+        handle.style.pointerEvents="auto";
+        handle.style.cursor=spec.cursor;
+        handle.style.zIndex="2";
+        if(spec.top) handle.style.top=spec.top;
+        if(spec.bottom) handle.style.bottom=spec.bottom;
+        if(spec.left) handle.style.left=spec.left;
+        if(spec.right) handle.style.right=spec.right;
+        handles.push({ spec, el:handle });
+        overlay.appendChild(handle);
+      }
       const readout=document.createElement("div");
       readout.setAttribute("data-weditor-overlay","1");
       readout.style.position="absolute";
       readout.style.right="0";
-      readout.style.top="-26px";
+      readout.style.top="-28px";
       readout.style.padding="2px 6px";
       readout.style.font="11px/1.4 Segoe UI,system-ui";
       readout.style.color="#fff";
@@ -1216,15 +1303,21 @@
       readout.style.boxShadow="0 2px 6px rgba(0,0,0,.18)";
       readout.style.whiteSpace="nowrap";
       readout.style.pointerEvents="none";
+      readout.style.zIndex="3";
       overlay.appendChild(readout);
       editor.appendChild(overlay);
-      editor.__weditorImageOverlay = overlay;
+      editor.__weditorImageOverlay=overlay;
       let activeImg=null;
       let raf=null;
+      let resizing=false;
+      let moving=false;
+      let dropRange=null;
+      function getSelection(){ return doc.getSelection ? doc.getSelection() : window.getSelection(); }
       function hideOverlay(){
         overlay.style.display="none";
         readout.textContent="";
-        if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); activeImg=null; }
+        if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); }
+        activeImg=null;
       }
       function updateOverlay(){
         if(!activeImg || !editor.contains(activeImg)){ hideOverlay(); return; }
@@ -1238,72 +1331,108 @@
         overlay.style.width=rect.width+"px";
         overlay.style.height=rect.height+"px";
         overlay.style.display="block";
-        const widthPx=Math.round(rect.width);
-        const totalWidth=Math.max(1, editor.getBoundingClientRect().width);
-        const percent=Math.min(999, Math.round((widthPx/totalWidth)*100));
-        readout.textContent=widthPx+"px · "+percent+"%";
+        readout.textContent=formatReadout(Math.max(1, rect.width), Math.max(1, rect.height), hostRect.width);
       }
       function scheduleOverlay(){ if(raf) cancelAnimationFrame(raf); raf=requestAnimationFrame(updateOverlay); }
       function selectImage(img){
         if(activeImg===img){ scheduleOverlay(); return; }
-        if(activeImg) activeImg.classList.remove("weditor-hf-img-active");
-        activeImg=img;
+        if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); }
+        activeImg=img && editor.contains(img) ? img : null;
         if(activeImg){
           activeImg.classList.add("weditor-hf-img-active");
           if(activeImg.complete){ scheduleOverlay(); }
-          else {
-            activeImg.addEventListener("load", scheduleOverlay, { once:true });
-            scheduleOverlay();
-          }
+          else { activeImg.addEventListener("load", scheduleOverlay, { once:true }); scheduleOverlay(); }
         } else {
           hideOverlay();
         }
       }
-      editor.addEventListener("click", function(ev){
-        const target=ev.target;
-        if(target && target.tagName==="IMG"){ selectImage(target); }
-        else if(!overlay.contains(target)){ hideOverlay(); }
-      });
-      editor.addEventListener("input", function(){ if(activeImg && !editor.contains(activeImg)){ hideOverlay(); } scheduleOverlay(); });
-      editor.addEventListener("scroll", scheduleOverlay, { passive:true });
-      window.addEventListener("resize", scheduleOverlay);
-      editor.addEventListener("blur", hideOverlay);
-      editor.addEventListener("keydown", function(ev){ if(ev.key==="Escape") hideOverlay(); });
+      function onClick(ev){ const target=ev.target; if(target && target.tagName==="IMG"){ selectImage(target); } else if(!insideOverlay(target, overlay)){ hideOverlay(); } }
+      function onInput(){ if(activeImg && !editor.contains(activeImg)) hideOverlay(); scheduleOverlay(); }
+      function onScroll(){ scheduleOverlay(); }
+      function onBlur(){ hideOverlay(); }
+      function onKeydown(ev){ if(ev.key==="Escape") hideOverlay(); }
+      function onFocus(){ scheduleOverlay(); }
+      function onMouseDown(ev){ if(!insideOverlay(ev.target, overlay)) scheduleOverlay(); }
+      function onDragStart(ev){ if(resizing || moving){ ev.preventDefault(); ev.stopPropagation(); } }
+      function onImageLoad(ev){
+        const target=ev && ev.target;
+        if(!target || target.tagName!=="IMG") return;
+        if(!editor.contains(target)) return;
+        if(activeImg===target) scheduleOverlay();
+        syncOutputs(target);
+      }
+      function getValidDropRange(x, y){
+        const display=overlay.style.display;
+        overlay.style.display="none";
+        let range=caretRangeAt(doc, x, y);
+        overlay.style.display=display;
+        if(!range || !range.startContainer) return null;
+        if(!editor.contains(range.startContainer)) return null;
+        if(insideOverlay(range.startContainer, overlay)) return null;
+        return range;
+      }
+      function moveImageToRange(img, range){
+        if(!img || !range) return false;
+        const drop=range.cloneRange();
+        drop.collapse(true);
+        drop.insertNode(img);
+        const after=doc.createRange();
+        after.setStartAfter(img);
+        after.collapse(true);
+        const sel=getSelection();
+        if(sel){ sel.removeAllRanges(); sel.addRange(after); }
+        return true;
+      }
       const observer=new MutationObserver(function(records){
-        let relevant=false;
         for(let i=0;i<records.length;i++){
-          const target=records[i].target;
-          if(!target) continue;
-          if(target.nodeType===1 && target.getAttribute && target.getAttribute("data-weditor-overlay")){ continue; }
-          if(overlay.contains(target)){ continue; }
-          relevant=true; break;
+          const rec=records[i];
+          if(rec.target && insideOverlay(rec.target, overlay)) continue;
+          let relevant=false;
+          const added=rec.addedNodes || [];
+          const removed=rec.removedNodes || [];
+          for(let j=0;j<added.length;j++){ if(!insideOverlay(added[j], overlay)){ relevant=true; break; } }
+          if(!relevant){
+            for(let j=0;j<removed.length;j++){ if(!insideOverlay(removed[j], overlay)){ relevant=true; break; } }
+          }
+          if(relevant || rec.type==="attributes"){
+            if(activeImg && !editor.contains(activeImg)) hideOverlay();
+            scheduleOverlay();
+            return;
+          }
         }
-        if(!relevant) return;
-        if(activeImg && !editor.contains(activeImg)) hideOverlay();
-        scheduleOverlay();
       });
       observer.observe(editor, { childList:true, subtree:true, attributes:true });
-      let resizing=false;
-      handle.addEventListener("pointerdown", function(ev){
-        if(!activeImg){ return; }
+      function startResize(spec, handleEl, ev){
+        if(!activeImg) return;
         resizing=true;
         ev.preventDefault();
         ev.stopPropagation();
+        const pointerId=ev.pointerId;
+        try { handleEl.setPointerCapture(pointerId); } catch(e){}
+        const rect=activeImg.getBoundingClientRect();
+        const startWidth=rect.width;
+        const startHeight=Math.max(1, rect.height);
+        const ratio=(activeImg.naturalWidth&&activeImg.naturalHeight)?(activeImg.naturalWidth/activeImg.naturalHeight):(startWidth/startHeight);
         const startX=ev.clientX;
         const startY=ev.clientY;
-        const startWidth=activeImg.getBoundingClientRect().width;
-        const startHeight=activeImg.getBoundingClientRect().height || 1;
-        const ratio=(activeImg.naturalWidth&&activeImg.naturalHeight)?(activeImg.naturalWidth/activeImg.naturalHeight):(startWidth/Math.max(startHeight,1));
-        const pointerId=ev.pointerId;
-        try { handle.setPointerCapture(pointerId); } catch(e){}
-        function applySize(width){
-          const safeWidth=Math.max(24, width);
-          const calcHeight=safeWidth/ratio;
+        let lastWidth=startWidth;
+        let lastHeight=startHeight;
+        let didChange=false;
+        function applySize(width, height){
+          const nextWidth=clampSize(width);
+          const nextHeight=clampSize(height);
+          if(Math.round(nextWidth)===Math.round(lastWidth) && Math.round(nextHeight)===Math.round(lastHeight)){
+            scheduleOverlay();
+            return;
+          }
           activeImg.style.maxWidth="";
           activeImg.style.maxHeight="";
-          activeImg.style.width=Math.round(safeWidth)+"px";
-          activeImg.style.height=Math.round(calcHeight)+"px";
+          activeImg.style.width=Math.round(nextWidth)+"px";
+          activeImg.style.height=Math.round(nextHeight)+"px";
           if(!activeImg.style.objectFit) activeImg.style.objectFit="contain";
+          lastWidth=nextWidth;
+          lastHeight=nextHeight;
+          didChange=true;
           scheduleOverlay();
         }
         function onMove(moveEv){
@@ -1311,29 +1440,164 @@
           moveEv.preventDefault();
           const deltaX=moveEv.clientX-startX;
           const deltaY=moveEv.clientY-startY;
-          const delta=Math.abs(deltaX)>Math.abs(deltaY)?deltaX:deltaY;
-          applySize(startWidth+delta);
+          let width=startWidth;
+          let height=startHeight;
+          if(spec.kind==="corner"){
+            const signX=spec.dir.indexOf("w")>=0?-1:1;
+            const signY=spec.dir.indexOf("n")>=0?-1:1;
+            const widthDelta=deltaX*signX;
+            const heightDelta=deltaY*signY;
+            if(Math.abs(widthDelta)>=Math.abs(heightDelta*ratio)){
+              width=startWidth+widthDelta;
+              height=width/ratio;
+            } else {
+              height=startHeight+heightDelta;
+              width=height*ratio;
+            }
+          } else if(spec.axis==="x"){
+            const sign=spec.dir==="w"?-1:1;
+            width=startWidth+deltaX*sign;
+          } else if(spec.axis==="y"){
+            const sign=spec.dir==="n"?-1:1;
+            height=startHeight+deltaY*sign;
+          }
+          applySize(width, height);
         }
         function finish(upEv){
+          if(!resizing) return;
           resizing=false;
-          document.removeEventListener("pointermove", onMove);
-          document.removeEventListener("pointerup", finish);
-          document.removeEventListener("pointercancel", finish);
-          if(handle.hasPointerCapture && handle.hasPointerCapture(pointerId)){
-            try { handle.releasePointerCapture(pointerId); } catch(e){}
+          doc.removeEventListener("pointermove", onMove);
+          doc.removeEventListener("pointerup", finish);
+          doc.removeEventListener("pointercancel", finish);
+          if(handleEl.hasPointerCapture && handleEl.hasPointerCapture(pointerId)){
+            try { handleEl.releasePointerCapture(pointerId); } catch(e){}
           }
           if(upEv) upEv.preventDefault();
           scheduleOverlay();
+          if(didChange){
+            commitChange("Resize Image");
+          } else {
+            if(inst || ctx || changeHook) syncOutputs();
+          }
         }
-        document.addEventListener("pointermove", onMove);
-        document.addEventListener("pointerup", finish, { once:false });
-        document.addEventListener("pointercancel", finish, { once:false });
-      });
-      editor.addEventListener("mousedown", function(ev){ if(ev.target!==handle) scheduleOverlay(); });
-      editor.addEventListener("focus", scheduleOverlay);
-      editor.addEventListener("dragstart", function(ev){ if(resizing){ ev.preventDefault(); ev.stopPropagation(); } });
+        doc.addEventListener("pointermove", onMove);
+        doc.addEventListener("pointerup", finish);
+        doc.addEventListener("pointercancel", finish);
+      }
+      for(let i=0;i<handles.length;i++){
+        const entry=handles[i];
+        entry.el.addEventListener("pointerdown", function(ev){ startResize(entry.spec, entry.el, ev); });
+      }
+      function onMovePointerDown(ev){
+        if(!activeImg || ev.button===1 || ev.button===2) return;
+        moving=true;
+        ev.preventDefault();
+        ev.stopPropagation();
+        overlay.classList.add("weditor-overlay-moving");
+        moveArea.classList.add("weditor-overlay-moving");
+        const pointerId=ev.pointerId;
+        try { moveArea.setPointerCapture(pointerId); } catch(e){}
+        const sel=getSelection();
+        const originalRange=sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+        dropRange=null;
+        let moved=false;
+        function update(moveEv){
+          if(!moving) return;
+          moveEv.preventDefault();
+          const candidate=getValidDropRange(moveEv.clientX, moveEv.clientY);
+          const sel=getSelection();
+          if(candidate){
+            dropRange=candidate;
+            if(sel){
+              sel.removeAllRanges();
+              const preview=candidate.cloneRange();
+              preview.collapse(true);
+              sel.addRange(preview);
+            }
+          } else if(sel){
+            sel.removeAllRanges();
+          }
+        }
+        function finish(endEv){
+          if(!moving) return;
+          moving=false;
+          overlay.classList.remove("weditor-overlay-moving");
+          moveArea.classList.remove("weditor-overlay-moving");
+          doc.removeEventListener("pointermove", update);
+          doc.removeEventListener("pointerup", finish);
+          doc.removeEventListener("pointercancel", finish);
+          if(moveArea.hasPointerCapture && moveArea.hasPointerCapture(pointerId)){
+            try { moveArea.releasePointerCapture(pointerId); } catch(e){}
+          }
+          if(endEv) endEv.preventDefault();
+          const sel=getSelection();
+          if(dropRange && editor.contains(dropRange.startContainer)){
+            moved = moveImageToRange(activeImg, dropRange) || moved;
+          } else if(originalRange && sel){
+            sel.removeAllRanges();
+            sel.addRange(originalRange);
+          }
+          dropRange=null;
+          scheduleOverlay();
+          if(moved){
+            commitChange("Move Image");
+          } else {
+            if(inst || ctx || changeHook) syncOutputs();
+          }
+        }
+        doc.addEventListener("pointermove", update);
+        doc.addEventListener("pointerup", finish);
+        doc.addEventListener("pointercancel", finish);
+      }
+      moveArea.addEventListener("pointerdown", onMovePointerDown);
+      editor.addEventListener("click", onClick);
+      editor.addEventListener("input", onInput);
+      editor.addEventListener("scroll", onScroll, { passive:true });
+      window.addEventListener("resize", scheduleOverlay);
+      editor.addEventListener("blur", onBlur);
+      editor.addEventListener("focus", onFocus);
+      editor.addEventListener("keydown", onKeydown);
+      editor.addEventListener("mousedown", onMouseDown);
+      editor.addEventListener("dragstart", onDragStart);
+      editor.addEventListener("load", onImageLoad, true);
+      const cleanup=function(){
+        if(raf) cancelAnimationFrame(raf);
+        window.removeEventListener("resize", scheduleOverlay);
+        observer.disconnect();
+        editor.removeEventListener("click", onClick);
+        editor.removeEventListener("input", onInput);
+        editor.removeEventListener("scroll", onScroll);
+        editor.removeEventListener("blur", onBlur);
+        editor.removeEventListener("focus", onFocus);
+        editor.removeEventListener("keydown", onKeydown);
+        editor.removeEventListener("mousedown", onMouseDown);
+        editor.removeEventListener("dragstart", onDragStart);
+        editor.removeEventListener("load", onImageLoad, true);
+        moveArea.removeEventListener("pointerdown", onMovePointerDown);
+        if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        hideOverlay();
+        editor.__weditorImageOverlay=null;
+        editor.__weditorImageResizer=false;
+        editor.__weditorHideOverlay=null;
+        editor.__weditorSelectImage=null;
+        editor.__weditorImageTools=null;
+      };
+      const tools={ overlay, hide:hideOverlay, select:selectImage, schedule:scheduleOverlay, cleanup };
+      editor.__weditorImageResizer=true;
       editor.__weditorHideOverlay=hideOverlay;
-      editor.__weditorCleanup=function(){ if(raf) cancelAnimationFrame(raf); window.removeEventListener("resize", scheduleOverlay); observer.disconnect(); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); editor.__weditorImageOverlay=null; editor.__weditorImageResizer=false; };
+      editor.__weditorSelectImage=selectImage;
+      editor.__weditorCleanup=cleanup;
+      editor.__weditorImageTools=tools;
+      return tools;
+    }
+    return { attach, select:function(editor, img){ const tools=attach(editor); if(tools && typeof tools.select==="function") tools.select(img); } };
+  })();
+
+  const HFEditor=(function(){
+    function enableImageResizer(editor){
+      if(!editor) return;
+      const tools=ImageTools.attach(editor);
+      if(tools && typeof tools.hide==="function") tools.hide();
     }
     let uid=0;
     const TOKEN_OPTIONS=[
@@ -1707,6 +1971,8 @@
       uploaderRow.appendChild(tip);
       wrap.appendChild(uploaderRow);
       wrap.appendChild(fileInput);
+      editor.__weditorImageChanged=function(){ notifyChange(); };
+      editor.__weditorRecordTarget=editor;
       enableImageResizer(editor);
       function reattachImageOverlay(){
         const overlay=editor.__weditorImageOverlay;
@@ -2602,6 +2868,11 @@
         close:cleanup,
         saveClose:function(){ ctx.writeBack(); cleanup(); }
       };
+      area.__weditorInst=inst;
+      area.__weditorCtx=ctx;
+      area.__weditorRecordTarget=area;
+      area.__weditorImageChanged=function(){ if(ctx && typeof ctx.refreshPreview==="function"){ ctx.refreshPreview(); } };
+      ImageTools.attach(area);
       ToolbarFactory.build(cmdBarWrap, TOOLBAR_FS, inst, ctx);
       const saveCloseWrap=document.createElement("div"); applyStyles(saveCloseWrap, WCfg.Style.fsSaveCloseWrap);
       const saveCloseBtn=WDom.btn("Close", true, "Save changes and close fullscreen");
@@ -5577,6 +5848,133 @@
     }
     return { createBulleted, createNumbered, createMultilevel };
   })();
+  const ImageInsertUI=(function(){
+    function normalizeAltName(name, fallback){
+      if(!name) return fallback;
+      const cleaned=name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+      return cleaned || fallback;
+    }
+    function deriveAltFromURL(url){
+      if(!url) return "Inserted image";
+      try {
+        const parsed=new URL(url, window.location.href);
+        const parts=parsed.pathname.split("/").filter(Boolean);
+        if(parts.length){ return normalizeAltName(parts[parts.length-1], "Inserted image"); }
+      } catch(e){}
+      return "Inserted image";
+    }
+    function focusTarget(target){
+      if(!target || typeof target.focus!=="function") return;
+      try { target.focus({ preventScroll:true }); }
+      catch(err){ target.focus(); }
+    }
+    function ensureSelection(target, doc){
+      let sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+        WDom.placeCaretAtEnd(target);
+        sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      }
+      return sel;
+    }
+    function insertImage(inst, ctx, src, alt){
+      if(!inst || !src) return false;
+      const target=(ctx && ctx.area) ? ctx.area : inst.el;
+      if(!target) return false;
+      const doc=target.ownerDocument || document;
+      focusTarget(target);
+      const sel=ensureSelection(target, doc);
+      if(!sel) return false;
+      const range=sel.rangeCount ? sel.getRangeAt(0).cloneRange() : doc.createRange();
+      range.collapse(true);
+      const img=doc.createElement("img");
+      img.loading="eager";
+      img.style.maxWidth="100%";
+      img.style.height="auto";
+      img.style.display="inline-block";
+      img.addEventListener("load", function(){
+        if(target.__weditorImageTools && typeof target.__weditorImageTools.schedule==="function"){ target.__weditorImageTools.schedule(); }
+        else {
+          if(inst && typeof OutputBinding!=="undefined" && OutputBinding && typeof OutputBinding.syncDebounced==="function"){ OutputBinding.syncDebounced(inst); }
+          if(ctx && typeof ctx.refreshPreview==="function"){ ctx.refreshPreview(); }
+          if(typeof target.__weditorImageChanged==="function"){ try { target.__weditorImageChanged({ editor:target, image:img }); } catch(err){} }
+        }
+      });
+      img.src=src;
+      if(alt) img.alt=alt;
+      range.insertNode(img);
+      range.setStartAfter(img);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      Normalizer.fixStructure(target);
+      Breaks.ensurePlaceholders(target);
+      ImageTools.attach(target);
+      if(target.__weditorSelectImage) target.__weditorSelectImage(img);
+      const historyTarget=HistoryManager.resolveTarget(inst, ctx);
+      HistoryManager.record(inst, historyTarget, { label:"Insert Image", repeatable:false });
+      OutputBinding.syncDebounced(inst);
+      return true;
+    }
+    function promptForURL(inst, ctx){
+      const raw=window.prompt("Enter image URL");
+      if(!raw) return;
+      const src=raw.trim();
+      if(!src) return;
+      insertImage(inst, ctx, src, deriveAltFromURL(src));
+    }
+    function handleFile(inst, ctx, file){
+      if(!file) return;
+      if(file.type && file.type.indexOf("image/")!==0){
+        window.alert("Please choose an image file.");
+        return;
+      }
+      const reader=new FileReader();
+      reader.onload=function(){ insertImage(inst, ctx, reader.result, normalizeAltName(file.name||"", "Uploaded image")); };
+      reader.readAsDataURL(file);
+    }
+    function create(inst, ctx){
+      const wrap=document.createElement("div");
+      wrap.style.display="flex";
+      wrap.style.flexDirection="column";
+      wrap.style.gap="6px";
+      wrap.setAttribute("role","group");
+      wrap.setAttribute("aria-label","Insert image controls");
+      const row=document.createElement("div");
+      row.style.display="flex";
+      row.style.flexWrap="wrap";
+      row.style.gap="8px";
+      const uploadBtn=WDom.btn("Upload Image", false, "Upload an image from your device");
+      uploadBtn.style.fontSize="12px";
+      uploadBtn.style.padding="6px 10px";
+      uploadBtn.style.lineHeight="1.2";
+      const urlBtn=WDom.btn("Image from URL", false, "Insert image from a URL");
+      urlBtn.style.fontSize="12px";
+      urlBtn.style.padding="6px 10px";
+      urlBtn.style.lineHeight="1.2";
+      const fileInput=document.createElement("input");
+      fileInput.type="file";
+      fileInput.accept="image/*";
+      fileInput.style.display="none";
+      uploadBtn.addEventListener("click", function(){ fileInput.click(); });
+      fileInput.addEventListener("change", function(){
+        const file=fileInput.files && fileInput.files[0];
+        if(file) handleFile(inst, ctx, file);
+        fileInput.value="";
+      });
+      urlBtn.addEventListener("click", function(){ promptForURL(inst, ctx); });
+      row.appendChild(uploadBtn);
+      row.appendChild(urlBtn);
+      wrap.appendChild(row);
+      wrap.appendChild(fileInput);
+      const helper=document.createElement("div");
+      helper.style.font="11px/1.4 Segoe UI,system-ui";
+      helper.style.color=WCfg.UI.textDim;
+      helper.textContent="Upload from your computer or paste a link. Drag the image or use the corner handles to resize.";
+      wrap.appendChild(helper);
+      return wrap;
+    }
+    return { create };
+  })();
   const FontColorUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
     function normalizeCustomColor(input){
@@ -7135,6 +7533,7 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.image":{ kind:"custom", ariaLabel:"Insert image", render:function(inst, ctx){ return ImageInsertUI.create(inst, ctx); } },
     "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
@@ -7296,7 +7695,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image"] }, "insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7313,7 +7712,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image"] }, "insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7389,6 +7788,10 @@
     })(this));
     HistoryManager.init(this, this.el);
     TableResizer.attach(this);
+    this.el.__weditorInst=this;
+    this.el.__weditorCtx=null;
+    this.el.__weditorRecordTarget=this.el;
+    ImageTools.attach(this.el);
     this.el.__winst = this;
   };
   WEditorInstance.prototype.loadState=function(state){
