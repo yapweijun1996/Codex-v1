@@ -936,15 +936,27 @@
       const footerHeight = footerEnabled ? measureSection("footer", substituteTokensForMeasure(footerHTML||""), footerAlign) : 0;
       return { headerHeight, footerHeight };
     }
-    function paginate(rawHTML, state){
+    function paginate(rawHTML, state, opts){
+      opts = opts || {};
       const {headerEnabled, footerEnabled, headerHTML, footerHTML}=state;
       const headerAlign=HFAlign.normalize(state.headerAlign);
       const footerAlign=HFAlign.normalize(state.footerAlign);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
       const textStyle=StyleMirror.capture(state && state.el ? state.el : null);
+      const reuseStored = !!opts.reuseMeasuredMinHeights;
+      if(state){
+        const headerKey = (headerEnabled?"1":"0")+"|"+(headerAlign||"")+"|"+(headerHTML||"");
+        const footerKey = (footerEnabled?"1":"0")+"|"+(footerAlign||"")+"|"+(footerHTML||"");
+        if(state.__hfHeaderKey!==headerKey){ state.__hfHeaderKey=headerKey; state.__hfHeaderMeasured=null; }
+        if(state.__hfFooterKey!==footerKey){ state.__hfFooterKey=footerKey; state.__hfFooterMeasured=null; }
+      }
       const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign);
-      const headerHeight=layout.headerHeight;
-      const footerHeight=layout.footerHeight;
+      const storedHeaderHeight = reuseStored && state && typeof state.__hfHeaderMeasured==="number" ? state.__hfHeaderMeasured : null;
+      const storedFooterHeight = reuseStored && state && typeof state.__hfFooterMeasured==="number" ? state.__hfFooterMeasured : null;
+      let headerHeight=layout.headerHeight;
+      let footerHeight=layout.footerHeight;
+      if(storedHeaderHeight!=null && storedHeaderHeight>headerHeight){ headerHeight=storedHeaderHeight; }
+      if(storedFooterHeight!=null && storedFooterHeight>footerHeight){ footerHeight=storedFooterHeight; }
       const AVAIL=Math.max(64, A4H - headerHeight - footerHeight - 2*PAD);
       const sourceHTML=Sanitizer.clean(rawHTML);
       const src=document.createElement("div"); src.innerHTML=sourceHTML;
@@ -1020,6 +1032,8 @@
       measWrap.appendChild(measurePagesHost);
       for(let i=0;i<pages.length;i++){ measurePagesHost.appendChild(pages[i].page); }
       const total=pages.length, dateStr=(new Date()).toISOString().slice(0,10);
+      let measuredHeaderMinHeight = headerHeight || 0;
+      let measuredFooterMinHeight = footerHeight || 0;
       function adjustPageOffsets(pg){
         if(!pg) return;
         const baseHeader=Math.max(0, pg.baseHeaderHeight||0);
@@ -1030,17 +1044,20 @@
           const measuredHeight=pg.headerNode.offsetHeight;
           const rectHeight=Math.ceil(rect.height||0);
           const actual=Math.max(measuredHeight||0, rectHeight, WCfg.HDR_MIN);
-          topOffset=Math.max(topOffset, actual);
-          const applied=Math.max(actual, WCfg.HDR_MIN);
+          const applied=Math.max(actual, baseHeader, WCfg.HDR_MIN);
+          topOffset=Math.max(topOffset, applied);
           pg.headerNode.style.minHeight=applied+"px";
           pg.headerNode.setAttribute("data-offset-height", String(applied));
+          measuredHeaderMinHeight=Math.max(measuredHeaderMinHeight, applied);
         }
         let bottomOffset = pg.footerNode ? Math.max(WCfg.FTR_MIN, baseFooter) : 0;
         if(pg.footerNode){
           const rect=pg.footerNode.getBoundingClientRect();
           const actual=Math.max(Math.ceil(rect.height||0), WCfg.FTR_MIN);
-          bottomOffset=Math.max(bottomOffset, actual);
-          pg.footerNode.style.minHeight=Math.max(actual, WCfg.FTR_MIN)+"px";
+          const appliedFooter=Math.max(actual, baseFooter, WCfg.FTR_MIN);
+          bottomOffset=Math.max(bottomOffset, appliedFooter);
+          pg.footerNode.style.minHeight=appliedFooter+"px";
+          measuredFooterMinHeight=Math.max(measuredFooterMinHeight, appliedFooter);
         }
         pg.headerHeight = pg.headerNode ? topOffset : 0;
         pg.footerHeight = pg.footerNode ? bottomOffset : 0;
@@ -1064,9 +1081,13 @@
         pagesHTML+=pages[i].page.outerHTML;
       }
       measWrap.parentNode.removeChild(measWrap);
-      return { pages: pages.map(function(p){ return p.page; }), pagesHTML };
+      if(state){
+        state.__hfHeaderMeasured = headerEnabled ? measuredHeaderMinHeight : 0;
+        state.__hfFooterMeasured = footerEnabled ? measuredFooterMinHeight : 0;
+      }
+      return { pages: pages.map(function(p){ return p.page; }), pagesHTML, headerMinHeight: headerEnabled ? measuredHeaderMinHeight : 0, footerMinHeight: footerEnabled ? measuredFooterMinHeight : 0 };
     }
-    function pagesHTML(inst){ return paginate(Breaks.serialize(inst.el), inst).pagesHTML; }
+    function pagesHTML(inst, opts){ return paginate(Breaks.serialize(inst.el), inst, opts).pagesHTML; }
     return { paginate, pagesHTML };
   })();
   const ExportUI=(function(){
@@ -1100,12 +1121,79 @@
     ".weditor_page-header{border-bottom:0!important;}"+
     ".weditor_page-footer{border-top:0!important;}";
   const PrintUI=(function(){
-    function open(pagedHTML){
+    function open(pagedHTML, opts){
       const w=WDom.openBlank(); if(!w) return;
+      const options=opts||{};
+      const hdrMin=Math.max(0, Number(options.headerMinHeight||0)||0);
+      const ftrMin=Math.max(0, Number(options.footerMinHeight||0)||0);
+      const dataAttrs=" data-hdr-min='"+hdrMin+"' data-ftr-min='"+ftrMin+"'";
+      const scriptParts=[
+        "<script>(function(){",
+        "  var HDR_ATTR='data-hdr-min';",
+        "  var FTR_ATTR='data-ftr-min';",
+        "  var HDR_MIN="+hdrMin+";",
+        "  var FTR_MIN="+ftrMin+";",
+        "  function parsePx(value){ var n=parseFloat(value); return isFinite(n)?n:0; }",
+        "  var printing=false;",
+        "  function measure(){",
+        "    var pages=document.querySelectorAll('div[data-page]');",
+        "    for(var i=0;i<pages.length;i++){",
+        "      var page=pages[i];",
+        "      if(!page) continue;",
+        "      var header=page.querySelector('.weditor_page-header');",
+        "      var footer=page.querySelector('.weditor_page-footer');",
+        "      var content=page.querySelector('.weditor_page-content');",
+        "      var headerBase=Math.max(HDR_MIN, parsePx(document.body.getAttribute(HDR_ATTR)||'0'));",
+        "      var footerBase=Math.max(FTR_MIN, parsePx(document.body.getAttribute(FTR_ATTR)||'0'));",
+        "      var headerApplied=0;",
+        "      var footerApplied=0;",
+        "      if(header && page.contains(header)){",
+        "        var attr=parsePx(header.getAttribute('data-offset-height')||'0');",
+        "        var rect=header.getBoundingClientRect();",
+        "        var actual=Math.ceil(rect.height||0);",
+        "        headerApplied=Math.max(headerBase, attr, actual);",
+        "        header.style.minHeight=headerApplied+'px';",
+        "        header.setAttribute('data-offset-height', String(headerApplied));",
+        "      }",
+        "      if(footer && page.contains(footer)){",
+        "        var rectF=footer.getBoundingClientRect();",
+        "        var actualF=Math.ceil(rectF.height||0);",
+        "        footerApplied=Math.max(footerBase, actualF);",
+        "        footer.style.minHeight=footerApplied+'px';",
+        "        footer.setAttribute('data-offset-height', String(footerApplied));",
+        "      }",
+        "      if(content && page.contains(content)){",
+        "        content.style.top = headerApplied ? (headerApplied+'px') : '0px';",
+        "        content.style.bottom = footerApplied ? (footerApplied+'px') : '0px';",
+        "      }",
+        "    }",
+        "  }",
+        "  function triggerPrint(){ if(printing) return; printing=true; measure(); window.focus(); window.print(); }",
+        "  function ready(){ if(printing) return; if(document.fonts && document.fonts.ready){ document.fonts.ready.then(function(){ window.requestAnimationFrame(triggerPrint); }); } else { window.requestAnimationFrame(triggerPrint); } }",
+        "  function waitForMedia(){",
+        "    var imgs=Array.prototype.slice.call(document.images||[]);",
+        "    var pending=0;",
+        "    function maybe(){ if(pending<=0){ ready(); } }",
+        "    for(var i=0;i<imgs.length;i++){",
+        "      var img=imgs[i];",
+        "      if(!img) continue;",
+        "      if(img.complete){ continue; }",
+        "      pending++;",
+        "      img.addEventListener('load', function(){ pending--; maybe(); });",
+        "      img.addEventListener('error', function(){ pending--; maybe(); });",
+        "    }",
+        "    if(pending===0){ ready(); }",
+        "  }",
+        "  if(document.readyState==='complete'){ waitForMedia(); } else { window.addEventListener('load', waitForMedia); }",
+        "  window.onafterprint=function(){ window.close(); };",
+        "})();</script>"
+      ];
+      const script=scriptParts.join('');
       const html="<!DOCTYPE html><html><head><meta charset='utf-8'>"+
                "<style>"+PAGED_PRINT_STYLES+"</style>"+
-               "</head><body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial' onload='window.print();window.onafterprint=function(){window.close();}'>"+
+               "</head><body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial'"+dataAttrs+">"+
                pagedHTML+
+               script+
                "</body></html>";
       w.document.open(); w.document.write(html); w.document.close();
     }
@@ -2214,7 +2302,7 @@
           out.value = cachedState || "";
         } else if(format==="paged"){
           if(cachedPaged===null){
-            cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst);
+            cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst, { reuseMeasuredMinHeights:true });
           }
           out.value = cachedPaged;
         } else {
@@ -7184,8 +7272,8 @@
         OutputBinding.syncDebounced(inst);
       } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
-    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
-    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
+    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const raw=Breaks.serialize(inst.el); const result=Paginator.paginate(raw, inst, { reuseMeasuredMinHeights:true }); PrintUI.open(result.pagesHTML, { headerMinHeight:result.headerMinHeight, footerMinHeight:result.footerMinHeight }); } },
+    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const raw=Breaks.serialize(inst.el); const result=Paginator.paginate(raw, inst, { reuseMeasuredMinHeights:true }); ExportUI.open(result.pagesHTML, Sanitizer.clean(raw)); } },
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
