@@ -3,6 +3,9 @@
   const FeatureFlags={
     exportButton:false
   };
+  const LIST_STYLE_ATTR="data-weditor-list-style";
+  const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
+  const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
   const WCfg=(function(){
     const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
     const HDR_MIN=24, FTR_MIN=20;
@@ -3947,6 +3950,48 @@
       }
       return false;
     }
+    function findRootOrderedList(list){
+      let current=list;
+      while(current){
+        const parent=current.parentNode;
+        if(parent && parent.nodeType===1 && (parent.tagName||"").toLowerCase()==="li"){
+          const maybeList=parent.parentNode;
+          if(maybeList && maybeList.nodeType===1 && (maybeList.tagName||"").toLowerCase()==="ol"){
+            current=maybeList;
+            continue;
+          }
+        }
+        break;
+      }
+      return current;
+    }
+    function applyDecimalDotZeroStyle(list){
+      const root=findRootOrderedList(list);
+      if(!root) return false;
+      root.setAttribute(LIST_STYLE_ATTR, LIST_STYLE_DECIMAL_ZERO);
+      const descendants=root.querySelectorAll("ol");
+      for(let i=0;i<descendants.length;i++){
+        const item=descendants[i];
+        if(item!==root){ item.removeAttribute(LIST_STYLE_ATTR); }
+      }
+      return true;
+    }
+    function clearDecimalDotZeroStyle(list){
+      const root=findRootOrderedList(list);
+      if(!root) return;
+      const lists=root.querySelectorAll("ol");
+      for(let i=0;i<lists.length;i++){
+        const item=lists[i];
+        if(item.getAttribute && item.getAttribute(LIST_STYLE_ATTR)===LIST_STYLE_DECIMAL_ZERO){
+          item.removeAttribute(LIST_STYLE_ATTR);
+        }
+        if(item.style && item.style.listStyleType==="none"){ item.style.removeProperty("list-style-type"); }
+      }
+      if(root.getAttribute && root.getAttribute(LIST_STYLE_ATTR)===LIST_STYLE_DECIMAL_ZERO){
+        root.removeAttribute(LIST_STYLE_ATTR);
+      }
+      if(root.style && root.style.listStyleType==="none"){ root.style.removeProperty("list-style-type"); }
+    }
     function applyListStyle(inst, ctx, style, type, skipCreate){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       focusTarget(target);
@@ -3959,6 +4004,10 @@
         list=findListFromSelection(target);
       }
       if(list){
+        if(style && type==="ordered" && style===LIST_STYLE_DECIMAL_ZERO){
+          return applyDecimalDotZeroStyle(list);
+        }
+        if(type==="ordered"){ clearDecimalDotZeroStyle(list); }
         if(style){ list.style.listStyleType=style; }
         else { list.style.removeProperty("list-style-type"); }
         return true;
@@ -5633,6 +5682,41 @@
     return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellVerticalAlign, getCellAlignment };
   })();
   const ListUI=(function(){
+    function ensureListStyles(){
+      if(typeof document==="undefined" || !document.head) return;
+      if(document.getElementById(LIST_STYLE_DECIMAL_ZERO_STYLE_ID)) return;
+      const style=document.createElement("style");
+      style.id=LIST_STYLE_DECIMAL_ZERO_STYLE_ID;
+      const selector="ol["+LIST_STYLE_ATTR+"=\""+LIST_STYLE_DECIMAL_ZERO+"\"]";
+      style.textContent=
+        selector+","+selector+" ol{"+
+          "list-style:none;"+
+          "padding-left:3em;"+
+          "counter-reset:item;"+
+        "}"+
+        selector+" > li,"+selector+" ol > li{"+
+          "position:relative;"+
+          "margin:0.25em 0;"+
+          "padding-left:0.6em;"+
+          "counter-increment:item;"+
+        "}"+
+        selector+" > li::before,"+selector+" ol > li::before{"+
+          "position:absolute;"+
+          "left:-3em;"+
+          "width:2.6em;"+
+          "text-align:right;"+
+          "font-variant-numeric:tabular-nums;"+
+          "white-space:nowrap;"+
+        "}"+
+        selector+" > li::before{"+
+          "content:counter(item) '.0\\00a0';"+
+        "}"+
+        selector+" ol > li::before{"+
+          "content:counters(item,'.') '\\00a0';"+
+        "}";
+      document.head.appendChild(style);
+    }
+    ensureListStyles();
     function createSplitButton(options){
       const variant=(options && options.variant) || "default";
       const container=document.createElement("div");
@@ -5870,6 +5954,7 @@
       split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
       const options=[
         { label:"1. 2. 3.", style:"decimal", preview:"1." },
+        { label:"1.0 2.0 3.0", style:LIST_STYLE_DECIMAL_ZERO, preview:"1.0" },
         { label:"a. b. c.", style:"lower-alpha", preview:"a." },
         { label:"A. B. C.", style:"upper-alpha", preview:"A." },
         { label:"i. ii. iii.", style:"lower-roman", preview:"i." },
