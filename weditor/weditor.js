@@ -5690,6 +5690,24 @@
     const CELL_CLASS="weditor-table-cell-selected";
     const STYLE_ID="weditor-table-selection-style";
     const states=new WeakMap();
+    function resolveState(inst, ctx){
+      const candidates=[];
+      if(ctx){
+        if(ctx.root) candidates.push(ctx.root);
+        if(ctx.area) candidates.push(ctx.area);
+      }
+      if(inst){
+        if(inst.root) candidates.push(inst.root);
+        if(inst.el) candidates.push(inst.el);
+      }
+      for(let i=0;i<candidates.length;i++){
+        const candidate=candidates[i];
+        if(candidate && states.has(candidate)){
+          return states.get(candidate).state;
+        }
+      }
+      return null;
+    }
     function ensureStyles(doc){
       if(!doc || !doc.head) return;
       if(doc.getElementById(STYLE_ID)) return;
@@ -6101,7 +6119,182 @@
       root.addEventListener("focusin", onFocusIn);
       states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
     }
-    return { attach };
+    function getSelection(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return { table:null, cells:[], anchor:null };
+      const table=(state.table && state.table.isConnected && state.root.contains(state.table)) ? state.table : null;
+      const cells=table ? Array.from(state.cells).filter(function(cell){ return cell && cell.isConnected && table.contains(cell); }) : [];
+      const anchor=isValidAnchor(state);
+      return { table, cells, anchor };
+    }
+    function setSelection(inst, ctx, cells){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      const list=Array.isArray(cells) ? cells.filter(function(cell){ return cell && isCellElement(cell); }) : [];
+      const table=list.length ? tableFromCell(list[0]) : null;
+      setSelectedCells(state, list, table);
+      state.anchor=list.length ? list[0] : null;
+      if(state.anchor){ focusCell(state.anchor); }
+    }
+    function clear(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      clearSelection(state);
+      state.anchor=null;
+    }
+    return { attach, getSelection, setSelection, clear };
+  })();
+  const TableMerge=(function(){
+    const BLOCK_TAGS=new Set(["p","div","ul","ol","li","table","thead","tbody","tfoot","tr","td","th","blockquote","h1","h2","h3","h4","h5","h6"]);
+    function readCellMetrics(cell){
+      if(!cell) return null;
+      const row=cell.parentNode;
+      if(!row || row.nodeType!==1 || (row.tagName||"").toLowerCase()!=="tr") return null;
+      const table=row.closest ? row.closest("table") : null;
+      if(!table) return null;
+      const rowIndex=typeof row.rowIndex==="number" ? row.rowIndex : Array.prototype.indexOf.call(table.rows||[], row);
+      const colIndex=typeof cell.cellIndex==="number" ? cell.cellIndex : Array.prototype.indexOf.call(row.cells||[], cell);
+      if(rowIndex<0 || colIndex<0) return null;
+      return { cell, table, rowIndex, colIndex };
+    }
+    function normalizeSpan(value){
+      let span=parseInt(value, 10);
+      if(!Number.isFinite(span) || span<=0) span=1;
+      return span;
+    }
+    function getRowSpan(cell){
+      if(!cell) return 1;
+      return normalizeSpan(cell.getAttribute && cell.getAttribute("rowspan") ? cell.getAttribute("rowspan") : (cell.rowSpan||1));
+    }
+    function getColSpan(cell){
+      if(!cell) return 1;
+      return normalizeSpan(cell.getAttribute && cell.getAttribute("colspan") ? cell.getAttribute("colspan") : (cell.colSpan||1));
+    }
+    function buildTableGrid(table){
+      const grid=[];
+      const meta=new Map();
+      if(!table || !table.rows) return { grid, meta };
+      const rows=table.rows;
+      for(let r=0;r<rows.length;r++){
+        const row=rows[r];
+        if(!row) continue;
+        if(!grid[r]) grid[r]=[];
+        let logicalCol=0;
+        for(let c=0;c<row.cells.length;c++){
+          const cell=row.cells[c];
+          if(!cell) continue;
+          const rowSpan=getRowSpan(cell);
+          const colSpan=getColSpan(cell);
+          while(grid[r][logicalCol]){ logicalCol++; }
+          if(!meta.has(cell)){
+            meta.set(cell, { originRow:r, originCol:logicalCol, rowSpan, colSpan });
+          }
+          for(let rr=0;rr<rowSpan;rr++){
+            const targetRow=r+rr;
+            if(!grid[targetRow]) grid[targetRow]=[];
+            for(let cc=0;cc<colSpan;cc++){
+              grid[targetRow][logicalCol+cc]={ cell };
+            }
+          }
+          logicalCol+=colSpan;
+        }
+      }
+      return { grid, meta };
+    }
+    function isBlock(node){
+      if(!node || node.nodeType!==1) return false;
+      return BLOCK_TAGS.has((node.tagName||"").toLowerCase());
+    }
+    function appendCellContent(target, source){
+      if(!target || !source) return;
+      const doc=target.ownerDocument || document;
+      const fragment=doc.createDocumentFragment();
+      while(source.firstChild){ fragment.appendChild(source.firstChild); }
+      if(!fragment.childNodes.length){ return; }
+      const needsSeparator=target.childNodes.length && !isBlock(target.lastChild) && !isBlock(fragment.firstChild);
+      if(needsSeparator){ target.appendChild(doc.createElement("br")); }
+      target.appendChild(fragment);
+    }
+    function ensureTableReady(table){
+      if(TableResizer && typeof TableResizer.ensureTable==="function"){ TableResizer.ensureTable(table); }
+    }
+    function merge(inst, ctx){
+      const selection=TableSelection.getSelection(inst, ctx);
+      if(!selection || !selection.table){
+        window.alert("Select table cells to merge.");
+        return false;
+      }
+      const table=selection.table;
+      const metrics=selection.cells.map(readCellMetrics).filter(function(info){ return !!info; });
+      const uniqueMetrics=[];
+      const seenCells=new Set();
+      for(let i=0;i<metrics.length;i++){
+        const info=metrics[i];
+        if(!info || !info.cell || seenCells.has(info.cell)) continue;
+        if(!info.table || info.table!==table || !info.table.contains || !info.table.contains(info.cell)) continue;
+        seenCells.add(info.cell);
+        uniqueMetrics.push(info);
+      }
+      if(uniqueMetrics.length<2){
+        window.alert("Select at least two table cells to merge.");
+        return false;
+      }
+      for(let i=1;i<uniqueMetrics.length;i++){ if(uniqueMetrics[i].table!==table){ window.alert("Select cells from the same table to merge."); return false; } }
+      const gridInfo=buildTableGrid(table);
+      const meta=gridInfo.meta;
+      const cellDetails=[];
+      for(let i=0;i<uniqueMetrics.length;i++){
+        const info=uniqueMetrics[i];
+        const details=meta.get(info.cell);
+        if(!details){
+          window.alert("Select a contiguous block of table cells to merge.");
+          return false;
+        }
+        cellDetails.push({ cell:info.cell, originRow:details.originRow, originCol:details.originCol, rowSpan:details.rowSpan, colSpan:details.colSpan });
+      }
+      cellDetails.sort(function(a,b){ if(a.originRow===b.originRow) return a.originCol-b.originCol; return a.originRow-b.originRow; });
+      let minRow=cellDetails[0].originRow;
+      let minCol=cellDetails[0].originCol;
+      let maxRow=cellDetails[0].originRow+cellDetails[0].rowSpan-1;
+      let maxCol=cellDetails[0].originCol+cellDetails[0].colSpan-1;
+      for(let i=1;i<cellDetails.length;i++){
+        const info=cellDetails[i];
+        if(info.originRow<minRow) minRow=info.originRow;
+        if(info.originCol<minCol) minCol=info.originCol;
+        const bottom=info.originRow+info.rowSpan-1;
+        const right=info.originCol+info.colSpan-1;
+        if(bottom>maxRow) maxRow=bottom;
+        if(right>maxCol) maxCol=right;
+      }
+      const selectedSet=new Set(cellDetails.map(function(info){ return info.cell; }));
+      for(let r=minRow;r<=maxRow;r++){
+        const row=gridInfo.grid[r];
+        if(!row){ window.alert("Select a contiguous block of table cells to merge."); return false; }
+        for(let c=minCol;c<=maxCol;c++){
+          const entry=row[c];
+          if(!entry || !selectedSet.has(entry.cell)){ window.alert("Select a contiguous block of table cells to merge."); return false; }
+        }
+      }
+      const primary=cellDetails[0].cell;
+      const rowSpan=maxRow-minRow+1;
+      const colSpan=maxCol-minCol+1;
+      for(let i=1;i<cellDetails.length;i++){
+        const current=cellDetails[i].cell;
+        appendCellContent(primary, current);
+        if(current.parentNode){ current.parentNode.removeChild(current); }
+      }
+      primary.rowSpan=rowSpan;
+      primary.colSpan=colSpan;
+      if(primary.rowSpan<=1 && primary.hasAttribute && primary.hasAttribute("rowspan")){ primary.removeAttribute("rowspan"); }
+      if(primary.colSpan<=1 && primary.hasAttribute && primary.hasAttribute("colspan")){ primary.removeAttribute("colspan"); }
+      ensureTableReady(table);
+      TableSelection.setSelection(inst, ctx, [primary]);
+      const target=HistoryManager.resolveTarget(inst, ctx);
+      HistoryManager.record(inst, target, { label:"Merge Table Cells", repeatable:false });
+      if(OutputBinding && typeof OutputBinding.syncDebounced==="function"){ OutputBinding.syncDebounced(inst); }
+      return true;
+    }
+    return { merge };
   })();
   const ListUI=(function(){
     function ensureListStyles(){
@@ -8296,6 +8489,15 @@
         HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "table.mergeCells":{
+      label:"Merge Cells",
+      kind:"button",
+      ariaLabel:"Merge selected table cells",
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        TableMerge.merge(inst, ctx);
+      }
+    },
     "table.borderColor":{
       kind:"custom",
       ariaLabel:"Table border color or visibility",
@@ -8384,7 +8586,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -8401,7 +8603,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
