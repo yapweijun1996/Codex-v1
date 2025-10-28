@@ -7369,9 +7369,15 @@
   WEditorInstance.prototype._mount=function(){
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
-    toolbarWrap.style.position = "static";
-    toolbarWrap.style.top = "";
-    toolbarWrap.style.zIndex = "";
+    const stickyPref=(this.el.getAttribute("data-weditor-toolbar-sticky")||"").toLowerCase();
+    if(stickyPref==="false"||stickyPref==="0"){
+      toolbarWrap.style.position = "static";
+      toolbarWrap.style.top = "";
+      toolbarWrap.style.zIndex = "";
+    } else {
+      const topOffset=this.el.getAttribute("data-weditor-toolbar-offset");
+      if(topOffset){ toolbarWrap.style.top = topOffset; }
+    }
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
