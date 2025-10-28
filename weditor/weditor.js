@@ -3085,6 +3085,127 @@
     }
     return { open };
   })();
+  const OutlineLists=(function(){
+    const ATTR="data-weditor-outline";
+    const STYLE_ID="weditor-outline-style";
+    const CSS="ol["+ATTR+"]{counter-reset:woutline1;list-style:none;margin:0;padding-inline-start:3.4em;}"+
+      "ol["+ATTR+"] ol{list-style:none;margin:0;padding-inline-start:3.4em;}"+
+      "ol["+ATTR+"] li{position:relative;margin:0.2em 0;padding-inline-start:0.2em;font-variant-numeric:tabular-nums;}"+
+      "ol["+ATTR+"] li::before{position:absolute;left:-3.4em;width:3.2em;text-align:right;white-space:nowrap;}"+
+      "ol["+ATTR+"]>li{counter-increment:woutline1;counter-reset:woutline2;}"+
+      "ol["+ATTR+"]>li::before{content:counter(woutline1)\".0 \";}"+
+      "ol["+ATTR+"]>li>ol{counter-reset:woutline2;}"+
+      "ol["+ATTR+"]>li>ol>li{counter-increment:woutline2;counter-reset:woutline3;}"+
+      "ol["+ATTR+"]>li>ol>li::before{content:counter(woutline1)\".\" counter(woutline2)\" \";}"+
+      "ol["+ATTR+"]>li>ol>li>ol{counter-reset:woutline3;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li{counter-increment:woutline3;counter-reset:woutline4;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li::before{content:counter(woutline1)\".\" counter(woutline2)\".\" counter(woutline3)\" \";}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol{counter-reset:woutline4;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li{counter-increment:woutline4;counter-reset:woutline5;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li::before{content:counter(woutline1)\".\" counter(woutline2)\".\" counter(woutline3)\".\" counter(woutline4)\" \";}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li>ol{counter-reset:woutline5;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li>ol>li{counter-increment:woutline5;counter-reset:woutline6;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li>ol>li::before{content:counter(woutline1)\".\" counter(woutline2)\".\" counter(woutline3)\".\" counter(woutline4)\".\" counter(woutline5)\" \";}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li>ol>li>ol{counter-reset:woutline6;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li>ol>li>ol>li{counter-increment:woutline6;}"+
+      "ol["+ATTR+"]>li>ol>li>ol>li>ol>li>ol>li>ol>li::before{content:counter(woutline1)\".\" counter(woutline2)\".\" counter(woutline3)\".\" counter(woutline4)\".\" counter(woutline5)\".\" counter(woutline6)\" \";}";
+    function ensureStyles(doc){
+      const targetDoc=doc||document;
+      if(!targetDoc || !targetDoc.createElement) return;
+      if(targetDoc.getElementById(STYLE_ID)) return;
+      const style=targetDoc.createElement("style");
+      style.id=STYLE_ID;
+      style.textContent=CSS;
+      const head=targetDoc.head || targetDoc.getElementsByTagName("head")[0] || targetDoc.body || targetDoc.documentElement;
+      if(head){ head.appendChild(style); }
+    }
+    function topLevelList(list){
+      let current=list;
+      while(current){
+        const parent=current.parentNode;
+        if(parent && parent.nodeType===1 && (parent.tagName||"").toUpperCase()==="LI"){
+          const ancestor=parent.parentNode;
+          if(ancestor && ancestor.nodeType===1 && (ancestor.tagName||"").toUpperCase()==="OL"){
+            current=ancestor;
+            continue;
+          }
+        }
+        break;
+      }
+      return current;
+    }
+    function removeListStyle(ol){
+      if(!ol || ol.nodeType!==1) return;
+      if(ol.hasAttribute && ol.hasAttribute("type")){ ol.removeAttribute("type"); }
+      if(ol.style){
+        if(ol.style.listStyleType){ ol.style.listStyleType=""; }
+        if(typeof ol.style.removeProperty==="function"){ ol.style.removeProperty("list-style-type"); ol.style.removeProperty("listStyleType"); }
+      }
+    }
+    function cleanTree(root){
+      if(!root || root.nodeType!==1) return;
+      ensureStyles(root.ownerDocument || document);
+      removeListStyle(root);
+      const nested=root.querySelectorAll ? root.querySelectorAll("ol") : [];
+      for(let i=0;i<nested.length;i++){ removeListStyle(nested[i]); }
+    }
+    function mark(list){
+      if(!list) return null;
+      const root=topLevelList(list);
+      if(!root) return null;
+      ensureStyles(root.ownerDocument || document);
+      root.setAttribute(ATTR, "outline");
+      cleanTree(root);
+      return root;
+    }
+    function isOutline(list){
+      return !!(list && list.nodeType===1 && list.getAttribute && list.getAttribute(ATTR)==="outline");
+    }
+    function findOutline(list){
+      if(!list) return null;
+      if(isOutline(list)) return list;
+      if(list.closest){
+        const root=list.closest("ol["+ATTR+"]");
+        if(root) return root;
+      }
+      let current=list.parentNode;
+      while(current){
+        if(isOutline(current)) return current;
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function unmark(list){
+      const root=findOutline(list);
+      if(!root) return null;
+      root.removeAttribute(ATTR);
+      return root;
+    }
+    function refreshWithin(scope){
+      if(!scope) return;
+      const doc=scope.ownerDocument || document;
+      ensureStyles(doc);
+      const roots=[];
+      if(isOutline(scope)){ roots.push(scope); }
+      const matches=scope.querySelectorAll ? scope.querySelectorAll("ol["+ATTR+"]") : [];
+      for(let i=0;i<matches.length;i++){ if(roots.indexOf(matches[i])<0) roots.push(matches[i]); }
+      for(let i=0;i<roots.length;i++){ cleanTree(roots[i]); }
+    }
+    function findClosestList(node){
+      let current=node;
+      while(current){
+        if(current.nodeType===1 && (current.tagName||"").toUpperCase()==="OL"){ return current; }
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function refreshFromNode(node){
+      const list=findClosestList(node);
+      const root=list?findOutline(list):null;
+      if(root){ cleanTree(root); }
+    }
+    return { ensureStyles, mark, unmark, isOutline, refreshWithin, refreshFromNode, findOutline, topLevelList, attr:ATTR };
+  })();
   const Formatting=(function(){
     const FONT_FAMILIES=[
       { label:"Arial", value:"Arial, Helvetica, sans-serif" },
@@ -3959,9 +4080,42 @@
         list=findListFromSelection(target);
       }
       if(list){
+        if(type==="ordered"){
+          OutlineLists.unmark(list);
+        }
         if(style){ list.style.listStyleType=style; }
         else { list.style.removeProperty("list-style-type"); }
+        if(type==="ordered"){ OutlineLists.refreshWithin(target); }
         return true;
+      }
+      return false;
+    }
+    function toggleOutlineList(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      let list=findListFromSelection(target);
+      if(list){
+        const outlineRoot=OutlineLists.findOutline(list);
+        if(outlineRoot){
+          OutlineLists.unmark(outlineRoot);
+          OutlineLists.refreshWithin(target);
+          return true;
+        }
+      }
+      if(!list){
+        const command="insertOrderedList";
+        const success=execCommand(target, command, null, true);
+        if(!success) return false;
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+        list=findListFromSelection(target);
+      }
+      if(list){
+        const root=OutlineLists.mark(list);
+        if(root){
+          OutlineLists.refreshWithin(root);
+          return true;
+        }
       }
       return false;
     }
@@ -3975,13 +4129,19 @@
     function indentList(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       const ok=execCommand(target, "indent", null, true);
-      if(ok){ Normalizer.fixStructure(target); }
+      if(ok){
+        Normalizer.fixStructure(target);
+        OutlineLists.refreshWithin(target);
+      }
       return ok;
     }
     function outdentList(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       const ok=execCommand(target, "outdent", null, true);
-      if(ok){ Normalizer.fixStructure(target); }
+      if(ok){
+        Normalizer.fixStructure(target);
+        OutlineLists.refreshWithin(target);
+      }
       return ok;
     }
     return {
@@ -4007,6 +4167,7 @@
       clearLineSpacing,
       getLineSpacing,
       toggleList,
+      toggleOutlineList,
       applyListStyle,
       applyCustomBullet,
       indentList,
@@ -5915,9 +6076,10 @@
       const { container, primary, menu, setOpen, variant }=split;
       const isCompact=variant==="compact";
       const icon=document.createElement("span");
-      icon.textContent="1. a. i.";
-      icon.style.fontSize=isCompact?"11px":"12px";
+      icon.textContent="1.0";
+      icon.style.fontSize=isCompact?"12px":"12px";
       icon.style.lineHeight="1";
+      icon.style.fontWeight="600";
       icon.setAttribute("aria-hidden","true");
       primary.textContent="";
       primary.appendChild(icon);
@@ -5931,12 +6093,16 @@
         primary.style.gap="8px";
         primary.appendChild(label);
       }
-      let currentStyle="decimal";
-      split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
+      const defaultStyle="decimal";
+      split.setPrimaryHandler(function(e){
+        e.preventDefault();
+        const ok=Formatting.toggleOutlineList(inst, ctx);
+        if(ok){ OutputBinding.syncDebounced(inst); }
+      });
       const controls=[
         { label:"Increase level", action:function(){ return Formatting.indentList(inst, ctx); } },
         { label:"Decrease level", action:function(){ return Formatting.outdentList(inst, ctx); } },
-        { label:"Reset numbering style", action:function(){ return Formatting.applyListStyle(inst, ctx, currentStyle, "ordered"); } }
+        { label:"Convert to regular numbering", action:function(){ return Formatting.applyListStyle(inst, ctx, defaultStyle, "ordered"); } }
       ];
       for(let i=0;i<controls.length;i++){
         const item=controls[i];
