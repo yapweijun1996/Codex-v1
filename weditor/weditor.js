@@ -385,6 +385,27 @@
   })();
   const Breaks=(function(){
     const PLACEHOLDER_ATTR="data-weditor-break-placeholder";
+    let lastKnownBreak=null;
+    function rememberBreak(comment){
+      if(comment && comment.parentNode){ lastKnownBreak=comment; }
+    }
+    function clearRemembered(comment){
+      if(lastKnownBreak===comment){ lastKnownBreak=null; }
+    }
+    function getRangeConstant(name, fallback){
+      if(typeof Range!=="undefined" && typeof Range[name]!=="undefined"){ return Range[name]; }
+      try{
+        const test=document.createRange && document.createRange();
+        if(test && typeof test.constructor!=="undefined" && typeof test.constructor[name]!=="undefined"){
+          return test.constructor[name];
+        }
+      }catch(err){}
+      return fallback;
+    }
+    const RANGE_START_TO_START=getRangeConstant("START_TO_START", 0);
+    const RANGE_START_TO_END=getRangeConstant("START_TO_END", 1);
+    const RANGE_END_TO_END=getRangeConstant("END_TO_END", 2);
+    const RANGE_END_TO_START=getRangeConstant("END_TO_START", 3);
     function isBreakComment(node){ return node && node.nodeType===8 && String(node.nodeValue).trim().toLowerCase()==="page:break"; }
     function isWhitespace(node){ return node && node.nodeType===3 && !node.nodeValue.trim(); }
     function isPlaceholder(node){ return node && node.nodeType===1 && node.getAttribute && node.getAttribute(PLACEHOLDER_ATTR); }
@@ -401,14 +422,226 @@
       marker.appendChild(label);
       return marker;
     }
+    function previousDeep(node, boundary){
+      if(!node) return null;
+      if(node.previousSibling){
+        node=node.previousSibling;
+        while(node && node.lastChild) node=node.lastChild;
+        return node;
+      }
+      const parent=node.parentNode;
+      if(!parent || parent===boundary) return null;
+      return previousDeep(parent, boundary);
+    }
+    function nextDeep(node, boundary){
+      if(!node) return null;
+      if(node.nextSibling){
+        node=node.nextSibling;
+        while(node && node.firstChild) node=node.firstChild;
+        return node;
+      }
+      const parent=node.parentNode;
+      if(!parent || parent===boundary) return null;
+      return nextDeep(parent, boundary);
+    }
+    function findCommentForPlaceholder(placeholder){
+      if(!placeholder) return null;
+      let node=placeholder.previousSibling;
+      while(isWhitespace(node)) node=node.previousSibling;
+      if(isBreakComment(node)) return node;
+      node=placeholder.nextSibling;
+      while(isWhitespace(node)) node=node.nextSibling;
+      if(isBreakComment(node)) return node;
+      return null;
+    }
+    function findPreviousNode(container, offset, boundary){
+      if(!container) return null;
+      if(container.nodeType===3){
+        if(offset>0) return null;
+        return previousDeep(container, boundary);
+      }
+      if(container.childNodes && offset>0){
+        let node=container.childNodes[offset-1];
+        while(node && node.lastChild) node=node.lastChild;
+        return node;
+      }
+      if(container===boundary) return null;
+      return previousDeep(container, boundary);
+    }
+    function findNextNode(container, offset, boundary){
+      if(!container) return null;
+      if(container.nodeType===3){
+        const text=container.nodeValue||"";
+        if(offset<text.length) return null;
+        return nextDeep(container, boundary);
+      }
+      if(container.childNodes && offset<container.childNodes.length){
+        let node=container.childNodes[offset];
+        while(node && node.firstChild) node=node.firstChild;
+        return node;
+      }
+      if(container===boundary) return null;
+      return nextDeep(container, boundary);
+    }
+    function findCommentNearCaret(target, direction){
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(!range.collapsed) return null;
+      const container=range.startContainer;
+      const offset=range.startOffset;
+      if(!target.contains(container)) return null;
+      if(container.nodeType===3){
+        const text=container.nodeValue||"";
+        if(direction==="backward" && offset>0) return null;
+        if(direction==="forward" && offset<text.length) return null;
+      }
+      let node=direction==="backward" ? findPreviousNode(container, offset, target) : findNextNode(container, offset, target);
+      while(node){
+        if(isWhitespace(node)){ node = direction==="backward" ? previousDeep(node, target) : nextDeep(node, target); continue; }
+        if(node.nodeType===1 && isPlaceholder(node)){
+          const linked=findCommentForPlaceholder(node);
+          if(linked){ rememberBreak(linked); return linked; }
+          return null;
+        }
+        if(node.parentNode && node.parentNode.nodeType===1 && isPlaceholder(node.parentNode)){
+          const linked=findCommentForPlaceholder(node.parentNode);
+          if(linked){ rememberBreak(linked); return linked; }
+          return null;
+        }
+        if(node.nodeType===8){
+          if(isBreakComment(node)){ rememberBreak(node); return node; }
+          return null;
+        }
+        if(node.nodeType===3) return null;
+        if(node.nodeType===1) return null;
+        node = direction==="backward" ? previousDeep(node, target) : nextDeep(node, target);
+      }
+      return null;
+    }
+    function rangeTouchesNode(range, node){
+      if(!range || !node) return false;
+      if(typeof range.intersectsNode==="function"){ try{ return range.intersectsNode(node); } catch(err){ return false; } }
+      const doc=node.ownerDocument || document;
+      if(!doc || !doc.createRange) return false;
+      const test=doc.createRange();
+      try{ test.setStartBefore(node); test.setEndAfter(node); }
+      catch(err){
+        try{ test.selectNode(node); }
+        catch(err2){ return false; }
+      }
+      try{
+        return range.compareBoundaryPoints(RANGE_END_TO_START, test) < 0 && range.compareBoundaryPoints(RANGE_START_TO_END, test) > 0;
+      }catch(err){ return false; }
+    }
+    function findCommentWithinRange(range, target){
+      if(!range || !target) return null;
+      const doc=target.ownerDocument || document;
+      if(!doc || !doc.createTreeWalker) return null;
+      let root=range.commonAncestorContainer || target;
+      if(root.nodeType===3) root=root.parentNode;
+      if(!root || !target.contains(root)) root=target;
+      const walker=doc.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, false);
+      let node=walker.currentNode;
+      if(node && node!==root && isBreakComment(node) && target.contains(node) && rangeTouchesNode(range, node)){ rememberBreak(node); return node; }
+      while((node=walker.nextNode())){
+        if(!isBreakComment(node)) continue;
+        if(!target.contains(node)) continue;
+        if(rangeTouchesNode(range, node)){ rememberBreak(node); return node; }
+      }
+      return null;
+    }
+    function findAnyBreak(target, preferLast){
+      if(!target) return null;
+      const doc=target.ownerDocument || document;
+      if(!doc || !doc.createTreeWalker) return null;
+      const walker=doc.createTreeWalker(target, NodeFilter.SHOW_COMMENT, null, false);
+      let node, found=null;
+      while((node=walker.nextNode())){
+        if(!isBreakComment(node)) continue;
+        found=node;
+        if(!preferLast) break;
+      }
+      if(found) rememberBreak(found);
+      return found;
+    }
+    function inferDirectionFromRange(range, comment){
+      if(!range || !comment) return "forward";
+      const doc=comment.ownerDocument || document;
+      if(!doc || !doc.createRange) return "forward";
+      try{
+        const markerRange=doc.createRange();
+        markerRange.setStartBefore(comment);
+        markerRange.collapse(true);
+        const cmp=range.compareBoundaryPoints(RANGE_START_TO_START, markerRange);
+        if(cmp>0) return "backward";
+      }catch(err){}
+      return "forward";
+    }
+    function removeCommentNode(target, comment, direction){
+      if(!comment || !comment.parentNode) return false;
+      const parent=comment.parentNode;
+      const doc=parent.ownerDocument || document;
+      const selection=doc.getSelection ? doc.getSelection() : window.getSelection();
+      let range=null;
+      if(doc.createRange){
+        try{
+          range=doc.createRange();
+          if(direction==="forward") range.setStartAfter(comment);
+          else range.setStartBefore(comment);
+          range.collapse(true);
+        }catch(err){ range=null; }
+      }
+      removePlaceholderFor(comment);
+      clearRemembered(comment);
+      if(comment.parentNode) comment.parentNode.removeChild(comment);
+      if(range && selection){
+        try{
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }catch(err){}
+      }
+      if(target && typeof target.focus==="function"){
+        try{ target.focus({ preventScroll:true }); }
+        catch(err){ target.focus(); }
+      }
+      return true;
+    }
+    function handleKeydown(target, ev){
+      if(!target || !ev) return false;
+      if(ev.defaultPrevented) return false;
+      if(ev.ctrlKey || ev.metaKey || ev.altKey) return false;
+      const key=String(ev.key||"");
+      if(key!=="Backspace" && key!=="Delete") return false;
+      const direction=key==="Backspace"?"backward":"forward";
+      let comment=null;
+      if(ev.target && ev.target.nodeType===1 && isPlaceholder(ev.target)){
+        comment=findCommentForPlaceholder(ev.target);
+      }else if(ev.target && ev.target.parentNode && ev.target.parentNode.nodeType===1 && isPlaceholder(ev.target.parentNode)){
+        comment=findCommentForPlaceholder(ev.target.parentNode);
+      }else{
+        comment=findCommentNearCaret(target, direction);
+      }
+      if(comment && removeCommentNode(target, comment, direction)){
+        ev.preventDefault();
+        ensurePlaceholders(target);
+        return true;
+      }
+      return false;
+    }
     function attachPlaceholder(comment){
       if(!isBreakComment(comment) || !comment.parentNode) return null;
       let next=comment.nextSibling;
       while(isWhitespace(next)) next=next.nextSibling;
       if(isPlaceholder(next)) return next;
       const marker=createPlaceholder();
+      const bindRemember=function(){ const linked=findCommentForPlaceholder(marker); if(linked) rememberBreak(linked); };
+      marker.addEventListener("focus", bindRemember);
+      marker.addEventListener("mousedown", bindRemember);
+      marker.addEventListener("touchstart", bindRemember);
       if(comment.nextSibling){ comment.parentNode.insertBefore(marker, comment.nextSibling); }
       else { comment.parentNode.appendChild(marker); }
+      rememberBreak(comment);
       return marker;
     }
     function removePlaceholderFor(comment){
@@ -534,17 +767,49 @@
       placeCaret(firstCaretPosition(caretTarget));
     }
     function remove(targetEl){
-      const sel=window.getSelection ? window.getSelection() : null; let node=(sel && sel.rangeCount) ? sel.anchorNode : null;
-      if(!node || !targetEl.contains(node)){
-        for(let i=targetEl.childNodes.length-1;i>=0;i--){ const n=targetEl.childNodes[i]; if(isBreakComment(n)){ removePlaceholderFor(n); n.remove(); return true; } }
-        alert("No page break found near cursor."); return false;
+      if(!targetEl) return false;
+      let direction="forward";
+      let comment=null;
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(sel && sel.rangeCount){
+        const range=sel.getRangeAt(0);
+        let inTarget=false;
+        if(range){
+          const container=range.commonAncestorContainer;
+          if(container && targetEl.contains(container)) inTarget=true;
+          else if(range.startContainer && targetEl.contains(range.startContainer)) inTarget=true;
+          else if(range.endContainer && targetEl.contains(range.endContainer)) inTarget=true;
+        }
+        if(inTarget){
+          if(range.collapsed){
+            comment=findCommentNearCaret(targetEl, "forward");
+            if(comment){ direction="forward"; }
+            else {
+              comment=findCommentNearCaret(targetEl, "backward");
+              if(comment) direction="backward";
+            }
+          }else{
+            comment=findCommentWithinRange(range, targetEl);
+            if(comment){ direction=inferDirectionFromRange(range, comment); }
+          }
+        }
       }
-      while(node && node.parentNode!==targetEl){ node=node.parentNode; }
-      let f=node.nextSibling; while(isWhitespace(f)) f=f.nextSibling; if(isBreakComment(f)){ removePlaceholderFor(f); f.remove(); return true; }
-      let b=node.previousSibling; while(isWhitespace(b)) b=b.previousSibling; if(isBreakComment(b)){ removePlaceholderFor(b); b.remove(); return true; }
-      alert("No page break found next to the cursor."); return false;
+      if(!comment && lastKnownBreak && targetEl.contains(lastKnownBreak)){
+        comment=lastKnownBreak;
+        direction="backward";
+      }
+      if(!comment){
+        comment=findAnyBreak(targetEl, true);
+        if(comment) direction="backward";
+      }
+      if(comment && removeCommentNode(targetEl, comment, direction)){
+        ensurePlaceholders(targetEl);
+        return true;
+      }
+      alert("No page break found near cursor.");
+      return false;
     }
-    return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize };
+    return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize, handleKeydown };
   })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -2289,7 +2554,14 @@
       layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensurePlaceholders(area); }, 0); });
       let t=null; area.addEventListener("input", function(ev){ Breaks.ensurePlaceholders(area); HistoryManager.handleInput(inst, area, ev); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
-      area.addEventListener("keydown", function(ev){ HistoryManager.handleKeydown(inst, area, ev, ctx); });
+      area.addEventListener("keydown", function(ev){
+        if(Breaks.handleKeydown(area, ev)){
+          HistoryManager.record(inst, area, { label:"Remove Page Break", repeatable:false });
+          if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+          return;
+        }
+        HistoryManager.handleKeydown(inst, area, ev, ctx);
+      });
       render();
       function render(attempt){
         attempt = attempt || 0;
@@ -7012,7 +7284,16 @@
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
     this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
-    this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
+    this.el.addEventListener("keydown", (function(self){
+      return function(ev){
+        if(Breaks.handleKeydown(self.el, ev)){
+          HistoryManager.record(self, self.el, { label:"Remove Page Break", repeatable:false });
+          OutputBinding.syncDebounced(self);
+          return;
+        }
+        HistoryManager.handleKeydown(self, self.el, ev);
+      };
+    })(this));
     HistoryManager.init(this, this.el);
     TableResizer.attach(this);
     this.el.__winst = this;
