@@ -814,14 +814,27 @@
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
     const FOOTER_BASE_STYLE="padding:0;border-top:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
-    function observeMedia(container, callback){
+    function observeMedia(container, callback, waiters){
       if(!container || !container.querySelectorAll || typeof callback!=="function") return;
       const imgs=container.querySelectorAll("img");
       if(!imgs || !imgs.length) return;
       for(let i=0;i<imgs.length;i++){
         const img=imgs[i];
         if(!img) continue;
+        if(img.loading==="lazy") img.loading="eager";
+        let resolveWaiter=null;
+        let rejectWaiter=null;
+        if(waiters && typeof waiters.push==="function"){
+          const promise=new Promise(function(resolve, reject){
+            resolveWaiter=resolve;
+            rejectWaiter=reject;
+          });
+          waiters.push(promise);
+        }
+        let settled=false;
         const run=function(){
+          if(settled) return;
+          settled=true;
           img.removeEventListener("load", run);
           img.removeEventListener("error", run);
           let attempts=0;
@@ -831,7 +844,13 @@
               window.requestAnimationFrame(apply);
               return;
             }
-            callback();
+            try {
+              callback();
+              if(resolveWaiter) resolveWaiter();
+            } catch(err){
+              if(rejectWaiter) rejectWaiter(err);
+              else throw err;
+            }
           };
           window.requestAnimationFrame(apply);
         };
@@ -1020,6 +1039,10 @@
       measWrap.appendChild(measurePagesHost);
       for(let i=0;i<pages.length;i++){ measurePagesHost.appendChild(pages[i].page); }
       const total=pages.length, dateStr=(new Date()).toISOString().slice(0,10);
+      const pendingMedia=[];
+      if(document && document.fonts && document.fonts.ready && typeof document.fonts.ready.then==="function"){
+        pendingMedia.push(document.fonts.ready.catch(function(){ return null; }));
+      }
       function adjustPageOffsets(pg){
         if(!pg) return;
         const baseHeader=Math.max(0, pg.baseHeaderHeight||0);
@@ -1054,24 +1077,40 @@
         if(headerEnabled && pg.headerNode) Tokens.apply(pg.headerNode, {page:i+1,total,date:dateStr});
         if(footerEnabled && pg.footerNode) Tokens.apply(pg.footerNode, {page:i+1,total,date:dateStr});
         adjustPageOffsets(pg);
-        if(pg.headerNode){ observeMedia(pg.headerNode, function(){ adjustPageOffsets(pg); }); }
-        if(pg.footerNode){ observeMedia(pg.footerNode, function(){ adjustPageOffsets(pg); }); }
+        if(pg.headerNode){ observeMedia(pg.headerNode, function(){ adjustPageOffsets(pg); }, pendingMedia); }
+        if(pg.footerNode){ observeMedia(pg.footerNode, function(){ adjustPageOffsets(pg); }, pendingMedia); }
       }
       const pageBreakHTML='<div class="weditor_page-break" style="page-break-before: always;"></div>';
-      let pagesHTML="";
-      for(let i=0;i<pages.length;i++){
-        if(i>0){ pagesHTML+=pageBreakHTML; }
-        pagesHTML+=pages[i].page.outerHTML;
+      function serializePages(){
+        let html="";
+        for(let i=0;i<pages.length;i++){
+          if(i>0){ html+=pageBreakHTML; }
+          html+=pages[i].page.outerHTML;
+        }
+        return html;
       }
-      measWrap.parentNode.removeChild(measWrap);
-      return { pages: pages.map(function(p){ return p.page; }), pagesHTML };
+      const cleanup=function(){ if(measWrap && measWrap.parentNode){ measWrap.parentNode.removeChild(measWrap); } };
+      const initialHTML=serializePages();
+      let ready=null;
+      if(pendingMedia.length){
+        const waitAll=Promise.all(pendingMedia).then(function(){
+          for(let i=0;i<pages.length;i++){ adjustPageOffsets(pages[i]); }
+          return serializePages();
+        });
+        ready=waitAll.catch(function(){ return serializePages(); });
+        ready.then(cleanup, cleanup);
+      }else{
+        cleanup();
+        ready=Promise.resolve(initialHTML);
+      }
+      return { pages: pages.map(function(p){ return p.page; }), pagesHTML: initialHTML, ready };
     }
     function pagesHTML(inst){ return paginate(Breaks.serialize(inst.el), inst).pagesHTML; }
     return { paginate, pagesHTML };
   })();
   const ExportUI=(function(){
-    function open(pagedHTML, rawHTML){
-      const w=WDom.openBlank(); if(!w) return;
+    function render(w, pagedHTML, rawHTML){
+      if(!w) return;
       function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
       const html="<!DOCTYPE html><meta charset='utf-8'>"+
         "<body style='margin:0;font-family:Segoe UI,system-ui,-apple-system,Arial'>"+
@@ -1092,7 +1131,11 @@
         "</body>";
       w.document.open(); w.document.write(html); w.document.close();
     }
-    return { open };
+    function open(pagedHTML, rawHTML, existingWindow){
+      const w=existingWindow || WDom.openBlank(); if(!w) return;
+      render(w, pagedHTML, rawHTML);
+    }
+    return { open, render };
   })();
   const PAGED_PRINT_STYLES = "div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}"+
     ".weditor_page-break{display:block;width:100%;height:0;margin:0;padding:0;border:0;font-size:0;line-height:0;page-break-before:always;}"+
@@ -1100,8 +1143,8 @@
     ".weditor_page-header{border-bottom:0!important;}"+
     ".weditor_page-footer{border-top:0!important;}";
   const PrintUI=(function(){
-    function open(pagedHTML){
-      const w=WDom.openBlank(); if(!w) return;
+    function render(w, pagedHTML){
+      if(!w) return;
       const html="<!DOCTYPE html><html><head><meta charset='utf-8'>"+
                "<style>"+PAGED_PRINT_STYLES+"</style>"+
                "</head><body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial' onload='window.print();window.onafterprint=function(){window.close();}'>"+
@@ -1109,7 +1152,11 @@
                "</body></html>";
       w.document.open(); w.document.write(html); w.document.close();
     }
-    return { open };
+    function open(pagedHTML, existingWindow){
+      const w=existingWindow || WDom.openBlank(); if(!w) return;
+      render(w, pagedHTML);
+    }
+    return { open, render };
   })();
   const HFEditor=(function(){
     function enableImageResizer(editor){
@@ -2203,6 +2250,8 @@
       let cachedRaw=null;
       let cachedPaged=null;
       let cachedState=null;
+      let pagedResult=null;
+      const pagedTargets=[];
       for(let i=0;i<outputs.length;i++){
         const out=outputs[i];
         const format=resolveFormat(inst, out);
@@ -2213,10 +2262,26 @@
           }
           out.value = cachedState || "";
         } else if(format==="paged"){
+          pagedTargets.push(out);
           if(cachedPaged===null){
-            cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+Paginator.pagesHTML(inst);
+            if(cachedRaw===null){
+              cachedRaw=Breaks.serialize(inst.el);
+            }
+            pagedResult=Paginator.paginate(cachedRaw, inst);
+            const initialPaged = pagedResult ? pagedResult.pagesHTML : "";
+            cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+initialPaged;
+            if(pagedResult && pagedResult.ready && typeof pagedResult.ready.then==="function"){
+              pagedResult.ready.then(function(finalHTML){
+                const finalValue="<style>"+PAGED_PRINT_STYLES+"</style>\n"+finalHTML;
+                cachedPaged=finalValue;
+                for(let j=0;j<pagedTargets.length;j++){
+                  const target=pagedTargets[j];
+                  if(target && target.value!==finalValue){ target.value=finalValue; }
+                }
+              }).catch(function(){});
+            }
           }
-          out.value = cachedPaged;
+          out.value = cachedPaged || "";
         } else {
           if(cachedRaw===null){
             cachedRaw=Breaks.serialize(inst.el);
@@ -7184,8 +7249,39 @@
         OutputBinding.syncDebounced(inst);
       } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
-    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
-    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
+    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){
+      if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
+      const targetWin=WDom.openBlank();
+      if(!targetWin) return;
+      targetWin.document.open();
+      targetWin.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Preparing print…</title></head><body style='margin:0;font:14px/1.4 Segoe UI,system-ui;padding:24px;color:#323130;background:#fff;'>Preparing document for printing…</body></html>");
+      targetWin.document.close();
+      const rawHTML=Breaks.serialize(inst.el);
+      const result=Paginator.paginate(rawHTML, inst);
+      const open=function(html){ PrintUI.open(html, targetWin); };
+      if(result && result.ready && typeof result.ready.then==="function"){
+        result.ready.then(open).catch(function(){ open(result ? result.pagesHTML : ""); });
+      }else{
+        open(result ? result.pagesHTML : "");
+      }
+    } },
+    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){
+      if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
+      const targetWin=WDom.openBlank();
+      if(!targetWin) return;
+      targetWin.document.open();
+      targetWin.document.write("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Preparing export…</title></head><body style='margin:0;font:14px/1.4 Segoe UI,system-ui;padding:24px;color:#323130;background:#fff;'>Preparing HTML export…</body></html>");
+      targetWin.document.close();
+      const rawHTML=Breaks.serialize(inst.el);
+      const result=Paginator.paginate(rawHTML, inst);
+      const rawClean=Sanitizer.clean(rawHTML);
+      const open=function(html){ ExportUI.open(html, rawClean, targetWin); };
+      if(result && result.ready && typeof result.ready.then==="function"){
+        result.ready.then(open).catch(function(){ open(result ? result.pagesHTML : ""); });
+      }else{
+        open(result ? result.pagesHTML : "");
+      }
+    } },
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
