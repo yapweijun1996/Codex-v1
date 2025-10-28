@@ -1189,20 +1189,52 @@
       overlay.style.zIndex="10";
       overlay.style.left="0";
       overlay.style.top="0";
-      const handle=document.createElement("div");
-      handle.setAttribute("data-weditor-overlay","1");
-      handle.style.position="absolute";
-      handle.style.width="14px";
-      handle.style.height="14px";
-      handle.style.borderRadius="50%";
-      handle.style.background=WCfg.UI.brand;
-      handle.style.border="2px solid #fff";
-      handle.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
-      handle.style.right="-7px";
-      handle.style.bottom="-7px";
-      handle.style.cursor="nwse-resize";
-      handle.style.pointerEvents="auto";
-      overlay.appendChild(handle);
+      overlay.style.transition="opacity .15s ease";
+      const moveHandle=document.createElement("div");
+      moveHandle.setAttribute("data-weditor-overlay","1");
+      moveHandle.style.position="absolute";
+      moveHandle.style.left="0";
+      moveHandle.style.top="0";
+      moveHandle.style.width="100%";
+      moveHandle.style.height="100%";
+      moveHandle.style.cursor="move";
+      moveHandle.style.pointerEvents="auto";
+      moveHandle.style.background="rgba(15,108,189,0.08)";
+      moveHandle.style.opacity="0";
+      moveHandle.style.transition="opacity .18s ease";
+      overlay.appendChild(moveHandle);
+      const handleSpecs=[
+        { dir:"n", cursor:"ns-resize", left:"50%", top:"0", translate:"-50%,-50%" },
+        { dir:"ne", cursor:"nesw-resize", left:"100%", top:"0", translate:"-50%,-50%" },
+        { dir:"e", cursor:"ew-resize", left:"100%", top:"50%", translate:"-50%,-50%" },
+        { dir:"se", cursor:"nwse-resize", left:"100%", top:"100%", translate:"-50%,-50%" },
+        { dir:"s", cursor:"ns-resize", left:"50%", top:"100%", translate:"-50%,-50%" },
+        { dir:"sw", cursor:"nesw-resize", left:"0", top:"100%", translate:"-50%,-50%" },
+        { dir:"w", cursor:"ew-resize", left:"0", top:"50%", translate:"-50%,-50%" },
+        { dir:"nw", cursor:"nwse-resize", left:"0", top:"0", translate:"-50%,-50%" }
+      ];
+      const handles=[];
+      for(let i=0;i<handleSpecs.length;i++){
+        const spec=handleSpecs[i];
+        const h=document.createElement("div");
+        h.setAttribute("data-weditor-overlay","1");
+        h.setAttribute("data-dir", spec.dir);
+        h.style.position="absolute";
+        h.style.width="14px";
+        h.style.height="14px";
+        h.style.borderRadius="50%";
+        h.style.background=WCfg.UI.brand;
+        h.style.border="2px solid #fff";
+        h.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
+        h.style.pointerEvents="auto";
+        h.style.cursor=spec.cursor;
+        h.style.left=spec.left;
+        h.style.top=spec.top;
+        h.style.transform="translate("+spec.translate+")";
+        h.style.boxSizing="border-box";
+        overlay.appendChild(h);
+        handles.push(h);
+      }
       const readout=document.createElement("div");
       readout.setAttribute("data-weditor-overlay","1");
       readout.style.position="absolute";
@@ -1221,9 +1253,16 @@
       editor.__weditorImageOverlay = overlay;
       let activeImg=null;
       let raf=null;
+      let dragging=false;
+      let dropRange=null;
+      let resizing=false;
       function hideOverlay(){
         overlay.style.display="none";
         readout.textContent="";
+        moveHandle.style.opacity="0";
+        dragging=false;
+        dropRange=null;
+        resizing=false;
         if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); activeImg=null; }
       }
       function updateOverlay(){
@@ -1239,9 +1278,10 @@
         overlay.style.height=rect.height+"px";
         overlay.style.display="block";
         const widthPx=Math.round(rect.width);
+        const heightPx=Math.round(rect.height);
         const totalWidth=Math.max(1, editor.getBoundingClientRect().width);
         const percent=Math.min(999, Math.round((widthPx/totalWidth)*100));
-        readout.textContent=widthPx+"px · "+percent+"%";
+        readout.textContent=widthPx+"×"+heightPx+"px · "+percent+"%";
       }
       function scheduleOverlay(){ if(raf) cancelAnimationFrame(raf); raf=requestAnimationFrame(updateOverlay); }
       function selectImage(img){
@@ -1259,6 +1299,8 @@
           hideOverlay();
         }
       }
+      moveHandle.addEventListener("pointerenter", function(){ if(!dragging && overlay.style.display!="none") moveHandle.style.opacity="0.08"; });
+      moveHandle.addEventListener("pointerleave", function(){ if(!dragging) moveHandle.style.opacity="0"; });
       editor.addEventListener("click", function(ev){
         const target=ev.target;
         if(target && target.tagName==="IMG"){ selectImage(target); }
@@ -1283,55 +1325,175 @@
         scheduleOverlay();
       });
       observer.observe(editor, { childList:true, subtree:true, attributes:true });
-      let resizing=false;
-      handle.addEventListener("pointerdown", function(ev){
-        if(!activeImg){ return; }
-        resizing=true;
+      const MIN_SIZE=32;
+      function applyDimensions(width, height){
+        if(!activeImg) return;
+        const safeWidth=Math.max(MIN_SIZE, width);
+        const safeHeight=Math.max(MIN_SIZE, height);
+        activeImg.style.maxWidth="none";
+        activeImg.style.maxHeight="none";
+        activeImg.style.width=Math.round(safeWidth)+"px";
+        activeImg.style.height=Math.round(safeHeight)+"px";
+        if(!activeImg.style.objectFit) activeImg.style.objectFit="contain";
+        scheduleOverlay();
+      }
+      handles.forEach(function(handleEl){
+        handleEl.addEventListener("pointerdown", function(ev){
+          if(!activeImg){ return; }
+          resizing=true;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const dir=(handleEl.getAttribute("data-dir")||"se").toLowerCase();
+          const rect=activeImg.getBoundingClientRect();
+          const naturalWidth=Math.max(1, activeImg.naturalWidth || rect.width || 1);
+          const naturalHeight=Math.max(1, activeImg.naturalHeight || rect.height || 1);
+          const startWidth=Math.max(1, rect.width || naturalWidth);
+          const startHeight=Math.max(1, rect.height || naturalHeight);
+          const ratio=naturalWidth && naturalHeight ? naturalWidth/Math.max(naturalHeight,1) : startWidth/Math.max(startHeight,1) || 1;
+          const startX=ev.clientX;
+          const startY=ev.clientY;
+          const pointerId=ev.pointerId;
+          try { handleEl.setPointerCapture(pointerId); } catch(e){}
+          function onMove(moveEv){
+            if(!resizing) return;
+            moveEv.preventDefault();
+            const deltaX=moveEv.clientX-startX;
+            const deltaY=moveEv.clientY-startY;
+            let nextWidth=startWidth;
+            let nextHeight=startHeight;
+            const isNorth=dir.indexOf("n")>=0;
+            const isSouth=dir.indexOf("s")>=0;
+            const isWest=dir.indexOf("w")>=0;
+            const isEast=dir.indexOf("e")>=0;
+            const isCorner=dir.length>1;
+            if(isEast || isWest){
+              const widthDelta=isWest ? -deltaX : deltaX;
+              nextWidth=startWidth+widthDelta;
+            }
+            if(isNorth || isSouth){
+              const heightDelta=isNorth ? -deltaY : deltaY;
+              nextHeight=startHeight+heightDelta;
+            }
+            if(isCorner){
+              const widthScale=nextWidth/startWidth;
+              const heightScale=nextHeight/startHeight;
+              let scale=Math.max(widthScale, heightScale);
+              if(!isFinite(scale) || scale<=0) scale=1;
+              nextWidth=startWidth*scale;
+              nextHeight=startHeight*scale;
+            } else if(isEast || isWest){
+              nextHeight=nextWidth/Math.max(ratio, 0.0001);
+            } else if(isNorth || isSouth){
+              nextWidth=nextHeight*Math.max(ratio, 0.0001);
+            }
+            applyDimensions(nextWidth, nextHeight);
+          }
+          function finish(upEv){
+            if(upEv) upEv.preventDefault();
+            resizing=false;
+            document.removeEventListener("pointermove", onMove);
+            document.removeEventListener("pointerup", finish);
+            document.removeEventListener("pointercancel", finish);
+            if(handleEl.hasPointerCapture && handleEl.hasPointerCapture(pointerId)){
+              try { handleEl.releasePointerCapture(pointerId); } catch(e){}
+            }
+            scheduleOverlay();
+          }
+          document.addEventListener("pointermove", onMove);
+          document.addEventListener("pointerup", finish, { once:false });
+          document.addEventListener("pointercancel", finish, { once:false });
+        });
+      });
+      function getRangeFromPoint(x, y){
+        const doc=editor.ownerDocument || document;
+        if(doc.caretRangeFromPoint){
+          const range=doc.caretRangeFromPoint(x, y);
+          return range;
+        }
+        if(doc.caretPositionFromPoint){
+          const pos=doc.caretPositionFromPoint(x, y);
+          if(!pos) return null;
+          const range=doc.createRange();
+          range.setStart(pos.offsetNode, pos.offset);
+          range.collapse(true);
+          return range;
+        }
+        return null;
+      }
+      moveHandle.addEventListener("pointerdown", function(ev){
+        if(!activeImg) return;
+        dragging=true;
+        dropRange=null;
         ev.preventDefault();
         ev.stopPropagation();
-        const startX=ev.clientX;
-        const startY=ev.clientY;
-        const startWidth=activeImg.getBoundingClientRect().width;
-        const startHeight=activeImg.getBoundingClientRect().height || 1;
-        const ratio=(activeImg.naturalWidth&&activeImg.naturalHeight)?(activeImg.naturalWidth/activeImg.naturalHeight):(startWidth/Math.max(startHeight,1));
         const pointerId=ev.pointerId;
-        try { handle.setPointerCapture(pointerId); } catch(e){}
-        function applySize(width){
-          const safeWidth=Math.max(24, width);
-          const calcHeight=safeWidth/ratio;
-          activeImg.style.maxWidth="";
-          activeImg.style.maxHeight="";
-          activeImg.style.width=Math.round(safeWidth)+"px";
-          activeImg.style.height=Math.round(calcHeight)+"px";
-          if(!activeImg.style.objectFit) activeImg.style.objectFit="contain";
-          scheduleOverlay();
-        }
+        const doc=editor.ownerDocument || document;
+        const win=doc.defaultView || window;
+        const prevUserSelect=document.body.style.userSelect || "";
+        document.body.style.userSelect="none";
+        moveHandle.style.opacity="0.12";
+        try { moveHandle.setPointerCapture(pointerId); } catch(e){}
         function onMove(moveEv){
-          if(!resizing) return;
+          if(!dragging) return;
           moveEv.preventDefault();
-          const deltaX=moveEv.clientX-startX;
-          const deltaY=moveEv.clientY-startY;
-          const delta=Math.abs(deltaX)>Math.abs(deltaY)?deltaX:deltaY;
-          applySize(startWidth+delta);
+          const range=getRangeFromPoint(moveEv.clientX, moveEv.clientY);
+          if(!range) return;
+          if(!editor.contains(range.startContainer)) return;
+          if(activeImg && (range.startContainer===activeImg || (activeImg.contains && activeImg.contains(range.startContainer)))) return;
+          const working=range.cloneRange ? range.cloneRange() : range;
+          if(!working) return;
+          dropRange=working;
+          const preview=working.cloneRange ? working.cloneRange() : working;
+          const sel=win.getSelection ? win.getSelection() : window.getSelection();
+          if(sel && preview){
+            sel.removeAllRanges();
+            sel.addRange(preview);
+          }
         }
         function finish(upEv){
-          resizing=false;
+          if(upEv) upEv.preventDefault();
+          const sel=win.getSelection ? win.getSelection() : window.getSelection();
+          dragging=false;
+          moveHandle.style.opacity="0";
+          document.body.style.userSelect=prevUserSelect;
           document.removeEventListener("pointermove", onMove);
           document.removeEventListener("pointerup", finish);
           document.removeEventListener("pointercancel", finish);
-          if(handle.hasPointerCapture && handle.hasPointerCapture(pointerId)){
-            try { handle.releasePointerCapture(pointerId); } catch(e){}
+          if(moveHandle.hasPointerCapture && moveHandle.hasPointerCapture(pointerId)){
+            try { moveHandle.releasePointerCapture(pointerId); } catch(e){}
           }
-          if(upEv) upEv.preventDefault();
+          if(dropRange && activeImg){
+            try {
+              const insertRange=dropRange.cloneRange ? dropRange.cloneRange() : dropRange;
+              insertRange.insertNode(activeImg);
+              insertRange.setStartAfter(activeImg);
+              insertRange.collapse(true);
+              if(sel){
+                sel.removeAllRanges();
+                sel.addRange(insertRange);
+              }
+              Normalizer.fixStructure(editor);
+              Breaks.ensurePlaceholders(editor);
+            } catch(err){}
+          } else if(sel && activeImg){
+            sel.removeAllRanges();
+            const fallback=doc.createRange ? doc.createRange() : null;
+            if(fallback){
+              fallback.selectNode(activeImg);
+              fallback.collapse(false);
+              sel.addRange(fallback);
+            }
+          }
+          dropRange=null;
           scheduleOverlay();
         }
         document.addEventListener("pointermove", onMove);
         document.addEventListener("pointerup", finish, { once:false });
         document.addEventListener("pointercancel", finish, { once:false });
       });
-      editor.addEventListener("mousedown", function(ev){ if(ev.target!==handle) scheduleOverlay(); });
+      editor.addEventListener("mousedown", function(ev){ if(handles.indexOf(ev.target)<0 && ev.target!==moveHandle) scheduleOverlay(); });
       editor.addEventListener("focus", scheduleOverlay);
-      editor.addEventListener("dragstart", function(ev){ if(resizing){ ev.preventDefault(); ev.stopPropagation(); } });
+      editor.addEventListener("dragstart", function(ev){ if(resizing || dragging){ ev.preventDefault(); ev.stopPropagation(); } });
       editor.__weditorHideOverlay=hideOverlay;
       editor.__weditorCleanup=function(){ if(raf) cancelAnimationFrame(raf); window.removeEventListener("resize", scheduleOverlay); observer.disconnect(); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); editor.__weditorImageOverlay=null; editor.__weditorImageResizer=false; };
     }
@@ -2066,7 +2228,7 @@
         }
       }, 0);
     }
-    return { open };
+    return { open, enableImageResizer };
   })();
   const StateBinding=(function(){
     function parse(json){
@@ -6869,6 +7031,58 @@
     }
     btn.appendChild(icon);
   }
+  function deriveAltText(name){
+    if(!name) return "Image";
+    const base=name.replace(/\.[^.]+$/,"").replace(/[_\-]+/g," ").replace(/\s+/g," ").trim();
+    return base || "Image";
+  }
+  function cleanAltText(text){
+    if(!text) return "";
+    return String(text).replace(/[\r\n\t]+/g," ").replace(/\s+/g," ").trim();
+  }
+  function insertImageAtSelection(inst, ctx, src, alt){
+    if(!inst || !src) return null;
+    const target=(ctx && ctx.area) ? ctx.area : inst.el;
+    if(!target) return null;
+    const doc=target.ownerDocument || document;
+    const win=doc.defaultView || window;
+    try { target.focus({ preventScroll:true }); }
+    catch(err){ if(typeof target.focus==="function") target.focus(); }
+    let sel=win.getSelection ? win.getSelection() : window.getSelection();
+    if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+      WDom.placeCaretAtEnd(target);
+      sel=win.getSelection ? win.getSelection() : window.getSelection();
+    }
+    const baseRange=(sel && sel.rangeCount>0) ? sel.getRangeAt(0).cloneRange() : (doc.createRange ? doc.createRange() : null);
+    if(!baseRange) return null;
+    baseRange.collapse(true);
+    const img=doc.createElement("img");
+    img.src=src;
+    const safeAlt=cleanAltText(alt);
+    if(safeAlt) img.alt=safeAlt;
+    img.style.display="block";
+    img.style.margin="16px auto";
+    img.style.maxWidth="100%";
+    img.style.height="auto";
+    img.setAttribute("draggable","false");
+    baseRange.insertNode(img);
+    baseRange.setStartAfter(img);
+    baseRange.collapse(true);
+    if(sel){
+      sel.removeAllRanges();
+      sel.addRange(baseRange);
+    }
+    Normalizer.fixStructure(target);
+    Breaks.ensurePlaceholders(target);
+    if(HFEditor && typeof HFEditor.enableImageResizer==="function"){ HFEditor.enableImageResizer(target); }
+    window.setTimeout(function(){
+      try { img.scrollIntoView({ block:"nearest" }); }
+      catch(err){}
+      try { img.dispatchEvent(new MouseEvent("click", { bubbles:true })); }
+      catch(err){}
+    }, 0);
+    return img;
+  }
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -7135,6 +7349,57 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.imageUpload":{ label:"Upload Image", kind:"button", ariaLabel:"Insert image from device",
+      run:function(inst, arg){
+        const input=document.createElement("input");
+        input.type="file";
+        input.accept="image/*";
+        input.style.display="none";
+        document.body.appendChild(input);
+        function cleanup(){
+          input.value="";
+          if(input.parentNode) input.parentNode.removeChild(input);
+        }
+        input.addEventListener("change", function(){
+          const file=input.files && input.files[0];
+          if(!file){ cleanup(); return; }
+          if(file.type && file.type.indexOf("image/")!==0){ window.alert("Please choose a PNG or JPG image file."); cleanup(); return; }
+          const reader=new FileReader();
+          reader.onload=function(){
+            const src=reader.result;
+            if(!src){ cleanup(); return; }
+            const alt=deriveAltText(file.name||"");
+            const inserted=insertImageAtSelection(inst, arg && arg.ctx, src, alt);
+            if(inserted){
+              const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+              HistoryManager.record(inst, target, { label:"Insert Image", repeatable:false });
+              OutputBinding.syncDebounced(inst);
+            }
+            cleanup();
+          };
+          reader.onerror=function(){ cleanup(); window.alert("Unable to read the selected file."); };
+          try { reader.readAsDataURL(file); }
+          catch(err){ cleanup(); window.alert("Unable to read the selected file."); }
+        }, { once:true });
+        input.click();
+      }
+    },
+    "insert.imageUrl":{ label:"Image URL", kind:"button", ariaLabel:"Insert image from URL",
+      run:function(inst, arg){
+        const urlPrompt=window.prompt("Enter image URL","https://");
+        if(urlPrompt===null) return;
+        const trimmed=(urlPrompt||"").trim();
+        if(!trimmed){ return; }
+        if(/^javascript:/i.test(trimmed)){ window.alert("Please enter a valid image URL starting with http or https."); return; }
+        const altPrompt=window.prompt("Alternative text (optional)","");
+        const inserted=insertImageAtSelection(inst, arg && arg.ctx, trimmed, altPrompt||"");
+        if(inserted){
+          const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+          HistoryManager.record(inst, target, { label:"Insert Image", repeatable:false });
+          OutputBinding.syncDebounced(inst);
+        }
+      }
+    },
     "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
@@ -7296,7 +7561,10 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[
+        { label:"Images", compact:true, items:["insert.imageUpload","insert.imageUrl"] },
+        { label:"Table", compact:true, items:["insert.table"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7313,7 +7581,10 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[
+        { label:"Images", compact:true, items:["insert.imageUpload","insert.imageUrl"] },
+        { label:"Table", compact:true, items:["insert.table"] }
+      ] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7389,6 +7660,7 @@
     })(this));
     HistoryManager.init(this, this.el);
     TableResizer.attach(this);
+    if(HFEditor && typeof HFEditor.enableImageResizer==="function"){ HFEditor.enableImageResizer(this.el); }
     this.el.__winst = this;
   };
   WEditorInstance.prototype.loadState=function(state){
