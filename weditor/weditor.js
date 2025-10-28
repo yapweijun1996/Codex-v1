@@ -3935,6 +3935,42 @@
       }
       return null;
     }
+    const LIST_STYLE_ATTR="data-weditor-list-style";
+    const DECIMAL_DOT_STYLE_ID="weditor-style-decimal-dot";
+    function ensureDecimalDotCSS(doc){
+      const targetDoc=doc||document;
+      if(!targetDoc) return;
+      if(targetDoc.getElementById(DECIMAL_DOT_STYLE_ID)) return;
+      const styleEl=targetDoc.createElement("style");
+      styleEl.id=DECIMAL_DOT_STYLE_ID;
+      const selector="["+LIST_STYLE_ATTR+"=\"decimal-dot\"]";
+      styleEl.textContent=
+        selector+","+selector+" ol{"+
+          "list-style:none;margin:0;padding-left:3em;counter-reset:item;}"+
+        selector+" li{"+
+          "counter-increment:item;position:relative;margin:4px 0;padding-left:0;}"+
+        selector+" li::before{"+
+          "content:counters(item,\".\")\" \";position:absolute;left:-3em;width:2.8em;text-align:right;white-space:pre;"+
+          "font-variant-numeric:tabular-nums;color:inherit;}"+
+        selector+">li::before{"+
+          "content:counter(item)\".0 \";}"+
+        selector+" li>ol{"+
+          "margin-top:4px;}";
+      const head=targetDoc.head || (targetDoc.getElementsByTagName && targetDoc.getElementsByTagName("head")[0]);
+      const host=head || targetDoc.body || targetDoc.documentElement;
+      if(host){ host.appendChild(styleEl); }
+    }
+    function applyDecimalDotStyle(list){
+      if(!list) return;
+      const doc=list.ownerDocument || document;
+      ensureDecimalDotCSS(doc);
+      list.setAttribute(LIST_STYLE_ATTR, "decimal-dot");
+      list.style.listStyleType="none";
+    }
+    function clearCustomListStyle(list){
+      if(!list) return;
+      list.removeAttribute(LIST_STYLE_ATTR);
+    }
     function toggleList(inst, ctx, type, style){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       const command=type==="ordered"?"insertOrderedList":"insertUnorderedList";
@@ -3959,6 +3995,11 @@
         list=findListFromSelection(target);
       }
       if(list){
+        if(type==="ordered" && style==="decimal-dot"){
+          applyDecimalDotStyle(list);
+          return true;
+        }
+        clearCustomListStyle(list);
         if(style){ list.style.listStyleType=style; }
         else { list.style.removeProperty("list-style-type"); }
         return true;
@@ -5870,6 +5911,7 @@
       split.setPrimaryHandler(function(e){ e.preventDefault(); const ok=Formatting.toggleList(inst, ctx, "ordered", currentStyle); if(ok){ OutputBinding.syncDebounced(inst); } });
       const options=[
         { label:"1. 2. 3.", style:"decimal", preview:"1." },
+        { label:"1.0 · 1.1", style:"decimal-dot", preview:"1.0" },
         { label:"a. b. c.", style:"lower-alpha", preview:"a." },
         { label:"A. B. C.", style:"upper-alpha", preview:"A." },
         { label:"i. ii. iii.", style:"lower-roman", preview:"i." },
