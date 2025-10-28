@@ -5690,6 +5690,24 @@
     const CELL_CLASS="weditor-table-cell-selected";
     const STYLE_ID="weditor-table-selection-style";
     const states=new WeakMap();
+    function resolveState(inst, ctx){
+      const candidates=[];
+      if(ctx){
+        if(ctx.root) candidates.push(ctx.root);
+        if(ctx.area) candidates.push(ctx.area);
+      }
+      if(inst){
+        if(inst.root) candidates.push(inst.root);
+        if(inst.el) candidates.push(inst.el);
+      }
+      for(let i=0;i<candidates.length;i++){
+        const candidate=candidates[i];
+        if(candidate && states.has(candidate)){
+          return states.get(candidate).state;
+        }
+      }
+      return null;
+    }
     function ensureStyles(doc){
       if(!doc || !doc.head) return;
       if(doc.getElementById(STYLE_ID)) return;
@@ -6101,7 +6119,196 @@
       root.addEventListener("focusin", onFocusIn);
       states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
     }
-    return { attach };
+    function getSelection(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return { table:null, cells:[], anchor:null };
+      const table=(state.table && state.table.isConnected && state.root.contains(state.table)) ? state.table : null;
+      const cells=table ? Array.from(state.cells).filter(function(cell){ return cell && cell.isConnected && table.contains(cell); }) : [];
+      const anchor=isValidAnchor(state);
+      return { table, cells, anchor };
+    }
+    function setSelection(inst, ctx, cells){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      const list=Array.isArray(cells) ? cells.filter(function(cell){ return cell && isCellElement(cell); }) : [];
+      const table=list.length ? tableFromCell(list[0]) : null;
+      setSelectedCells(state, list, table);
+      state.anchor=list.length ? list[0] : null;
+      if(state.anchor){ focusCell(state.anchor); }
+    }
+    function clear(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      clearSelection(state);
+      state.anchor=null;
+    }
+    return { attach, getSelection, setSelection, clear };
+  })();
+  const TableMerge=(function(){
+    const BLOCK_TAGS=new Set(["p","div","ul","ol","li","table","thead","tbody","tfoot","tr","td","th","blockquote","h1","h2","h3","h4","h5","h6"]);
+    function normalizeSpan(value){
+      const num=parseInt(value,10);
+      if(!Number.isFinite(num) || num<=0) return 1;
+      return num;
+    }
+    function buildLayout(table){
+      if(!table || !table.rows) return null;
+      const grid=[];
+      const info=new Map();
+      const rows=Array.from(table.rows||[]);
+      for(let r=0;r<rows.length;r++){
+        const row=rows[r];
+        if(!row || !row.cells) continue;
+        if(!grid[r]) grid[r]=[];
+        let colPosition=0;
+        const cells=Array.from(row.cells||[]);
+        for(let ci=0;ci<cells.length;ci++){
+          const cell=cells[ci];
+          if(!cell) continue;
+          let rowSpan=normalizeSpan(cell.getAttribute("rowspan")||cell.rowSpan||"1");
+          let colSpan=normalizeSpan(cell.getAttribute("colspan")||cell.colSpan||"1");
+          while(grid[r][colPosition]){ colPosition++; }
+          for(let rr=0; rr<rowSpan; rr++){
+            const targetRow=r+rr;
+            if(!grid[targetRow]) grid[targetRow]=[];
+            for(let cc=0; cc<colSpan; cc++){
+              const targetCol=colPosition+cc;
+              grid[targetRow][targetCol]=cell;
+            }
+          }
+          if(!info.has(cell)){
+            info.set(cell, { cell, table, rowIndex:r, colIndex:colPosition, rowSpan, colSpan });
+          }
+          colPosition+=colSpan;
+        }
+      }
+      return { grid, info };
+    }
+    function readCellMetrics(cell, layout){
+      if(!cell) return null;
+      if(layout && layout.info && layout.info.has(cell)){
+        const data=layout.info.get(cell);
+        return { cell:data.cell, table:data.table, rowIndex:data.rowIndex, colIndex:data.colIndex, rowSpan:data.rowSpan, colSpan:data.colSpan };
+      }
+      const row=cell.parentNode;
+      if(!row || row.nodeType!==1 || (row.tagName||"").toLowerCase()!=="tr") return null;
+      const table=row.closest ? row.closest("table") : null;
+      if(!table) return null;
+      const rowIndex=typeof row.rowIndex==="number" ? row.rowIndex : Array.prototype.indexOf.call(table.rows||[], row);
+      const colIndex=typeof cell.cellIndex==="number" ? cell.cellIndex : Array.prototype.indexOf.call(row.cells||[], cell);
+      if(rowIndex<0 || colIndex<0) return null;
+      const rowSpan=normalizeSpan(cell.getAttribute("rowspan")||cell.rowSpan||"1");
+      const colSpan=normalizeSpan(cell.getAttribute("colspan")||cell.colSpan||"1");
+      return { cell, table, rowIndex, colIndex, rowSpan, colSpan };
+    }
+    function isBlock(node){
+      if(!node || node.nodeType!==1) return false;
+      return BLOCK_TAGS.has((node.tagName||"").toLowerCase());
+    }
+    function appendCellContent(target, source){
+      if(!target || !source) return;
+      const doc=target.ownerDocument || document;
+      const fragment=doc.createDocumentFragment();
+      while(source.firstChild){ fragment.appendChild(source.firstChild); }
+      if(!fragment.childNodes.length){ return; }
+      const needsSeparator=target.childNodes.length && !isBlock(target.lastChild) && !isBlock(fragment.firstChild);
+      if(needsSeparator){ target.appendChild(doc.createElement("br")); }
+      target.appendChild(fragment);
+    }
+    function ensureTableReady(table){
+      if(TableResizer && typeof TableResizer.ensureTable==="function"){ TableResizer.ensureTable(table); }
+    }
+    function merge(inst, ctx){
+      const selection=TableSelection.getSelection(inst, ctx);
+      if(!selection || !selection.table){
+        window.alert("Select table cells to merge.");
+        return false;
+      }
+      const layout=buildLayout(selection.table);
+      if(!layout){
+        window.alert("Select table cells to merge.");
+        return false;
+      }
+      const metricsRaw=selection.cells.map(function(cell){ return readCellMetrics(cell, layout); }).filter(function(info){ return !!info; });
+      const seenCells=new Set();
+      const metrics=[];
+      for(let i=0;i<metricsRaw.length;i++){
+        const info=metricsRaw[i];
+        if(!info || !info.cell || seenCells.has(info.cell)) continue;
+        seenCells.add(info.cell);
+        metrics.push(info);
+      }
+      if(metrics.length<2){
+        window.alert("Select at least two table cells to merge.");
+        return false;
+      }
+      const table=selection.table;
+      for(let i=0;i<metrics.length;i++){
+        if(metrics[i].table!==table){
+          window.alert("Select cells from the same table to merge.");
+          return false;
+        }
+      }
+      let minRow=Infinity;
+      let maxRow=-Infinity;
+      let minCol=Infinity;
+      let maxCol=-Infinity;
+      metrics.forEach(function(info){
+        if(info.rowIndex<minRow) minRow=info.rowIndex;
+        const rowEnd=info.rowIndex+info.rowSpan-1;
+        if(rowEnd>maxRow) maxRow=rowEnd;
+        if(info.colIndex<minCol) minCol=info.colIndex;
+        const colEnd=info.colIndex+info.colSpan-1;
+        if(colEnd>maxCol) maxCol=colEnd;
+      });
+      if(!Number.isFinite(minRow) || !Number.isFinite(maxRow) || !Number.isFinite(minCol) || !Number.isFinite(maxCol)){
+        window.alert("Select table cells to merge.");
+        return false;
+      }
+      const selectedSet=new Set(metrics.map(function(info){ return info.cell; }));
+      for(let r=minRow;r<=maxRow;r++){
+        const gridRow=layout.grid[r];
+        if(!gridRow){ window.alert("Select a contiguous block of table cells to merge."); return false; }
+        for(let c=minCol;c<=maxCol;c++){
+          const occupant=gridRow[c];
+          if(!occupant || !selectedSet.has(occupant)){
+            window.alert("Select a contiguous block of table cells to merge.");
+            return false;
+          }
+        }
+      }
+      const primaryGridRow=layout.grid[minRow] || [];
+      const primary=primaryGridRow[minCol] || metrics[0].cell;
+      if(!primary || !selectedSet.has(primary)){
+        window.alert("Select a contiguous block of table cells to merge.");
+        return false;
+      }
+      const rowSpan=maxRow-minRow+1;
+      const colSpan=maxCol-minCol+1;
+      metrics.sort(function(a,b){
+        if(a.rowIndex===b.rowIndex) return a.colIndex-b.colIndex;
+        return a.rowIndex-b.rowIndex;
+      });
+      const processed=new Set();
+      for(let i=0;i<metrics.length;i++){
+        const cell=metrics[i].cell;
+        if(cell===primary || processed.has(cell)) continue;
+        processed.add(cell);
+        appendCellContent(primary, cell);
+        if(cell.parentNode){ cell.parentNode.removeChild(cell); }
+      }
+      primary.rowSpan=rowSpan;
+      primary.colSpan=colSpan;
+      if(rowSpan===1){ primary.removeAttribute("rowspan"); } else { primary.setAttribute("rowspan", String(rowSpan)); }
+      if(colSpan===1){ primary.removeAttribute("colspan"); } else { primary.setAttribute("colspan", String(colSpan)); }
+      ensureTableReady(table);
+      TableSelection.setSelection(inst, ctx, [primary]);
+      const target=HistoryManager.resolveTarget(inst, ctx);
+      HistoryManager.record(inst, target, { label:"Merge Table Cells", repeatable:false });
+      if(OutputBinding && typeof OutputBinding.syncDebounced==="function"){ OutputBinding.syncDebounced(inst); }
+      return true;
+    }
+    return { merge };
   })();
   const ListUI=(function(){
     function ensureListStyles(){
@@ -8296,6 +8503,15 @@
         HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "table.mergeCells":{
+      label:"Merge Cells",
+      kind:"button",
+      ariaLabel:"Merge selected table cells",
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        TableMerge.merge(inst, ctx);
+      }
+    },
     "table.borderColor":{
       kind:"custom",
       ariaLabel:"Table border color or visibility",
@@ -8384,7 +8600,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -8401,7 +8617,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
