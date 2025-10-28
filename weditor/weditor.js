@@ -5997,9 +5997,11 @@
       img.src=src;
       if(alt) img.alt=alt;
       img.loading="eager";
-      img.style.maxWidth="100%";
+      img.style.width="100%";
+      img.style.maxWidth="520px";
       img.style.height="auto";
-      img.style.display="inline-block";
+      img.style.display="block";
+      img.style.margin="12px auto";
       range.insertNode(img);
       range.setStartAfter(img);
       range.collapse(true);
@@ -6053,12 +6055,15 @@
       trigger.style.alignItems="center";
       trigger.style.justifyContent="center";
       trigger.style.gap="6px";
-      trigger.style.padding="6px 14px";
+      trigger.style.padding="6px 12px";
       trigger.style.minWidth="0";
+      trigger.style.lineHeight="1.2";
+      trigger.style.whiteSpace="nowrap";
       trigger.textContent="";
       const label=document.createElement("span");
       label.textContent="Insert Image";
-      label.style.fontSize="14px";
+      label.style.fontSize="13px";
+      label.style.lineHeight="1.2";
       const chevron=document.createElement("span");
       chevron.textContent="▼";
       chevron.style.fontSize="11px";
@@ -7708,6 +7713,17 @@
     },
     "insert.image":{ kind:"custom", ariaLabel:"Insert image", render:function(inst, ctx){ return ImageInsertUI.create(inst, ctx); } },
     "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
+      decorate:function(btn){
+        if(!btn) return;
+        btn.style.display="inline-flex";
+        btn.style.alignItems="center";
+        btn.style.justifyContent="center";
+        btn.style.gap="6px";
+        btn.style.padding="6px 12px";
+        btn.style.fontSize="13px";
+        btn.style.lineHeight="1.2";
+        btn.style.whiteSpace="nowrap";
+      },
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
         if(!target) return;
