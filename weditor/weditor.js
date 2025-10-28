@@ -6039,45 +6039,112 @@
       reader.readAsDataURL(file);
     }
     function create(inst, ctx){
-      const wrap=document.createElement("div");
-      wrap.style.display="flex";
-      wrap.style.flexDirection="column";
-      wrap.style.gap="6px";
-      wrap.setAttribute("role","group");
-      wrap.setAttribute("aria-label","Insert image controls");
-      const row=document.createElement("div");
-      row.style.display="flex";
-      row.style.flexWrap="wrap";
-      row.style.gap="8px";
-      const uploadBtn=WDom.btn("Upload Image", false, "Upload an image from your device");
-      uploadBtn.style.fontSize="12px";
-      uploadBtn.style.padding="6px 10px";
-      uploadBtn.style.lineHeight="1.2";
-      const urlBtn=WDom.btn("Image from URL", false, "Insert image from a URL");
-      urlBtn.style.fontSize="12px";
-      urlBtn.style.padding="6px 10px";
-      urlBtn.style.lineHeight="1.2";
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="stretch";
+      container.style.minWidth="0";
+      container.setAttribute("role","group");
+      container.setAttribute("aria-label","Insert image");
+      const trigger=WDom.btn("Insert Image", false, "Insert image");
+      trigger.setAttribute("aria-haspopup","true");
+      trigger.setAttribute("aria-expanded","false");
+      trigger.style.display="inline-flex";
+      trigger.style.alignItems="center";
+      trigger.style.justifyContent="center";
+      trigger.style.gap="6px";
+      trigger.style.padding="6px 14px";
+      trigger.style.minWidth="0";
+      trigger.textContent="";
+      const label=document.createElement("span");
+      label.textContent="Insert Image";
+      label.style.fontSize="14px";
+      const chevron=document.createElement("span");
+      chevron.textContent="▼";
+      chevron.style.fontSize="11px";
+      chevron.style.color=WCfg.UI.textDim;
+      chevron.setAttribute("aria-hidden","true");
+      trigger.appendChild(label);
+      trigger.appendChild(chevron);
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 24px rgba(0,0,0,.12)";
+      menu.style.minWidth="180px";
+      menu.style.padding="8px";
+      menu.style.gap="6px";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const makeMenuButton=function(text, description){
+        const btn=WDom.btn(text, false, description);
+        btn.style.width="100%";
+        btn.style.justifyContent="flex-start";
+        btn.style.fontSize="13px";
+        btn.style.padding="8px 10px";
+        btn.setAttribute("role","menuitem");
+        return btn;
+      };
       const fileInput=document.createElement("input");
       fileInput.type="file";
       fileInput.accept="image/*";
       fileInput.style.display="none";
-      uploadBtn.addEventListener("click", function(){ fileInput.click(); });
+      const uploadBtn=makeMenuButton("Upload from device", "Upload an image from your device");
+      uploadBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        hideMenu();
+        fileInput.click();
+      });
+      const urlBtn=makeMenuButton("Link from URL", "Insert image from a URL");
+      urlBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        hideMenu();
+        window.setTimeout(function(){ promptForURL(inst, ctx); }, 0);
+      });
+      menu.appendChild(uploadBtn);
+      menu.appendChild(urlBtn);
+      const doc=container.ownerDocument || document;
+      let menuOpen=false;
+      function showMenu(){
+        if(menuOpen) return;
+        menuOpen=true;
+        menu.style.display="flex";
+        menu.setAttribute("aria-hidden","false");
+        trigger.setAttribute("aria-expanded","true");
+        window.setTimeout(function(){ doc.addEventListener("mousedown", onDocClick, true); doc.addEventListener("keydown", onDocKeyDown, true); }, 0);
+      }
+      function hideMenu(){
+        if(!menuOpen) return;
+        menuOpen=false;
+        menu.style.display="none";
+        menu.setAttribute("aria-hidden","true");
+        trigger.setAttribute("aria-expanded","false");
+        doc.removeEventListener("mousedown", onDocClick, true);
+        doc.removeEventListener("keydown", onDocKeyDown, true);
+      }
+      function toggleMenu(){ if(menuOpen) hideMenu(); else showMenu(); }
+      function onDocClick(ev){
+        if(!container.contains(ev.target)){ hideMenu(); }
+      }
+      function onDocKeyDown(ev){ if(ev.key==="Escape"){ hideMenu(); trigger.focus(); } }
+      trigger.addEventListener("click", function(ev){ ev.preventDefault(); toggleMenu(); });
+      trigger.addEventListener("keydown", function(ev){
+        if(ev.key==="ArrowDown" && !menuOpen){ ev.preventDefault(); showMenu(); uploadBtn.focus(); }
+      });
       fileInput.addEventListener("change", function(){
         const file=fileInput.files && fileInput.files[0];
         if(file) handleFile(inst, ctx, file);
         fileInput.value="";
       });
-      urlBtn.addEventListener("click", function(){ promptForURL(inst, ctx); });
-      row.appendChild(uploadBtn);
-      row.appendChild(urlBtn);
-      wrap.appendChild(row);
-      wrap.appendChild(fileInput);
-      const helper=document.createElement("div");
-      helper.style.font="11px/1.4 Segoe UI,system-ui";
-      helper.style.color=WCfg.UI.textDim;
-      helper.textContent="Upload from your computer or paste a link. Drag the image or use the corner handles to resize.";
-      wrap.appendChild(helper);
-      return wrap;
+      container.appendChild(trigger);
+      container.appendChild(menu);
+      container.appendChild(fileInput);
+      return container;
     }
     return { create };
   })();
