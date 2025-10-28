@@ -1003,13 +1003,65 @@
       function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
+        function parseDim(value){
+          if(!value && value!==0) return null;
+          const num=parseFloat(value);
+          return isFinite(num) && num>0 ? num : null;
+        }
         for(let k=0;k<imgs.length;k++){
-          const img=imgs[k]; img.loading="eager"; img.style.maxWidth="100%";
-          if(img.naturalWidth && img.naturalHeight){
-            const scale=Math.min(1, containerWidth / img.naturalWidth);
-            const expected=Math.round(img.naturalHeight * scale);
-            img.style.height=expected+"px"; img.style.maxHeight=expected+"px";
+          const img=imgs[k];
+          if(!img) continue;
+          img.loading="eager";
+          let width=parseDim(img.getAttribute("data-weditor-width"));
+          let height=parseDim(img.getAttribute("data-weditor-height"));
+          const styleWidth=parseDim(img.style.width);
+          const styleHeight=parseDim(img.style.height);
+          const attrWidth=parseDim(img.getAttribute("width"));
+          const attrHeight=parseDim(img.getAttribute("height"));
+          if(width==null) width=styleWidth!=null?styleWidth:attrWidth;
+          if(height==null) height=styleHeight!=null?styleHeight:attrHeight;
+          const naturalWidth=img.naturalWidth || width || containerWidth;
+          const naturalHeight=img.naturalHeight || height || containerWidth;
+          const naturalRatio=(naturalWidth && naturalHeight) ? (naturalHeight/naturalWidth) : (width && height ? height/width : 1);
+          if(width && height){
+            const scale=containerWidth>0 ? Math.min(1, containerWidth/width) : 1;
+            width=Math.round(Math.max(1, width*scale));
+            height=Math.round(Math.max(1, height*scale));
+          } else if(width){
+            const scale=containerWidth>0 ? Math.min(1, containerWidth/width) : 1;
+            width=Math.round(Math.max(1, width*scale));
+            if(!height){
+              const ratio=naturalRatio || 1;
+              height=Math.round(Math.max(1, width*ratio));
+            } else {
+              height=Math.round(Math.max(1, height*scale));
+            }
+          } else if(height){
+            const ratio=naturalRatio || 1;
+            width=Math.round(Math.max(1, height/ratio));
+            if(containerWidth>0 && width>containerWidth){
+              const scale=containerWidth/width;
+              width=Math.round(Math.max(1, containerWidth));
+              height=Math.round(Math.max(1, height*scale));
+            } else {
+              height=Math.round(Math.max(1, height));
+            }
+          } else if(naturalWidth && naturalHeight){
+            const scale=containerWidth>0 ? Math.min(1, containerWidth/naturalWidth) : 1;
+            width=Math.round(Math.max(1, naturalWidth*scale));
+            height=Math.round(Math.max(1, naturalHeight*scale));
+          } else {
+            width=Math.round(Math.max(1, containerWidth));
+            height=width;
           }
+          img.style.width=width+"px";
+          img.style.height=height+"px";
+          img.style.maxWidth=width+"px";
+          img.style.maxHeight=height+"px";
+          img.setAttribute("width", String(width));
+          img.setAttribute("height", String(height));
+          img.setAttribute("data-weditor-width", String(width));
+          img.setAttribute("data-weditor-height", String(height));
         }
       }
       for(let i=0;i<linear.length;i++){
@@ -1158,24 +1210,97 @@
     }
     return { open, render };
   })();
-  const HFEditor=(function(){
-    function enableImageResizer(editor){
-      if(!editor) return;
-      if(editor.__weditorImageResizer){
-        const overlay=editor.__weditorImageOverlay;
-        if(overlay && !editor.contains(overlay)){
-          editor.appendChild(overlay);
-          if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
-        }
-        return;
+  const ImageTools=(function(){
+    const HANDLE_SPECS=[
+      { dir:"nw", kind:"corner", cursor:"nwse-resize", top:"-7px", left:"-7px" },
+      { dir:"n", kind:"edge", axis:"y", cursor:"ns-resize", top:"-7px", left:"calc(50% - 6px)" },
+      { dir:"ne", kind:"corner", cursor:"nesw-resize", top:"-7px", right:"-7px" },
+      { dir:"e", kind:"edge", axis:"x", cursor:"ew-resize", top:"calc(50% - 6px)", right:"-7px" },
+      { dir:"se", kind:"corner", cursor:"nwse-resize", bottom:"-7px", right:"-7px" },
+      { dir:"s", kind:"edge", axis:"y", cursor:"ns-resize", bottom:"-7px", left:"calc(50% - 6px)" },
+      { dir:"sw", kind:"corner", cursor:"nesw-resize", bottom:"-7px", left:"-7px" },
+      { dir:"w", kind:"edge", axis:"x", cursor:"ew-resize", top:"calc(50% - 6px)", left:"-7px" }
+    ];
+    const MIN_SIZE=32;
+    const STYLE_ID="weditor-image-style";
+    function captureDimensions(img){
+      if(!img) return;
+      let width=0;
+      let height=0;
+      if(img.getBoundingClientRect){
+        const rect=img.getBoundingClientRect();
+        width=Math.round(rect.width||0);
+        height=Math.round(rect.height||0);
       }
-      editor.__weditorImageResizer = true;
-      if(!document.getElementById("weditor-hf-img-style")){
-        const style=document.createElement("style");
-        style.id="weditor-hf-img-style";
-        style.textContent=".weditor-hf-img-active{outline:2px solid "+WCfg.UI.brand+";outline-offset:2px;}";
-        document.head.appendChild(style);
+      if((!width || !height) && img.naturalWidth && img.naturalHeight){
+        width=Math.round(img.naturalWidth);
+        height=Math.round(img.naturalHeight);
       }
+      if((!width || !height) && (img.offsetWidth || img.offsetHeight)){
+        width=Math.round(img.offsetWidth||0);
+        height=Math.round(img.offsetHeight||0);
+      }
+      if(width>0){
+        img.setAttribute("data-weditor-width", String(width));
+        img.setAttribute("width", String(width));
+      }
+      if(height>0){
+        img.setAttribute("data-weditor-height", String(height));
+        img.setAttribute("height", String(height));
+      }
+    }
+    function ensureStyle(){
+      if(document.getElementById(STYLE_ID)) return;
+      const style=document.createElement("style");
+      style.id=STYLE_ID;
+      style.textContent=".weditor-hf-img-active{outline:2px solid "+WCfg.UI.brand+";outline-offset:2px;}"+
+        ".weditor-overlay-moving{cursor:move!important;}";
+      document.head.appendChild(style);
+    }
+    function insideOverlay(node, overlay){
+      let current=node;
+      while(current){
+        if(current===overlay) return true;
+        if(current.nodeType===1 && current.hasAttribute && current.hasAttribute("data-weditor-overlay")) return true;
+        current=current.parentNode;
+      }
+      return false;
+    }
+    function caretRangeAt(doc, x, y){
+      if(doc.caretRangeFromPoint){
+        const range=doc.caretRangeFromPoint(x, y);
+        return range || null;
+      }
+      if(doc.caretPositionFromPoint){
+        const pos=doc.caretPositionFromPoint(x, y);
+        if(!pos) return null;
+        const range=doc.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+        return range;
+      }
+      return null;
+    }
+    function clampSize(value){ return isFinite(value) ? Math.max(MIN_SIZE, value) : MIN_SIZE; }
+    function formatReadout(width, height, hostWidth){
+      const safeHost=Math.max(1, hostWidth||1);
+      const percent=Math.min(999, Math.round((width/safeHost)*100));
+      return Math.round(width)+"×"+Math.round(height)+" · "+percent+"%";
+    }
+    function attach(editor){
+      if(!editor) return null;
+      const doc=editor.ownerDocument || document;
+      const overlayHost=(doc && doc.body) ? doc.body : (doc && doc.documentElement ? doc.documentElement : document.body);
+      if(editor.__weditorImageTools){
+        const existing=editor.__weditorImageTools;
+        const overlay=existing.overlay;
+        if(overlay && overlay.parentNode!==overlayHost) overlayHost.appendChild(overlay);
+        editor.__weditorCleanup=existing.cleanup || editor.__weditorCleanup;
+        editor.__weditorHideOverlay=existing.hide || editor.__weditorHideOverlay;
+        editor.__weditorSelectImage=existing.select || editor.__weditorSelectImage;
+        return existing;
+      }
+      ensureStyle();
       const computed=window.getComputedStyle(editor);
       if(computed.position === "static") editor.style.position="relative";
       const overlay=document.createElement("div");
@@ -1189,25 +1314,47 @@
       overlay.style.zIndex="10";
       overlay.style.left="0";
       overlay.style.top="0";
-      const handle=document.createElement("div");
-      handle.setAttribute("data-weditor-overlay","1");
-      handle.style.position="absolute";
-      handle.style.width="14px";
-      handle.style.height="14px";
-      handle.style.borderRadius="50%";
-      handle.style.background=WCfg.UI.brand;
-      handle.style.border="2px solid #fff";
-      handle.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
-      handle.style.right="-7px";
-      handle.style.bottom="-7px";
-      handle.style.cursor="nwse-resize";
-      handle.style.pointerEvents="auto";
-      overlay.appendChild(handle);
+      const moveArea=document.createElement("div");
+      moveArea.setAttribute("data-weditor-overlay","1");
+      moveArea.style.position="absolute";
+      moveArea.style.left="0";
+      moveArea.style.top="0";
+      moveArea.style.width="100%";
+      moveArea.style.height="100%";
+      moveArea.style.cursor="move";
+      moveArea.style.pointerEvents="auto";
+      moveArea.style.touchAction="none";
+      moveArea.style.zIndex="1";
+      overlay.appendChild(moveArea);
+      const handles=[];
+      for(let i=0;i<HANDLE_SPECS.length;i++){
+        const spec=HANDLE_SPECS[i];
+        const handle=document.createElement("div");
+        handle.setAttribute("data-weditor-overlay","1");
+        handle.setAttribute("data-direction", spec.dir);
+        handle.style.position="absolute";
+        handle.style.width="12px";
+        handle.style.height="12px";
+        handle.style.borderRadius="50%";
+        handle.style.background=WCfg.UI.brand;
+        handle.style.border="2px solid #fff";
+        handle.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
+        handle.style.pointerEvents="auto";
+        handle.style.touchAction="none";
+        handle.style.cursor=spec.cursor;
+        handle.style.zIndex="2";
+        if(spec.top) handle.style.top=spec.top;
+        if(spec.bottom) handle.style.bottom=spec.bottom;
+        if(spec.left) handle.style.left=spec.left;
+        if(spec.right) handle.style.right=spec.right;
+        handles.push({ spec, el:handle });
+        overlay.appendChild(handle);
+      }
       const readout=document.createElement("div");
       readout.setAttribute("data-weditor-overlay","1");
       readout.style.position="absolute";
       readout.style.right="0";
-      readout.style.top="-26px";
+      readout.style.top="-28px";
       readout.style.padding="2px 6px";
       readout.style.font="11px/1.4 Segoe UI,system-ui";
       readout.style.color="#fff";
@@ -1216,124 +1363,357 @@
       readout.style.boxShadow="0 2px 6px rgba(0,0,0,.18)";
       readout.style.whiteSpace="nowrap";
       readout.style.pointerEvents="none";
+      readout.style.zIndex="3";
       overlay.appendChild(readout);
-      editor.appendChild(overlay);
-      editor.__weditorImageOverlay = overlay;
+      overlayHost.appendChild(overlay);
+      editor.__weditorImageOverlay=overlay;
       let activeImg=null;
       let raf=null;
+      let resizing=false;
+      let moving=false;
+      let dropRange=null;
+      function getSelection(){ return doc.getSelection ? doc.getSelection() : window.getSelection(); }
       function hideOverlay(){
         overlay.style.display="none";
         readout.textContent="";
-        if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); activeImg=null; }
+        if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); }
+        activeImg=null;
+      }
+      function ensureImageWatcher(img){
+        if(!img || img.__weditorSizeHandler) return;
+        const handler=function(){ captureDimensions(img); scheduleOverlay(); };
+        img.__weditorSizeHandler=handler;
+        if(img.complete){
+          captureDimensions(img);
+        } else {
+          img.addEventListener("load", handler);
+        }
+      }
+      function refreshImageWatchers(){
+        if(!editor || !editor.querySelectorAll) return;
+        const imgs=editor.querySelectorAll("img");
+        for(let i=0;i<imgs.length;i++){ ensureImageWatcher(imgs[i]); }
+      }
+      function detachImageWatchers(){
+        if(!editor || !editor.querySelectorAll) return;
+        const imgs=editor.querySelectorAll("img");
+        for(let i=0;i<imgs.length;i++){
+          const img=imgs[i];
+          if(!img.__weditorSizeHandler) continue;
+          img.removeEventListener("load", img.__weditorSizeHandler);
+          delete img.__weditorSizeHandler;
+        }
+      }
+      function dispatchInput(){
+        if(!editor) return;
+        let ev=null;
+        if(typeof window!="undefined" && typeof window.InputEvent==="function"){
+          try {
+            ev=new InputEvent("input", { bubbles:true, cancelable:false, inputType:"insertReplacementText" });
+          } catch(err){}
+        }
+        if(!ev){
+          try {
+            ev=document.createEvent("Event");
+            ev.initEvent("input", true, false);
+          } catch(e){ ev=new Event("input", { bubbles:true }); }
+        }
+        editor.dispatchEvent(ev);
+        if(editor.__winst && typeof OutputBinding!=="undefined" && OutputBinding && typeof OutputBinding.syncDebounced==="function"){
+          OutputBinding.syncDebounced(editor.__winst);
+        }
       }
       function updateOverlay(){
         if(!activeImg || !editor.contains(activeImg)){ hideOverlay(); return; }
         const rect=activeImg.getBoundingClientRect();
         const hostRect=editor.getBoundingClientRect();
-        const clientLeft=editor.clientLeft||0;
-        const clientTop=editor.clientTop||0;
-        const left=rect.left-hostRect.left+editor.scrollLeft-clientLeft;
-        const top=rect.top-hostRect.top+editor.scrollTop-clientTop;
-        overlay.style.transform="translate("+left+"px,"+top+"px)";
+        const scrollX=window.pageXOffset || doc.documentElement.scrollLeft || doc.body.scrollLeft || 0;
+        const scrollY=window.pageYOffset || doc.documentElement.scrollTop || doc.body.scrollTop || 0;
+        overlay.style.left=scrollX+rect.left+"px";
+        overlay.style.top=scrollY+rect.top+"px";
         overlay.style.width=rect.width+"px";
         overlay.style.height=rect.height+"px";
         overlay.style.display="block";
-        const widthPx=Math.round(rect.width);
-        const totalWidth=Math.max(1, editor.getBoundingClientRect().width);
-        const percent=Math.min(999, Math.round((widthPx/totalWidth)*100));
-        readout.textContent=widthPx+"px · "+percent+"%";
+        const hostWidth=Math.max(1, hostRect ? hostRect.width : rect.width);
+        readout.textContent=formatReadout(Math.max(1, rect.width), Math.max(1, rect.height), hostWidth);
       }
       function scheduleOverlay(){ if(raf) cancelAnimationFrame(raf); raf=requestAnimationFrame(updateOverlay); }
       function selectImage(img){
         if(activeImg===img){ scheduleOverlay(); return; }
-        if(activeImg) activeImg.classList.remove("weditor-hf-img-active");
-        activeImg=img;
+        if(activeImg){ activeImg.classList.remove("weditor-hf-img-active"); }
+        activeImg=img && editor.contains(img) ? img : null;
         if(activeImg){
           activeImg.classList.add("weditor-hf-img-active");
+          ensureImageWatcher(activeImg);
+          captureDimensions(activeImg);
           if(activeImg.complete){ scheduleOverlay(); }
-          else {
-            activeImg.addEventListener("load", scheduleOverlay, { once:true });
-            scheduleOverlay();
-          }
+          else { activeImg.addEventListener("load", scheduleOverlay, { once:true }); scheduleOverlay(); }
         } else {
           hideOverlay();
         }
       }
-      editor.addEventListener("click", function(ev){
-        const target=ev.target;
-        if(target && target.tagName==="IMG"){ selectImage(target); }
-        else if(!overlay.contains(target)){ hideOverlay(); }
-      });
-      editor.addEventListener("input", function(){ if(activeImg && !editor.contains(activeImg)){ hideOverlay(); } scheduleOverlay(); });
-      editor.addEventListener("scroll", scheduleOverlay, { passive:true });
-      window.addEventListener("resize", scheduleOverlay);
-      editor.addEventListener("blur", hideOverlay);
-      editor.addEventListener("keydown", function(ev){ if(ev.key==="Escape") hideOverlay(); });
-      const observer=new MutationObserver(function(records){
-        let relevant=false;
-        for(let i=0;i<records.length;i++){
-          const target=records[i].target;
-          if(!target) continue;
-          if(target.nodeType===1 && target.getAttribute && target.getAttribute("data-weditor-overlay")){ continue; }
-          if(overlay.contains(target)){ continue; }
-          relevant=true; break;
+      function onClick(ev){ const target=ev.target; if(target && target.tagName==="IMG"){ selectImage(target); } else if(!insideOverlay(target, overlay)){ hideOverlay(); } }
+      function onInput(){ if(activeImg && !editor.contains(activeImg)) hideOverlay(); scheduleOverlay(); }
+      function onScroll(){ scheduleOverlay(); }
+      function onWindowScroll(){ scheduleOverlay(); }
+      function onBlur(){ hideOverlay(); }
+      function onKeydown(ev){ if(ev.key==="Escape") hideOverlay(); }
+      function onFocus(){ scheduleOverlay(); }
+      function onMouseDown(ev){ if(!insideOverlay(ev.target, overlay)) scheduleOverlay(); }
+      function onDragStart(ev){ if(resizing || moving){ ev.preventDefault(); ev.stopPropagation(); } }
+      function getValidDropRange(x, y){
+        let range=caretRangeAt(doc, x, y);
+        if(range && insideOverlay(range.startContainer, overlay)){
+          const display=overlay.style.display;
+          overlay.style.display="none";
+          range=caretRangeAt(doc, x, y);
+          overlay.style.display=display;
         }
-        if(!relevant) return;
-        if(activeImg && !editor.contains(activeImg)) hideOverlay();
-        scheduleOverlay();
+        if(!range || !range.startContainer) return null;
+        if(!editor.contains(range.startContainer)) return null;
+        if(insideOverlay(range.startContainer, overlay)) return null;
+        return range;
+      }
+      function moveImageToRange(img, range){
+        if(!img || !range) return false;
+        const prevParent=img.parentNode;
+        const prevNext=img.nextSibling;
+        const drop=range.cloneRange();
+        drop.collapse(true);
+        drop.insertNode(img);
+        const after=doc.createRange();
+        after.setStartAfter(img);
+        after.collapse(true);
+        const sel=getSelection();
+        if(sel){ sel.removeAllRanges(); sel.addRange(after); }
+        return img.parentNode!==prevParent || img.nextSibling!==prevNext;
+      }
+      const observer=new MutationObserver(function(records){
+        for(let i=0;i<records.length;i++){
+          const rec=records[i];
+          if(rec.target && insideOverlay(rec.target, overlay)) continue;
+          let relevant=false;
+          const added=rec.addedNodes || [];
+          const removed=rec.removedNodes || [];
+          for(let j=0;j<added.length;j++){ if(!insideOverlay(added[j], overlay)){ relevant=true; break; } }
+          if(!relevant){
+            for(let j=0;j<removed.length;j++){ if(!insideOverlay(removed[j], overlay)){ relevant=true; break; } }
+          }
+          if(relevant || rec.type==="attributes"){
+            if(activeImg && !editor.contains(activeImg)) hideOverlay();
+            scheduleOverlay();
+            refreshImageWatchers();
+            return;
+          }
+        }
       });
       observer.observe(editor, { childList:true, subtree:true, attributes:true });
-      let resizing=false;
-      handle.addEventListener("pointerdown", function(ev){
-        if(!activeImg){ return; }
+      function startResize(spec, handleEl, ev){
+        if(!activeImg) return;
         resizing=true;
         ev.preventDefault();
         ev.stopPropagation();
-        const startX=ev.clientX;
-        const startY=ev.clientY;
-        const startWidth=activeImg.getBoundingClientRect().width;
-        const startHeight=activeImg.getBoundingClientRect().height || 1;
-        const ratio=(activeImg.naturalWidth&&activeImg.naturalHeight)?(activeImg.naturalWidth/activeImg.naturalHeight):(startWidth/Math.max(startHeight,1));
         const pointerId=ev.pointerId;
-        try { handle.setPointerCapture(pointerId); } catch(e){}
-        function applySize(width){
-          const safeWidth=Math.max(24, width);
-          const calcHeight=safeWidth/ratio;
+        try { handleEl.setPointerCapture(pointerId); } catch(e){}
+        const rect=activeImg.getBoundingClientRect();
+        const naturalRatio=(activeImg.naturalWidth && activeImg.naturalHeight) ? (activeImg.naturalWidth/activeImg.naturalHeight) : null;
+        const startWidth=clampSize(rect.width || activeImg.offsetWidth || activeImg.naturalWidth || MIN_SIZE);
+        const startHeight=clampSize(rect.height || activeImg.offsetHeight || activeImg.naturalHeight || MIN_SIZE);
+        const ratio = naturalRatio && isFinite(naturalRatio) && naturalRatio>0 ? naturalRatio : (startWidth/startHeight || 1);
+        const isWest=spec.dir.indexOf("w")>=0;
+        const isNorth=spec.dir.indexOf("n")>=0;
+        const anchorX=isWest ? rect.right : rect.left;
+        const anchorY=isNorth ? rect.bottom : rect.top;
+        let changed=false;
+        function applySize(width, height){
+          const nextWidth=clampSize(width);
+          const nextHeight=clampSize(height);
+          const prevWidth=isFinite(parseFloat(activeImg.style.width))?parseFloat(activeImg.style.width):activeImg.getBoundingClientRect().width;
+          const prevHeight=isFinite(parseFloat(activeImg.style.height))?parseFloat(activeImg.style.height):activeImg.getBoundingClientRect().height;
+          const widthPx=Math.round(nextWidth);
+          const heightPx=Math.round(nextHeight);
+          if(!changed && (Math.round(prevWidth)!==widthPx || Math.round(prevHeight)!==heightPx)) changed=true;
           activeImg.style.maxWidth="";
           activeImg.style.maxHeight="";
-          activeImg.style.width=Math.round(safeWidth)+"px";
-          activeImg.style.height=Math.round(calcHeight)+"px";
-          if(!activeImg.style.objectFit) activeImg.style.objectFit="contain";
+          activeImg.style.width=widthPx+"px";
+          activeImg.style.height=heightPx+"px";
+          activeImg.style.objectFit="";
+          activeImg.setAttribute("data-weditor-width", String(widthPx));
+          activeImg.setAttribute("data-weditor-height", String(heightPx));
+          activeImg.setAttribute("width", String(widthPx));
+          activeImg.setAttribute("height", String(heightPx));
+          captureDimensions(activeImg);
           scheduleOverlay();
         }
         function onMove(moveEv){
           if(!resizing) return;
           moveEv.preventDefault();
-          const deltaX=moveEv.clientX-startX;
-          const deltaY=moveEv.clientY-startY;
-          const delta=Math.abs(deltaX)>Math.abs(deltaY)?deltaX:deltaY;
-          applySize(startWidth+delta);
+          const currentX=moveEv.clientX;
+          const currentY=moveEv.clientY;
+          let width=startWidth;
+          let height=startHeight;
+          if(spec.kind==="corner"){
+            const widthCandidate=isWest ? (anchorX-currentX) : (currentX-anchorX);
+            const heightCandidate=isNorth ? (anchorY-currentY) : (currentY-anchorY);
+            const rawWidth=clampSize(widthCandidate);
+            const rawHeight=clampSize(heightCandidate);
+            const widthFromHeight=rawHeight*ratio;
+            const heightFromWidth=rawWidth/ratio;
+            if(Math.abs(widthFromHeight-rawWidth) < Math.abs(heightFromWidth-rawHeight)){
+              width=widthFromHeight;
+              height=rawHeight;
+            } else {
+              width=rawWidth;
+              height=heightFromWidth;
+            }
+          } else if(spec.axis==="x"){
+            const candidate=isWest ? (anchorX-currentX) : (currentX-anchorX);
+            width=clampSize(candidate);
+          } else if(spec.axis==="y"){
+            const candidate=isNorth ? (anchorY-currentY) : (currentY-anchorY);
+            height=clampSize(candidate);
+          }
+          applySize(width, height);
         }
         function finish(upEv){
+          if(!resizing) return;
           resizing=false;
-          document.removeEventListener("pointermove", onMove);
-          document.removeEventListener("pointerup", finish);
-          document.removeEventListener("pointercancel", finish);
-          if(handle.hasPointerCapture && handle.hasPointerCapture(pointerId)){
-            try { handle.releasePointerCapture(pointerId); } catch(e){}
+          doc.removeEventListener("pointermove", onMove);
+          doc.removeEventListener("pointerup", finish);
+          doc.removeEventListener("pointercancel", finish);
+          if(handleEl.hasPointerCapture && handleEl.hasPointerCapture(pointerId)){
+            try { handleEl.releasePointerCapture(pointerId); } catch(e){}
           }
           if(upEv) upEv.preventDefault();
           scheduleOverlay();
+          if(changed){
+            dispatchInput();
+          }
         }
-        document.addEventListener("pointermove", onMove);
-        document.addEventListener("pointerup", finish, { once:false });
-        document.addEventListener("pointercancel", finish, { once:false });
-      });
-      editor.addEventListener("mousedown", function(ev){ if(ev.target!==handle) scheduleOverlay(); });
-      editor.addEventListener("focus", scheduleOverlay);
-      editor.addEventListener("dragstart", function(ev){ if(resizing){ ev.preventDefault(); ev.stopPropagation(); } });
+        doc.addEventListener("pointermove", onMove);
+        doc.addEventListener("pointerup", finish);
+        doc.addEventListener("pointercancel", finish);
+      }
+      for(let i=0;i<handles.length;i++){
+        const entry=handles[i];
+        entry.el.addEventListener("pointerdown", function(ev){ startResize(entry.spec, entry.el, ev); });
+      }
+      function onMovePointerDown(ev){
+        if(!activeImg || ev.button===1 || ev.button===2) return;
+        moving=true;
+        ev.preventDefault();
+        ev.stopPropagation();
+        overlay.classList.add("weditor-overlay-moving");
+        moveArea.classList.add("weditor-overlay-moving");
+        const pointerId=ev.pointerId;
+        try { moveArea.setPointerCapture(pointerId); } catch(e){}
+        const sel=getSelection();
+        const originalRange=sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+        dropRange=null;
+        let movedDuringDrag=false;
+        function update(moveEv){
+          if(!moving) return;
+          moveEv.preventDefault();
+          const candidate=getValidDropRange(moveEv.clientX, moveEv.clientY);
+          const sel=getSelection();
+          if(candidate){
+            dropRange=candidate;
+            if(sel){
+              sel.removeAllRanges();
+              const preview=candidate.cloneRange();
+              preview.collapse(true);
+              sel.addRange(preview);
+            }
+          } else if(sel){
+            sel.removeAllRanges();
+          }
+        }
+        function finish(endEv){
+          if(!moving) return;
+          moving=false;
+          overlay.classList.remove("weditor-overlay-moving");
+          moveArea.classList.remove("weditor-overlay-moving");
+          doc.removeEventListener("pointermove", update);
+          doc.removeEventListener("pointerup", finish);
+          doc.removeEventListener("pointercancel", finish);
+          if(moveArea.hasPointerCapture && moveArea.hasPointerCapture(pointerId)){
+            try { moveArea.releasePointerCapture(pointerId); } catch(e){}
+          }
+          if(endEv){
+            endEv.preventDefault();
+            const finalRange=getValidDropRange(endEv.clientX, endEv.clientY);
+            if(finalRange) dropRange=finalRange;
+          }
+          const sel=getSelection();
+          if(dropRange && editor.contains(dropRange.startContainer)){
+            const changed=moveImageToRange(activeImg, dropRange);
+            if(changed){ movedDuringDrag=true; }
+          } else if(originalRange && sel){
+            sel.removeAllRanges();
+            sel.addRange(originalRange);
+          }
+          dropRange=null;
+          scheduleOverlay();
+          if(movedDuringDrag){
+            captureDimensions(activeImg);
+            dispatchInput();
+          }
+        }
+        doc.addEventListener("pointermove", update);
+        doc.addEventListener("pointerup", finish);
+        doc.addEventListener("pointercancel", finish);
+      }
+      moveArea.addEventListener("pointerdown", onMovePointerDown);
+      editor.addEventListener("click", onClick);
+      editor.addEventListener("input", onInput);
+      editor.addEventListener("scroll", onScroll, { passive:true });
+      window.addEventListener("resize", scheduleOverlay);
+      window.addEventListener("scroll", onWindowScroll, { passive:true, capture:true });
+      editor.addEventListener("blur", onBlur);
+      editor.addEventListener("focus", onFocus);
+      editor.addEventListener("keydown", onKeydown);
+      editor.addEventListener("mousedown", onMouseDown);
+      editor.addEventListener("dragstart", onDragStart);
+      const cleanup=function(){
+        if(raf) cancelAnimationFrame(raf);
+        window.removeEventListener("resize", scheduleOverlay);
+        window.removeEventListener("scroll", onWindowScroll, { capture:true });
+        observer.disconnect();
+        editor.removeEventListener("click", onClick);
+        editor.removeEventListener("input", onInput);
+        editor.removeEventListener("scroll", onScroll);
+        editor.removeEventListener("blur", onBlur);
+        editor.removeEventListener("focus", onFocus);
+        editor.removeEventListener("keydown", onKeydown);
+        editor.removeEventListener("mousedown", onMouseDown);
+        editor.removeEventListener("dragstart", onDragStart);
+        moveArea.removeEventListener("pointerdown", onMovePointerDown);
+        detachImageWatchers();
+        if(overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        hideOverlay();
+        editor.__weditorImageOverlay=null;
+        editor.__weditorImageResizer=false;
+        editor.__weditorHideOverlay=null;
+        editor.__weditorSelectImage=null;
+        editor.__weditorImageTools=null;
+      };
+      const tools={ overlay, hide:hideOverlay, select:selectImage, schedule:scheduleOverlay, cleanup };
+      editor.__weditorImageResizer=true;
       editor.__weditorHideOverlay=hideOverlay;
-      editor.__weditorCleanup=function(){ if(raf) cancelAnimationFrame(raf); window.removeEventListener("resize", scheduleOverlay); observer.disconnect(); if(overlay.parentNode) overlay.parentNode.removeChild(overlay); editor.__weditorImageOverlay=null; editor.__weditorImageResizer=false; };
+      editor.__weditorSelectImage=selectImage;
+      editor.__weditorCleanup=cleanup;
+      editor.__weditorImageTools=tools;
+      refreshImageWatchers();
+      return tools;
+    }
+    return { attach, select:function(editor, img){ const tools=attach(editor); if(tools && typeof tools.select==="function") tools.select(img); }, capture:captureDimensions };
+  })();
+
+  const HFEditor=(function(){
+    function enableImageResizer(editor){
+      if(!editor) return;
+      const tools=ImageTools.attach(editor);
+      if(tools && typeof tools.hide==="function") tools.hide();
     }
     let uid=0;
     const TOKEN_OPTIONS=[
@@ -2584,6 +2964,7 @@
         getRecordTarget:function(){ return area; },
         onChange:function(){}
       });
+      ImageTools.attach(area);
       rightWrap.appendChild(area);
       const ctx={
         area,
@@ -5577,6 +5958,132 @@
     }
     return { createBulleted, createNumbered, createMultilevel };
   })();
+  const ImageInsertUI=(function(){
+    function normalizeAltName(name, fallback){
+      if(!name) return fallback;
+      const cleaned=name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+      return cleaned || fallback;
+    }
+    function deriveAltFromURL(url){
+      if(!url) return "Inserted image";
+      try {
+        const parsed=new URL(url, window.location.href);
+        const parts=parsed.pathname.split("/").filter(Boolean);
+        if(parts.length){ return normalizeAltName(parts[parts.length-1], "Inserted image"); }
+      } catch(e){}
+      return "Inserted image";
+    }
+    function focusTarget(target){
+      if(!target || typeof target.focus!=="function") return;
+      try { target.focus({ preventScroll:true }); }
+      catch(err){ target.focus(); }
+    }
+    function ensureSelection(target, doc){
+      let sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+        WDom.placeCaretAtEnd(target);
+        sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      }
+      return sel;
+    }
+    function insertImage(inst, ctx, src, alt){
+      if(!inst || !src) return false;
+      const target=(ctx && ctx.area) ? ctx.area : inst.el;
+      if(!target) return false;
+      const doc=target.ownerDocument || document;
+      focusTarget(target);
+      const sel=ensureSelection(target, doc);
+      if(!sel) return false;
+      const range=sel.rangeCount ? sel.getRangeAt(0).cloneRange() : doc.createRange();
+      range.collapse(true);
+      const img=doc.createElement("img");
+      img.src=src;
+      if(alt) img.alt=alt;
+      img.loading="eager";
+      img.style.maxWidth="100%";
+      img.style.height="auto";
+      img.style.display="inline-block";
+      range.insertNode(img);
+      range.setStartAfter(img);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      Normalizer.fixStructure(target);
+      Breaks.ensurePlaceholders(target);
+      ImageTools.attach(target);
+      if(target.__weditorSelectImage) target.__weditorSelectImage(img);
+      const historyTarget=HistoryManager.resolveTarget(inst, ctx);
+      HistoryManager.record(inst, historyTarget, { label:"Insert Image", repeatable:false });
+      OutputBinding.syncDebounced(inst);
+      const syncAfterLoad=function(){
+        ImageTools.capture(img);
+        if(inst) OutputBinding.syncDebounced(inst);
+        if(ctx && typeof ctx.refreshPreview==="function") ctx.refreshPreview();
+      };
+      if(img.complete){ syncAfterLoad(); }
+      else { img.addEventListener("load", syncAfterLoad, { once:true }); }
+      return true;
+    }
+    function promptForURL(inst, ctx){
+      const raw=window.prompt("Enter image URL");
+      if(!raw) return;
+      const src=raw.trim();
+      if(!src) return;
+      insertImage(inst, ctx, src, deriveAltFromURL(src));
+    }
+    function handleFile(inst, ctx, file){
+      if(!file) return;
+      if(file.type && file.type.indexOf("image/")!==0){
+        window.alert("Please choose an image file.");
+        return;
+      }
+      const reader=new FileReader();
+      reader.onload=function(){ insertImage(inst, ctx, reader.result, normalizeAltName(file.name||"", "Uploaded image")); };
+      reader.readAsDataURL(file);
+    }
+    function create(inst, ctx){
+      const wrap=document.createElement("div");
+      wrap.style.display="flex";
+      wrap.style.flexDirection="column";
+      wrap.style.gap="6px";
+      wrap.setAttribute("role","group");
+      wrap.setAttribute("aria-label","Insert image controls");
+      const row=document.createElement("div");
+      row.style.display="flex";
+      row.style.flexWrap="wrap";
+      row.style.gap="8px";
+      const uploadBtn=WDom.btn("Upload Image", false, "Upload an image from your device");
+      uploadBtn.style.fontSize="12px";
+      uploadBtn.style.padding="6px 10px";
+      uploadBtn.style.lineHeight="1.2";
+      const urlBtn=WDom.btn("Image from URL", false, "Insert image from a URL");
+      urlBtn.style.fontSize="12px";
+      urlBtn.style.padding="6px 10px";
+      urlBtn.style.lineHeight="1.2";
+      const fileInput=document.createElement("input");
+      fileInput.type="file";
+      fileInput.accept="image/*";
+      fileInput.style.display="none";
+      uploadBtn.addEventListener("click", function(){ fileInput.click(); });
+      fileInput.addEventListener("change", function(){
+        const file=fileInput.files && fileInput.files[0];
+        if(file) handleFile(inst, ctx, file);
+        fileInput.value="";
+      });
+      urlBtn.addEventListener("click", function(){ promptForURL(inst, ctx); });
+      row.appendChild(uploadBtn);
+      row.appendChild(urlBtn);
+      wrap.appendChild(row);
+      wrap.appendChild(fileInput);
+      const helper=document.createElement("div");
+      helper.style.font="11px/1.4 Segoe UI,system-ui";
+      helper.style.color=WCfg.UI.textDim;
+      helper.textContent="Upload from your computer or paste a link. Drag the image or use the corner handles to resize.";
+      wrap.appendChild(helper);
+      return wrap;
+    }
+    return { create };
+  })();
   const FontColorUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
     function normalizeCustomColor(input){
@@ -7135,6 +7642,7 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.image":{ kind:"custom", ariaLabel:"Insert image", render:function(inst, ctx){ return ImageInsertUI.create(inst, ctx); } },
     "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
@@ -7296,7 +7804,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image"] }, "insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7313,7 +7821,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image"] }, "insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7389,6 +7897,7 @@
     })(this));
     HistoryManager.init(this, this.el);
     TableResizer.attach(this);
+    ImageTools.attach(this.el);
     this.el.__winst = this;
   };
   WEditorInstance.prototype.loadState=function(state){
