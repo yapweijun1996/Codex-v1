@@ -6077,6 +6077,40 @@
       const cell=closestCell(state.root, event.target);
       if(cell){ state.anchor=cell; }
     }
+    function resolveState(inst, ctx){
+      let root=null;
+      if(ctx && ctx.area){ root=ctx.area; }
+      else if(inst && inst.el){ root=inst.el; }
+      if(!root) return null;
+      const data=states.get(root);
+      return data ? data.state : null;
+    }
+    function externalSelection(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return null;
+      const validCells=[];
+      state.cells.forEach(function(cell){
+        if(cell && cell.isConnected && state.root.contains(cell)){
+          validCells.push(cell);
+        }
+      });
+      const table=(state.table && state.table.isConnected && state.root.contains(state.table)) ? state.table : null;
+      return { cells:validCells, table, root:state.root };
+    }
+    function externalClear(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      clearSelection(state);
+    }
+    function externalSetAnchor(inst, ctx, cell){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      if(cell && isCellElement(cell) && cell.isConnected && state.root.contains(cell)){
+        state.anchor=cell;
+      } else {
+        state.anchor=null;
+      }
+    }
     function attach(inst, options){
       options=options||{};
       const root=options.root || (inst && inst.el) || null;
@@ -6101,7 +6135,139 @@
       root.addEventListener("focusin", onFocusIn);
       states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
     }
-    return { attach };
+    return { attach, getSelection:externalSelection, clear:externalClear, setAnchor:externalSetAnchor };
+  })();
+  const TableMerge=(function(){
+    function resolveSelection(inst, ctx){
+      const selection=TableSelection.getSelection(inst, ctx);
+      if(!selection || !selection.cells || !selection.cells.length) return null;
+      const table=selection.table || (selection.cells[0] && selection.cells[0].closest ? selection.cells[0].closest("table") : null);
+      if(!table) return null;
+      return { cells:selection.cells, table, root:selection.root || ((ctx && ctx.area) ? ctx.area : inst ? inst.el : null) };
+    }
+    function parseSpan(value){
+      const parsed=parseInt(value, 10);
+      if(!parsed || parsed<1 || !isFinite(parsed)) return 1;
+      return parsed;
+    }
+    function buildGrid(table){
+      const rows=table.rows || [];
+      const grid=[];
+      const positions=new WeakMap();
+      for(let r=0;r<rows.length;r++){
+        const row=rows[r];
+        if(!row || !row.cells) continue;
+        let col=0;
+        if(!grid[r]) grid[r]=[];
+        for(let c=0;c<row.cells.length;c++){
+          const cell=row.cells[c];
+          if(!cell) continue;
+          let colspan=parseSpan(cell.getAttribute("colspan"));
+          let rowspan=parseSpan(cell.getAttribute("rowspan"));
+          if(cell.colSpan && cell.colSpan>1) colspan=cell.colSpan;
+          if(cell.rowSpan && cell.rowSpan>1) rowspan=cell.rowSpan;
+          while(grid[r][col]) col++;
+          positions.set(cell, { row:r, col, rowspan, colspan });
+          for(let rr=0;rr<rowspan;rr++){
+            for(let cc=0;cc<colspan;cc++){
+              if(!grid[r+rr]) grid[r+rr]=[];
+              grid[r+rr][col+cc]={ cell, row:r, col, rowspan, colspan };
+            }
+          }
+          col+=colspan;
+        }
+      }
+      return { grid, positions };
+    }
+    function removePlaceholderBreak(cell){
+      if(!cell) return;
+      if(cell.childNodes && cell.childNodes.length===1){
+        const node=cell.childNodes[0];
+        if(node && node.nodeType===1 && (node.tagName||"").toLowerCase()==="br"){
+          cell.removeChild(node);
+        }
+      }
+    }
+    function focusCell(cell){
+      if(!cell) return;
+      const doc=cell.ownerDocument || document;
+      if(!doc || !doc.createRange) return;
+      try{
+        const range=doc.createRange();
+        range.selectNodeContents(cell);
+        range.collapse(true);
+        const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+        if(sel){ sel.removeAllRanges(); sel.addRange(range); }
+      }catch(err){}
+    }
+    function merge(inst, ctx){
+      const resolved=resolveSelection(inst, ctx);
+      if(!resolved) return { changed:false };
+      const cells=resolved.cells;
+      if(cells.length<2){
+        window.alert("Select at least two table cells to merge.");
+        return { changed:false };
+      }
+      const { grid, positions }=buildGrid(resolved.table);
+      const infos=[];
+      for(let i=0;i<cells.length;i++){
+        const info=positions.get(cells[i]);
+        if(!info){
+          window.alert("Cannot merge the selected cells.");
+          return { changed:false };
+        }
+        if(info.rowspan!==1 || info.colspan!==1){
+          window.alert("Merging cells that already span multiple rows or columns is not supported.");
+          return { changed:false };
+        }
+        infos.push(info);
+      }
+      let minRow=Infinity, maxRow=-Infinity, minCol=Infinity, maxCol=-Infinity;
+      for(let i=0;i<infos.length;i++){
+        const info=infos[i];
+        if(info.row<minRow) minRow=info.row;
+        if(info.row>maxRow) maxRow=info.row;
+        if(info.col<minCol) minCol=info.col;
+        if(info.col>maxCol) maxCol=info.col;
+      }
+      const selectedSet=new Set(cells);
+      for(let r=minRow;r<=maxRow;r++){
+        for(let c=minCol;c<=maxCol;c++){
+          const entry=grid[r] ? grid[r][c] : null;
+          if(!entry || !selectedSet.has(entry.cell)){
+            window.alert("Please select a continuous block of cells in the same table.");
+            return { changed:false };
+          }
+        }
+      }
+      const baseCell=cells.find(function(cell){
+        const info=positions.get(cell);
+        return info && info.row===minRow && info.col===minCol;
+      }) || cells[0];
+      removePlaceholderBreak(baseCell);
+      const otherCells=cells.filter(function(cell){ return cell!==baseCell; });
+      for(let i=0;i<otherCells.length;i++){
+        const cell=otherCells[i];
+        removePlaceholderBreak(cell);
+        while(cell.firstChild){
+          baseCell.appendChild(cell.firstChild);
+        }
+        const parent=cell.parentNode;
+        if(parent){ parent.removeChild(cell); }
+      }
+      const rowSpan=maxRow-minRow+1;
+      const colSpan=maxCol-minCol+1;
+      if(rowSpan>1){ baseCell.setAttribute("rowspan", String(rowSpan)); }
+      else { baseCell.removeAttribute("rowspan"); }
+      if(colSpan>1){ baseCell.setAttribute("colspan", String(colSpan)); }
+      else { baseCell.removeAttribute("colspan"); }
+      TableSelection.clear(inst, ctx);
+      TableSelection.setAnchor(inst, ctx, baseCell);
+      focusCell(baseCell);
+      TableResizer.ensureTable(resolved.table);
+      return { changed:true, table:resolved.table, cell:baseCell };
+    }
+    return { merge };
   })();
   const ListUI=(function(){
     function ensureListStyles(){
@@ -8306,6 +8472,19 @@
       ariaLabel:"Table cell vertical alignment",
       render:function(inst, ctx){ return TableCellAlignUI.create(inst, ctx); }
     },
+    "table.mergeCells":{
+      label:"Merge Cells",
+      kind:"button",
+      ariaLabel:"Merge selected table cells",
+      title:"Merge selected cells",
+      run:function(inst, arg){
+        const result=TableMerge.merge(inst, arg && arg.ctx);
+        if(!result || !result.changed) return;
+        const target=HistoryManager.resolveTarget(inst, arg && arg.ctx);
+        HistoryManager.record(inst, target, { label:"Merge Table Cells", repeatable:false });
+        OutputBinding.syncDebounced(inst);
+      }
+    },
     "fullscreen.open":{ label:"Fullscreen", primary:true, kind:"button", ariaLabel:"Open fullscreen editor", run:function(inst){ Fullscreen.open(inst); } },
     "break.insert":{ label:"Insert Break", kind:"button", ariaLabel:"Insert page break",
       run:function(inst, arg){
@@ -8384,7 +8563,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign","table.mergeCells"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -8401,7 +8580,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign","table.mergeCells"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
