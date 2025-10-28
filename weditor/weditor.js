@@ -5686,10 +5686,73 @@
     }
     return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellVerticalAlign, getCellAlignment };
   })();
+  const TableMatrix=(function(){
+    function parseSpan(value, fallback){
+      const parsed=parseInt(value,10);
+      return Number.isFinite(parsed) && parsed>0 ? parsed : fallback;
+    }
+    function read(table){
+      if(!table || !table.rows) return null;
+      const rows=Array.from(table.rows);
+      const grid=[];
+      const cells=new Map();
+      for(let r=0;r<rows.length;r++){
+        const row=rows[r];
+        if(!row || !row.cells) continue;
+        if(!grid[r]) grid[r]=[];
+        let col=0;
+        for(let c=0;c<row.cells.length;c++){
+          const cell=row.cells[c];
+          if(!cell || cell.nodeType!==1) continue;
+          while(grid[r][col]) col++;
+          const rowSpan=parseSpan(cell.getAttribute("rowspan")||cell.rowSpan||"1", 1);
+          const colSpan=parseSpan(cell.getAttribute("colspan")||cell.colSpan||"1", 1);
+          for(let rr=0;rr<rowSpan;rr++){
+            const targetRow=r+rr;
+            if(!grid[targetRow]) grid[targetRow]=[];
+            for(let cc=0;cc<colSpan;cc++){
+              const targetCol=col+cc;
+              grid[targetRow][targetCol]=cell;
+            }
+          }
+          cells.set(cell, { rowIndex:r, colIndex:col, rowSpan, colSpan });
+          col+=colSpan;
+        }
+      }
+      return { grid, cells };
+    }
+    function getCellMetrics(table, cell, layout){
+      if(!table || !cell) return null;
+      const data=layout || read(table);
+      if(!data) return null;
+      const metrics=data.cells.get(cell);
+      if(!metrics) return null;
+      return { table, rowIndex:metrics.rowIndex, colIndex:metrics.colIndex, rowSpan:metrics.rowSpan, colSpan:metrics.colSpan };
+    }
+    return { read, getCellMetrics };
+  })();
   const TableSelection=(function(){
     const CELL_CLASS="weditor-table-cell-selected";
     const STYLE_ID="weditor-table-selection-style";
     const states=new WeakMap();
+    function resolveState(inst, ctx){
+      const candidates=[];
+      if(ctx){
+        if(ctx.root) candidates.push(ctx.root);
+        if(ctx.area) candidates.push(ctx.area);
+      }
+      if(inst){
+        if(inst.root) candidates.push(inst.root);
+        if(inst.el) candidates.push(inst.el);
+      }
+      for(let i=0;i<candidates.length;i++){
+        const candidate=candidates[i];
+        if(candidate && states.has(candidate)){
+          return states.get(candidate).state;
+        }
+      }
+      return null;
+    }
     function ensureStyles(doc){
       if(!doc || !doc.head) return;
       if(doc.getElementById(STYLE_ID)) return;
@@ -5735,15 +5798,13 @@
       const tag=(node.tagName||"").toLowerCase();
       return tag==="td" || tag==="th";
     }
-    function getCellPosition(cell){
+    function getCellPosition(cell, layout){
       if(!cell || !isCellElement(cell)) return null;
-      const row=closestRow(cell);
       const table=tableFromCell(cell);
-      if(!row || !table) return null;
-      const rowIndex=typeof row.rowIndex==="number" ? row.rowIndex : Array.prototype.indexOf.call(table.rows||[], row);
-      const colIndex=typeof cell.cellIndex==="number" ? cell.cellIndex : Array.prototype.indexOf.call(row.cells||[], cell);
-      if(rowIndex<0 || colIndex<0) return null;
-      return { table, row, rowIndex, colIndex };
+      if(!table) return null;
+      const metrics=TableMatrix.getCellMetrics(table, cell, layout);
+      if(!metrics) return null;
+      return metrics;
     }
     function setSelectedCells(state, cells, table){
       const unique=new Set();
@@ -5760,18 +5821,21 @@
       if(table){ state.table=table; }
       unique.forEach(function(cell){ addCell(state, cell); });
     }
-    function collectRangeCells(table, rowStart, rowEnd, colStart, colEnd){
+    function collectRangeCells(table, rowStart, rowEnd, colStart, colEnd, layout){
       const selected=[];
       if(!table || rowStart>rowEnd || colStart>colEnd) return selected;
+      const data=layout || TableMatrix.read(table);
+      if(!data || !data.grid) return selected;
+      const unique=new Set();
       for(let r=rowStart;r<=rowEnd;r++){
-        const row=table.rows && table.rows[r];
-        if(!row || !row.cells) continue;
-        for(let c=0;c<row.cells.length;c++){
-          const cell=row.cells[c];
-          const idx=typeof cell.cellIndex==="number" ? cell.cellIndex : c;
-          if(idx>=colStart && idx<=colEnd){ selected.push(cell); }
+        const row=data.grid[r];
+        if(!row) continue;
+        for(let c=colStart;c<=colEnd;c++){
+          const cell=row[c];
+          if(cell && isCellElement(cell)){ unique.add(cell); }
         }
       }
+      unique.forEach(function(cell){ selected.push(cell); });
       return selected;
     }
     function findColumnFocusCandidate(table, row, rowIndex, columnIndex){
@@ -5916,59 +5980,119 @@
       let columnFocusTarget=null;
       let additionalRowsRemoved=0;
       if(!tableRemoved){
-        const columnInfo=new Map();
-        for(let i=0;i<table.rows.length;i++){
-          const row=table.rows[i];
-          if(!row || rowsMarked.has(row) || !row.cells) continue;
-          for(let j=0;j<row.cells.length;j++){
-            const cell=row.cells[j];
-            const colIndex=typeof cell.cellIndex==="number" ? cell.cellIndex : j;
-            if(colIndex<0) continue;
-            if(!columnInfo.has(colIndex)){ columnInfo.set(colIndex, { total:0, selected:0, cells:[] }); }
-            const info=columnInfo.get(colIndex);
-            info.total++;
-            info.cells.push(cell);
-            if(state.cells.has(cell)) info.selected++;
-          }
-        }
-        const columnsToDelete=[];
-        columnInfo.forEach(function(info, index){
-          if(info.total>0 && info.selected>=info.total){
-            columnsToDelete.push({ index, cells:info.cells.slice() });
-          }
-        });
-        if(columnsToDelete.length){
-          columnsToDelete.sort(function(a,b){ return a.index-b.index; });
-          columnsToDelete.forEach(function(column){
-            const colIndex=column.index;
-            column.cells.forEach(function(cell){
-              if(!cell || !cell.parentNode) return;
-              const row=closestRow(cell);
-              if(!row || rowsMarked.has(row)) return;
-              const rowIndex=typeof row.rowIndex==="number" ? row.rowIndex : (table.rows ? Array.prototype.indexOf.call(table.rows, row) : -1);
-              row.removeChild(cell);
-              columnsRemoved=true;
-              if(!columnFocusTarget){
-                columnFocusTarget=findColumnFocusCandidate(table, row, rowIndex, colIndex);
+        const layout=TableMatrix.read(table);
+        if(layout && layout.grid && layout.grid.length){
+          const columnCount=layout.grid.reduce(function(max, row){ return row ? Math.max(max, row.length) : max; }, 0);
+          if(columnCount>0){
+            const deleteColumns=[];
+            for(let colIndex=0; colIndex<columnCount; colIndex++){
+              const columnCells=new Set();
+              for(let rowIndex=0; rowIndex<layout.grid.length; rowIndex++){
+                const rowCells=layout.grid[rowIndex];
+                if(!rowCells) continue;
+                const cell=rowCells[colIndex];
+                if(!cell || !table.contains(cell)) continue;
+                const row=closestRow(cell);
+                if(!row || rowsMarked.has(row)) continue;
+                columnCells.add(cell);
               }
-              if(!row.cells || !row.cells.length){
-                rowsMarked.add(row);
-                if(row.parentNode){ row.parentNode.removeChild(row); additionalRowsRemoved++; }
+              if(!columnCells.size) continue;
+              let fullySelected=true;
+              columnCells.forEach(function(cell){
+                if(!state.cells.has(cell)){ fullySelected=false; }
+              });
+              if(fullySelected){ deleteColumns.push(colIndex); }
+            }
+            if(deleteColumns.length){
+              deleteColumns.sort(function(a,b){ return a-b; });
+              const deleteSet=new Set(deleteColumns);
+              const processed=new Set();
+              let focusColumnIndex=null;
+              deleteColumns.forEach(function(colIndex){
+                if(focusColumnIndex===null || colIndex<focusColumnIndex){ focusColumnIndex=colIndex; }
+                for(let rowIndex=0; rowIndex<layout.grid.length; rowIndex++){
+                  const rowCells=layout.grid[rowIndex];
+                  if(!rowCells) continue;
+                  const cell=rowCells[colIndex];
+                  if(!cell || processed.has(cell) || !table.contains(cell)) continue;
+                  const row=closestRow(cell);
+                  if(!row || rowsMarked.has(row)) continue;
+                  const metrics=layout.cells.get(cell);
+                  if(!metrics) continue;
+                  let spanCovered=0;
+                  for(let c=metrics.colIndex; c<metrics.colIndex+metrics.colSpan; c++){
+                    if(deleteSet.has(c)) spanCovered++;
+                  }
+                  if(spanCovered<=0) continue;
+                  if(spanCovered>=metrics.colSpan){
+                    if(cell.parentNode){ cell.parentNode.removeChild(cell); }
+                    processed.add(cell);
+                    columnsRemoved=true;
+                    if(row && (!row.cells || !row.cells.length)){
+                      rowsMarked.add(row);
+                      if(row.parentNode){ row.parentNode.removeChild(row); additionalRowsRemoved++; }
+                    }
+                  } else {
+                    const newSpan=metrics.colSpan-spanCovered;
+                    if(newSpan>1){
+                      cell.setAttribute("colspan", String(newSpan));
+                      cell.colSpan=newSpan;
+                    } else {
+                      cell.removeAttribute("colspan");
+                      cell.colSpan=1;
+                    }
+                    processed.add(cell);
+                    columnsRemoved=true;
+                  }
+                }
+              });
+              if(columnsRemoved){
+                if(focusTarget && (!focusTarget.isConnected || (table.contains && !table.contains(focusTarget)))){
+                  focusTarget=null;
+                }
+                if(!focusTarget){
+                  const updatedLayout=TableMatrix.read(table);
+                  if(updatedLayout && updatedLayout.grid){
+                    const preferred=[];
+                    if(typeof focusColumnIndex==="number"){
+                      if(focusColumnIndex>0) preferred.push(focusColumnIndex-1);
+                      preferred.push(focusColumnIndex);
+                    }
+                    const updatedCount=updatedLayout.grid.reduce(function(max, row){ return row ? Math.max(max, row.length) : max; }, 0);
+                    for(let i=0;i<updatedCount;i++){
+                      if(preferred.indexOf(i)===-1) preferred.push(i);
+                    }
+                    for(let i=0;i<preferred.length && !columnFocusTarget;i++){
+                      const idx=preferred[i];
+                      for(let r=0;r<updatedLayout.grid.length;r++){
+                        const rowCells=updatedLayout.grid[r];
+                        if(!rowCells) continue;
+                        const candidate=rowCells[idx];
+                        if(candidate && table.contains(candidate)){ columnFocusTarget=candidate; break; }
+                      }
+                    }
+                    if(!columnFocusTarget){
+                      for(let r=updatedLayout.grid.length-1;r>=0 && !columnFocusTarget;r--){
+                        const rowCells=updatedLayout.grid[r];
+                        if(!rowCells) continue;
+                        for(let c=rowCells.length-1;c>=0;c--){
+                          const candidate=rowCells[c];
+                          if(candidate && table.contains(candidate)){ columnFocusTarget=candidate; break; }
+                        }
+                      }
+                    }
+                  }
+                }
+                if(!focusTarget && columnFocusTarget){ focusTarget=columnFocusTarget; }
+                if(table.rows && table.rows.length){
+                  TableResizer.ensureTable(table);
+                }
+                if(!table.rows || !table.rows.length){
+                  tableRemoved=true;
+                  const parent=table.parentNode;
+                  if(parent){ parent.removeChild(table); focusTarget=parent; }
+                }
               }
-            });
-          });
-          if(columnsRemoved){
-            if(focusTarget && (!focusTarget.isConnected || (table.contains && !table.contains(focusTarget)))){
-              focusTarget=null;
-            }
-            if(!focusTarget && columnFocusTarget){ focusTarget=columnFocusTarget; }
-            if(table.rows && table.rows.length){
-              TableResizer.ensureTable(table);
-            }
-            if(!table.rows || !table.rows.length){
-              tableRemoved=true;
-              const parent=table.parentNode;
-              if(parent){ parent.removeChild(table); focusTarget=parent; }
             }
           }
         }
@@ -6040,19 +6164,24 @@
       const cell=closestCell(state.root, event.target);
       if(event.shiftKey && cell){
         const anchorCell=isValidAnchor(state);
-        const anchorPos=getCellPosition(anchorCell);
-        const targetPos=getCellPosition(cell);
-        if(anchorPos && targetPos && anchorPos.table===targetPos.table){
-          event.preventDefault();
-          const rowStart=Math.min(anchorPos.rowIndex, targetPos.rowIndex);
-          const rowEnd=Math.max(anchorPos.rowIndex, targetPos.rowIndex);
-          const colStart=Math.min(anchorPos.colIndex, targetPos.colIndex);
-          const colEnd=Math.max(anchorPos.colIndex, targetPos.colIndex);
-          const selected=collectRangeCells(anchorPos.table, rowStart, rowEnd, colStart, colEnd);
-          setSelectedCells(state, selected, anchorPos.table);
-          state.anchor=anchorCell;
-          focusCell(cell);
-          return;
+        const anchorTable=tableFromCell(anchorCell);
+        const targetTable=tableFromCell(cell);
+        if(anchorTable && anchorTable===targetTable){
+          const layout=TableMatrix.read(anchorTable);
+          const anchorPos=getCellPosition(anchorCell, layout);
+          const targetPos=getCellPosition(cell, layout);
+          if(anchorPos && targetPos){
+            event.preventDefault();
+            const rowStart=Math.min(anchorPos.rowIndex, targetPos.rowIndex);
+            const rowEnd=Math.max(anchorPos.rowIndex+anchorPos.rowSpan-1, targetPos.rowIndex+targetPos.rowSpan-1);
+            const colStart=Math.min(anchorPos.colIndex, targetPos.colIndex);
+            const colEnd=Math.max(anchorPos.colIndex+anchorPos.colSpan-1, targetPos.colIndex+targetPos.colSpan-1);
+            const selected=collectRangeCells(anchorTable, rowStart, rowEnd, colStart, colEnd, layout);
+            setSelectedCells(state, selected, anchorTable);
+            state.anchor=anchorCell;
+            focusCell(cell);
+            return;
+          }
         }
       }
       clearSelection(state);
@@ -6101,7 +6230,121 @@
       root.addEventListener("focusin", onFocusIn);
       states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
     }
-    return { attach };
+    function getSelection(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return { table:null, cells:[], anchor:null };
+      const table=(state.table && state.table.isConnected && state.root.contains(state.table)) ? state.table : null;
+      const cells=table ? Array.from(state.cells).filter(function(cell){ return cell && cell.isConnected && table.contains(cell); }) : [];
+      const anchor=isValidAnchor(state);
+      return { table, cells, anchor };
+    }
+    function setSelection(inst, ctx, cells){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      const list=Array.isArray(cells) ? cells.filter(function(cell){ return cell && isCellElement(cell); }) : [];
+      const table=list.length ? tableFromCell(list[0]) : null;
+      setSelectedCells(state, list, table);
+      state.anchor=list.length ? list[0] : null;
+      if(state.anchor){ focusCell(state.anchor); }
+    }
+    function clear(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      clearSelection(state);
+      state.anchor=null;
+    }
+    return { attach, getSelection, setSelection, clear };
+  })();
+  const TableMerge=(function(){
+    const BLOCK_TAGS=new Set(["p","div","ul","ol","li","table","thead","tbody","tfoot","tr","td","th","blockquote","h1","h2","h3","h4","h5","h6"]);
+    function readCellMetrics(cell){
+      if(!cell || cell.nodeType!==1) return null;
+      const table=cell.closest ? cell.closest("table") : null;
+      if(!table) return null;
+      const metrics=TableMatrix.getCellMetrics(table, cell);
+      if(!metrics) return null;
+      return { cell, table, rowIndex:metrics.rowIndex, colIndex:metrics.colIndex, rowSpan:metrics.rowSpan, colSpan:metrics.colSpan };
+    }
+    function isBlock(node){
+      if(!node || node.nodeType!==1) return false;
+      return BLOCK_TAGS.has((node.tagName||"").toLowerCase());
+    }
+    function appendCellContent(target, source){
+      if(!target || !source) return;
+      const doc=target.ownerDocument || document;
+      const fragment=doc.createDocumentFragment();
+      while(source.firstChild){ fragment.appendChild(source.firstChild); }
+      if(!fragment.childNodes.length){ return; }
+      const needsSeparator=target.childNodes.length && !isBlock(target.lastChild) && !isBlock(fragment.firstChild);
+      if(needsSeparator){ target.appendChild(doc.createElement("br")); }
+      target.appendChild(fragment);
+    }
+    function ensureTableReady(table){
+      if(TableResizer && typeof TableResizer.ensureTable==="function"){ TableResizer.ensureTable(table); }
+    }
+    function merge(inst, ctx){
+      const selection=TableSelection.getSelection(inst, ctx);
+      if(!selection || !selection.table){
+        window.alert("Select table cells to merge.");
+        return false;
+      }
+      const metrics=selection.cells.map(readCellMetrics).filter(function(info){ return !!info; });
+      if(metrics.length<2){
+        window.alert("Select at least two table cells to merge.");
+        return false;
+      }
+      const table=metrics[0].table;
+      for(let i=1;i<metrics.length;i++){ if(metrics[i].table!==table){ window.alert("Select cells from the same table to merge."); return false; } }
+      metrics.sort(function(a,b){ if(a.rowIndex===b.rowIndex) return a.colIndex-b.colIndex; return a.rowIndex-b.rowIndex; });
+      let minRow=metrics[0].rowIndex;
+      let maxRow=metrics[0].rowIndex+metrics[0].rowSpan-1;
+      let minCol=metrics[0].colIndex;
+      let maxCol=metrics[0].colIndex+metrics[0].colSpan-1;
+      metrics.forEach(function(info){
+        if(info.rowIndex<minRow) minRow=info.rowIndex;
+        const rowEnd=info.rowIndex+info.rowSpan-1;
+        if(rowEnd>maxRow) maxRow=rowEnd;
+        if(info.colIndex<minCol) minCol=info.colIndex;
+        const colEnd=info.colIndex+info.colSpan-1;
+        if(colEnd>maxCol) maxCol=colEnd;
+      });
+      const coverage=new Map();
+      metrics.forEach(function(info){
+        for(let r=info.rowIndex;r<info.rowIndex+info.rowSpan;r++){
+          if(!coverage.has(r)) coverage.set(r, new Set());
+          const rowSet=coverage.get(r);
+          for(let c=info.colIndex;c<info.colIndex+info.colSpan;c++){
+            rowSet.add(c);
+          }
+        }
+      });
+      for(let r=minRow;r<=maxRow;r++){
+        const rowSet=coverage.get(r);
+        if(!rowSet){ window.alert("Select a contiguous block of table cells to merge."); return false; }
+        for(let c=minCol;c<=maxCol;c++){
+          if(!rowSet.has(c)){ window.alert("Select a contiguous block of table cells to merge."); return false; }
+        }
+      }
+      const primary=metrics[0].cell;
+      const rowSpan=maxRow-minRow+1;
+      const colSpan=maxCol-minCol+1;
+      for(let i=1;i<metrics.length;i++){
+        const current=metrics[i].cell;
+        appendCellContent(primary, current);
+        if(current.parentNode){ current.parentNode.removeChild(current); }
+      }
+      primary.rowSpan=rowSpan;
+      primary.colSpan=colSpan;
+      if(rowSpan===1){ primary.removeAttribute("rowspan"); }
+      if(colSpan===1){ primary.removeAttribute("colspan"); }
+      ensureTableReady(table);
+      TableSelection.setSelection(inst, ctx, [primary]);
+      const target=HistoryManager.resolveTarget(inst, ctx);
+      HistoryManager.record(inst, target, { label:"Merge Table Cells", repeatable:false });
+      if(OutputBinding && typeof OutputBinding.syncDebounced==="function"){ OutputBinding.syncDebounced(inst); }
+      return true;
+    }
+    return { merge };
   })();
   const ListUI=(function(){
     function ensureListStyles(){
@@ -8296,6 +8539,15 @@
         HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "table.mergeCells":{
+      label:"Merge Cells",
+      kind:"button",
+      ariaLabel:"Merge selected table cells",
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        TableMerge.merge(inst, ctx);
+      }
+    },
     "table.borderColor":{
       kind:"custom",
       ariaLabel:"Table border color or visibility",
@@ -8384,7 +8636,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -8401,7 +8653,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
