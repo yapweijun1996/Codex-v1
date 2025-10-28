@@ -1290,6 +1290,7 @@
     }
     function attach(editor){
       if(!editor) return null;
+      const doc=editor.ownerDocument || document;
       if(editor.__weditorImageTools){
         const existing=editor.__weditorImageTools;
         const overlay=existing.overlay;
@@ -1300,7 +1301,6 @@
         return existing;
       }
       ensureStyle();
-      const doc=editor.ownerDocument || document;
       const computed=window.getComputedStyle(editor);
       if(computed.position === "static") editor.style.position="relative";
       const overlay=document.createElement("div");
