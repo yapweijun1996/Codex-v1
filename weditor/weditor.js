@@ -840,6 +840,10 @@
         if(img.complete){ run(); }
       }
     }
+    function attachPageMeta(meta){
+      if(meta && meta.page){ meta.page.__weditorPage = meta; }
+      return meta;
+    }
     function makePage(pageNo, opts){
       const headerEnabled=opts.headerEnabled, footerEnabled=opts.footerEnabled, headerHTML=opts.headerHTML, footerHTML=opts.footerHTML;
       const headerAlign=HFAlign.normalize(opts.headerAlign);
@@ -885,7 +889,7 @@
         footer.appendChild(fl);
         page.appendChild(footer);
       }
-      return { page, content, headerNode:header, footerNode:footer, explicit:false, headerHeight, footerHeight, baseHeaderHeight:headerHeight, baseFooterHeight:footerHeight };
+      return attachPageMeta({ page, content, headerNode:header, footerNode:footer, explicit:false, headerHeight, footerHeight, baseHeaderHeight:headerHeight, baseFooterHeight:footerHeight });
     }
     function substituteTokensForMeasure(html){
       if(!html) return "";
@@ -935,6 +939,43 @@
       const headerHeight = headerEnabled ? measureSection("header", substituteTokensForMeasure(headerHTML||""), headerAlign) : 0;
       const footerHeight = footerEnabled ? measureSection("footer", substituteTokensForMeasure(footerHTML||""), footerAlign) : 0;
       return { headerHeight, footerHeight };
+    }
+    function applyPageOffsets(pg){
+      if(!pg) return;
+      const baseHeader=Math.max(0, pg.baseHeaderHeight||0);
+      const baseFooter=Math.max(0, pg.baseFooterHeight||0);
+      let topOffset = pg.headerNode ? Math.max(WCfg.HDR_MIN, baseHeader) : 0;
+      if(pg.headerNode){
+        pg.headerNode.style.minHeight="";
+        const rect=pg.headerNode.getBoundingClientRect();
+        const measuredHeight=pg.headerNode.offsetHeight;
+        const rectHeight=Math.ceil(rect.height||0);
+        const actual=Math.max(measuredHeight||0, rectHeight, WCfg.HDR_MIN);
+        topOffset=Math.max(topOffset, actual);
+        const applied=Math.max(actual, WCfg.HDR_MIN);
+        pg.headerNode.style.minHeight=applied+"px";
+        pg.headerNode.setAttribute("data-offset-height", String(applied));
+        pg.baseHeaderHeight = applied;
+      }
+      let bottomOffset = pg.footerNode ? Math.max(WCfg.FTR_MIN, baseFooter) : 0;
+      if(pg.footerNode){
+        pg.footerNode.style.minHeight="";
+        const rect=pg.footerNode.getBoundingClientRect();
+        const measuredHeight=pg.footerNode.offsetHeight;
+        const rectHeight=Math.ceil(rect.height||0);
+        const actual=Math.max(measuredHeight||0, rectHeight, WCfg.FTR_MIN);
+        bottomOffset=Math.max(bottomOffset, actual);
+        const appliedFooter=Math.max(actual, WCfg.FTR_MIN);
+        pg.footerNode.style.minHeight=appliedFooter+"px";
+        pg.footerNode.setAttribute("data-offset-height", String(appliedFooter));
+        pg.baseFooterHeight = appliedFooter;
+      }
+      pg.headerHeight = pg.headerNode ? topOffset : 0;
+      pg.footerHeight = pg.footerNode ? bottomOffset : 0;
+      if(pg.content){
+        pg.content.style.top = pg.headerNode ? topOffset+"px" : "0px";
+        pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
+      }
     }
     function paginate(rawHTML, state){
       const {headerEnabled, footerEnabled, headerHTML, footerHTML}=state;
@@ -1020,42 +1061,13 @@
       measWrap.appendChild(measurePagesHost);
       for(let i=0;i<pages.length;i++){ measurePagesHost.appendChild(pages[i].page); }
       const total=pages.length, dateStr=(new Date()).toISOString().slice(0,10);
-      function adjustPageOffsets(pg){
-        if(!pg) return;
-        const baseHeader=Math.max(0, pg.baseHeaderHeight||0);
-        const baseFooter=Math.max(0, pg.baseFooterHeight||0);
-        let topOffset = pg.headerNode ? Math.max(WCfg.HDR_MIN, baseHeader) : 0;
-        if(pg.headerNode){
-          const rect=pg.headerNode.getBoundingClientRect();
-          const measuredHeight=pg.headerNode.offsetHeight;
-          const rectHeight=Math.ceil(rect.height||0);
-          const actual=Math.max(measuredHeight||0, rectHeight, WCfg.HDR_MIN);
-          topOffset=Math.max(topOffset, actual);
-          const applied=Math.max(actual, WCfg.HDR_MIN);
-          pg.headerNode.style.minHeight=applied+"px";
-          pg.headerNode.setAttribute("data-offset-height", String(applied));
-        }
-        let bottomOffset = pg.footerNode ? Math.max(WCfg.FTR_MIN, baseFooter) : 0;
-        if(pg.footerNode){
-          const rect=pg.footerNode.getBoundingClientRect();
-          const actual=Math.max(Math.ceil(rect.height||0), WCfg.FTR_MIN);
-          bottomOffset=Math.max(bottomOffset, actual);
-          pg.footerNode.style.minHeight=Math.max(actual, WCfg.FTR_MIN)+"px";
-        }
-        pg.headerHeight = pg.headerNode ? topOffset : 0;
-        pg.footerHeight = pg.footerNode ? bottomOffset : 0;
-        if(pg.content){
-          pg.content.style.top = pg.headerNode ? topOffset+"px" : "0px";
-          pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
-        }
-      }
       for(let i=0;i<pages.length;i++){
         const pg=pages[i];
         if(headerEnabled && pg.headerNode) Tokens.apply(pg.headerNode, {page:i+1,total,date:dateStr});
         if(footerEnabled && pg.footerNode) Tokens.apply(pg.footerNode, {page:i+1,total,date:dateStr});
-        adjustPageOffsets(pg);
-        if(pg.headerNode){ observeMedia(pg.headerNode, function(){ adjustPageOffsets(pg); }); }
-        if(pg.footerNode){ observeMedia(pg.footerNode, function(){ adjustPageOffsets(pg); }); }
+        applyPageOffsets(pg);
+        if(pg.headerNode){ observeMedia(pg.headerNode, function(){ applyPageOffsets(pg); }); }
+        if(pg.footerNode){ observeMedia(pg.footerNode, function(){ applyPageOffsets(pg); }); }
       }
       const pageBreakHTML='<div class="weditor_page-break" style="page-break-before: always;"></div>';
       let pagesHTML="";
@@ -1066,8 +1078,35 @@
       measWrap.parentNode.removeChild(measWrap);
       return { pages: pages.map(function(p){ return p.page; }), pagesHTML };
     }
+    function refreshOffsets(nodes){
+      if(!nodes) return;
+      const list=Array.isArray(nodes)?nodes:[nodes];
+      for(let i=0;i<list.length;i++){
+        const node=list[i];
+        if(!node) continue;
+        const meta=node.__weditorPage;
+        if(meta){
+          applyPageOffsets(meta);
+          continue;
+        }
+        const header=node.querySelector?node.querySelector(".weditor_page-header"):null;
+        const footer=node.querySelector?node.querySelector(".weditor_page-footer"):null;
+        const content=node.querySelector?node.querySelector(".weditor_page-content"):null;
+        if(!header && !footer && !content) continue;
+        applyPageOffsets(attachPageMeta({
+          page:node,
+          content,
+          headerNode:header,
+          footerNode:footer,
+          headerHeight:0,
+          footerHeight:0,
+          baseHeaderHeight:header?Math.max(WCfg.HDR_MIN, header.offsetHeight||0):0,
+          baseFooterHeight:footer?Math.max(WCfg.FTR_MIN, footer.offsetHeight||0):0
+        }));
+      }
+    }
     function pagesHTML(inst){ return paginate(Breaks.serialize(inst.el), inst).pagesHTML; }
-    return { paginate, pagesHTML };
+    return { paginate, pagesHTML, refreshOffsets };
   })();
   const ExportUI=(function(){
     function open(pagedHTML, rawHTML){
@@ -2621,6 +2660,8 @@
         frag.appendChild(stage);
         left.innerHTML="";
         left.appendChild(frag);
+        Paginator.refreshOffsets(out.pages);
+        window.requestAnimationFrame(function(){ Paginator.refreshOffsets(out.pages); });
         if(attempt>=2){ return; }
         window.requestAnimationFrame(function(){
           const adjustedAvailable=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
