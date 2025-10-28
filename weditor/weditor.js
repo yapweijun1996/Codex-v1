@@ -4696,7 +4696,16 @@
       const cols=Array.prototype.slice.call(colgroup.children);
       if(!cols.length) return;
       const tableRect=table.getBoundingClientRect();
-      const fallbackWidth=tableRect && tableRect.width ? Math.max(MIN_WIDTH, tableRect.width/cols.length) : 120;
+      const parentNode=table.parentElement || table.parentNode || null;
+      const parentRect=parentNode && parentNode.getBoundingClientRect ? parentNode.getBoundingClientRect() : null;
+      let fallbackWidth=120;
+      if(tableRect && tableRect.width){
+        fallbackWidth=Math.max(MIN_WIDTH, tableRect.width/cols.length);
+      } else if(parentRect && parentRect.width){
+        fallbackWidth=Math.max(MIN_WIDTH, parentRect.width/cols.length);
+      } else {
+        fallbackWidth=160;
+      }
       for(let i=0;i<cols.length;i++){
         const col=cols[i];
         const width=parseFloat(col.style.width);
@@ -5983,6 +5992,7 @@
       }
       return sel;
     }
+    const INSERT_IMAGE_MAX_WIDTH=480;
     function insertImage(inst, ctx, src, alt){
       if(!inst || !src) return false;
       const target=(ctx && ctx.area) ? ctx.area : inst.el;
@@ -5997,7 +6007,8 @@
       img.src=src;
       if(alt) img.alt=alt;
       img.loading="eager";
-      img.style.maxWidth="100%";
+      img.style.width="100%";
+      img.style.maxWidth=INSERT_IMAGE_MAX_WIDTH+"px";
       img.style.height="auto";
       img.style.display="inline-block";
       range.insertNode(img);
