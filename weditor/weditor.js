@@ -4688,6 +4688,16 @@
     }
     return { createUndo, createRedo };
   })();
+  function locateTableCell(root, target){
+    if(!root || !target || !root.contains(target)) return null;
+    let node=target;
+    while(node && node!==root){
+      const tag=node.tagName ? node.tagName.toLowerCase() : "";
+      if(tag==="td" || tag==="th") return node;
+      node=node.parentNode;
+    }
+    return null;
+  }
   const TableResizer=(function(){
     const HANDLE_BUFFER=6;
     const MIN_WIDTH=10;
@@ -4781,16 +4791,6 @@
       ensureWidths(table, colgroup);
       return colgroup;
     }
-    function locateCell(root, target){
-      if(!target || !root.contains(target)) return null;
-      let node=target;
-      while(node && node!==root){
-        const tag=node.tagName ? node.tagName.toLowerCase() : "";
-        if(tag==="td" || tag==="th") return node;
-        node=node.parentNode;
-      }
-      return null;
-    }
     function createState(inst, options){
       const root=(options && options.root) ? options.root : (inst && inst.el);
       if(!root) return;
@@ -4846,7 +4846,7 @@
         applyRootResizeCursor(cursor);
       }
       function locateHandle(event){
-        const cell=locateCell(root, event.target);
+        const cell=locateTableCell(root, event.target);
         if(!cell) return null;
         const table=cell.closest ? cell.closest("table") : null;
         if(!table || !root.contains(table)) return null;
@@ -5327,7 +5327,7 @@
         event.preventDefault();
       }
       function onFocus(event){
-        const cell=locateCell(root, event.target);
+        const cell=locateTableCell(root, event.target);
         if(!cell) return;
         const table=cell.closest ? cell.closest("table") : null;
         if(table) ensureTable(table);
@@ -5338,6 +5338,135 @@
       root.addEventListener("focusin", onFocus);
     }
     return { attach:function(inst, options){ if(inst || (options && options.root)) createState(inst, options); }, ensureTable };
+  })();
+  const TableSelection=(function(){
+    const anchors=new WeakMap();
+    function rowFromCell(cell){
+      if(!cell) return null;
+      const parent=cell.parentNode;
+      return parent && parent.nodeType===1 ? parent : null;
+    }
+    function resolveTable(cell){
+      if(!cell) return null;
+      if(typeof cell.closest==="function"){
+        const table=cell.closest("table");
+        return table || null;
+      }
+      let node=cell.parentNode;
+      while(node){
+        if(node.nodeType===1 && (node.tagName||"").toLowerCase()==="table") return node;
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function selectRowRange(anchorCell, focusCell, root){
+      if(!anchorCell || !focusCell || anchorCell===focusCell) return false;
+      const table=resolveTable(anchorCell);
+      const targetTable=resolveTable(focusCell);
+      if(!table || table!==targetTable) return false;
+      if(root && !root.contains(table)) return false;
+      const rows=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      if(!rows.length) return false;
+      const anchorRow=rowFromCell(anchorCell);
+      const focusRow=rowFromCell(focusCell);
+      if(!anchorRow || !focusRow) return false;
+      const startIndex=rows.indexOf(anchorRow);
+      const endIndex=rows.indexOf(focusRow);
+      if(startIndex<0 || endIndex<0) return false;
+      const min=Math.min(startIndex, endIndex);
+      const max=Math.max(startIndex, endIndex);
+      const startRow=rows[min];
+      const endRow=rows[max];
+      if(!startRow || !endRow) return false;
+      const doc=table.ownerDocument || document;
+      if(!doc || !doc.createRange) return false;
+      const range=doc.createRange();
+      try{
+        range.setStartBefore(startRow);
+        range.setEndAfter(endRow);
+      }catch(err){ return false; }
+      const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel) return false;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    }
+    function ensureFocus(root){
+      if(!root || typeof root.focus!=="function") return;
+      try{ root.focus({ preventScroll:true }); }
+      catch(err){ root.focus(); }
+    }
+    function setAnchor(root, cell){
+      if(!root){ return; }
+      if(cell){ anchors.set(root, cell); }
+      else { anchors.delete(root); }
+    }
+    function currentAnchor(root){
+      if(!root) return null;
+      const cell=anchors.get(root) || null;
+      if(cell && !cell.isConnected){
+        anchors.delete(root);
+        return null;
+      }
+      return cell;
+    }
+    function onMouseDownFactory(root){
+      return function(event){
+        if(!root.contains(event.target)) return;
+        const cell=locateTableCell(root, event.target);
+        if(event.shiftKey && cell){
+          const anchor=currentAnchor(root);
+          if(anchor && anchor!==cell){
+            const ok=selectRowRange(anchor, cell, root);
+            if(ok){
+              event.preventDefault();
+              ensureFocus(root);
+              return;
+            }
+          }
+        }
+        if(event.button!==0){
+          if(!event.shiftKey) setAnchor(root, null);
+          return;
+        }
+        if(cell){ setAnchor(root, cell); }
+        else if(!event.shiftKey){ setAnchor(root, null); }
+      };
+    }
+    function onKeyDownFactory(root){
+      return function(event){
+        if(event.key==="Escape") setAnchor(root, null);
+      };
+    }
+    function onFocusOutFactory(root){
+      return function(event){
+        if(root===event.target){
+          setAnchor(root, null);
+          return;
+        }
+        const cell=locateTableCell(root, event.target);
+        if(!cell) setAnchor(root, null);
+      };
+    }
+    function attach(inst, options){
+      const root=(options && options.root) ? options.root : (inst && inst.el);
+      if(!root) return;
+      if(root.__weditorTableSelectionAttached) return;
+      const onMouseDown=onMouseDownFactory(root);
+      const onKeyDown=onKeyDownFactory(root);
+      const onFocusOut=onFocusOutFactory(root);
+      root.addEventListener("mousedown", onMouseDown);
+      root.addEventListener("keydown", onKeyDown);
+      root.addEventListener("focusout", onFocusOut);
+      root.__weditorTableSelectionAttached={
+        destroy:function(){
+          root.removeEventListener("mousedown", onMouseDown);
+          root.removeEventListener("keydown", onKeyDown);
+          root.removeEventListener("focusout", onFocusOut);
+        }
+      };
+    }
+    return { attach };
   })();
   const TableStyler=(function(){
     function resolveTarget(inst, ctx){ return (ctx && ctx.area) ? ctx.area : inst ? inst.el : null; }
@@ -8057,6 +8186,7 @@
     })(this));
     HistoryManager.init(this, this.el);
     TableResizer.attach(this);
+    TableSelection.attach(this);
     ImageTools.attach(this.el);
     this.el.__winst = this;
   };
