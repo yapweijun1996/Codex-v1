@@ -388,6 +388,88 @@
     function isBreakComment(node){ return node && node.nodeType===8 && String(node.nodeValue).trim().toLowerCase()==="page:break"; }
     function isWhitespace(node){ return node && node.nodeType===3 && !node.nodeValue.trim(); }
     function isPlaceholder(node){ return node && node.nodeType===1 && node.getAttribute && node.getAttribute(PLACEHOLDER_ATTR); }
+    function isIgnorable(node){ return isWhitespace(node) || isPlaceholder(node); }
+    function findAdjacentBreak(node, direction){
+      if(!node) return null;
+      let current=direction>0 ? node.nextSibling : node.previousSibling;
+      while(current){
+        if(isIgnorable(current)){ current=direction>0 ? current.nextSibling : current.previousSibling; continue; }
+        if(isBreakComment(current)) return current;
+        return null;
+      }
+      return null;
+    }
+    function removeCommentNode(comment){
+      if(!isBreakComment(comment) || !comment.parentNode) return false;
+      removePlaceholderFor(comment);
+      comment.parentNode.removeChild(comment);
+      return true;
+    }
+    function nodeHasMeaningfulContent(node){
+      if(!node) return false;
+      if(node.nodeType===3){ return node.nodeValue.replace(/[\s\u00a0\u200b]+/g,"")!==""; }
+      if(node.nodeType===1){
+        if(isPlaceholder(node)) return false;
+        const tag=(node.tagName||"").toUpperCase();
+        if(tag==="BR") return false;
+        if(node.childNodes && node.childNodes.length){
+          for(let i=0;i<node.childNodes.length;i++){ if(nodeHasMeaningfulContent(node.childNodes[i])) return true; }
+          return false;
+        }
+        return true;
+      }
+      return false;
+    }
+    function fragmentHasMeaningfulContent(fragment){
+      if(!fragment || !fragment.childNodes) return false;
+      for(let i=0;i<fragment.childNodes.length;i++){ if(nodeHasMeaningfulContent(fragment.childNodes[i])) return true; }
+      return false;
+    }
+    function caretContext(targetEl){
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(!targetEl.contains(range.startContainer)) return null;
+      if(!range.collapsed) return null;
+      let node=range.startContainer;
+      if(node===targetEl){
+        if(targetEl.childNodes && targetEl.childNodes.length){
+          const idx=Math.min(range.startOffset, targetEl.childNodes.length-1);
+          node=targetEl.childNodes[idx];
+        } else {
+          return null;
+        }
+      }
+      while(node && node.parentNode && node.parentNode!==targetEl){ node=node.parentNode; }
+      if(!node || node.parentNode!==targetEl) return null;
+      return { range, node };
+    }
+    function hasContentBeforeCaret(ctx){
+      if(!ctx || !ctx.range || !ctx.node) return false;
+      try{
+        const probe=ctx.range.cloneRange();
+        probe.setStart(ctx.node, 0);
+        const fragment=probe.cloneContents();
+        if(fragmentHasMeaningfulContent(fragment)) return true;
+        const text=probe.toString();
+        return text.replace(/[\s\u00a0\u200b]+/g,"")!=="";
+      }catch(e){
+        return true;
+      }
+    }
+    function handleKeydown(targetEl, ev){
+      if(!targetEl || !ev) return false;
+      const key=(ev.key||"").toLowerCase();
+      if(key!=="backspace") return false;
+      const ctx=caretContext(targetEl);
+      if(!ctx) return false;
+      if(hasContentBeforeCaret(ctx)) return false;
+      const comment=findAdjacentBreak(ctx.node, -1);
+      if(!comment) return false;
+      ev.preventDefault();
+      removeCommentNode(comment);
+      return true;
+    }
     function createPlaceholder(){
       const marker=document.createElement("div");
       marker.setAttribute(PLACEHOLDER_ATTR,"1");
@@ -540,11 +622,13 @@
         alert("No page break found near cursor."); return false;
       }
       while(node && node.parentNode!==targetEl){ node=node.parentNode; }
-      let f=node.nextSibling; while(isWhitespace(f)) f=f.nextSibling; if(isBreakComment(f)){ removePlaceholderFor(f); f.remove(); return true; }
-      let b=node.previousSibling; while(isWhitespace(b)) b=b.previousSibling; if(isBreakComment(b)){ removePlaceholderFor(b); b.remove(); return true; }
+      const forward=findAdjacentBreak(node, 1);
+      if(forward && removeCommentNode(forward)) return true;
+      const backward=findAdjacentBreak(node, -1);
+      if(backward && removeCommentNode(backward)) return true;
       alert("No page break found next to the cursor."); return false;
     }
-    return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize };
+    return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize, handleKeydown };
   })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -2289,7 +2373,15 @@
       layout(); const onR=function(){ layout(); render(); }; window.addEventListener("resize", onR);
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensurePlaceholders(area); }, 0); });
       let t=null; area.addEventListener("input", function(ev){ Breaks.ensurePlaceholders(area); HistoryManager.handleInput(inst, area, ev); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
-      area.addEventListener("keydown", function(ev){ HistoryManager.handleKeydown(inst, area, ev, ctx); });
+      area.addEventListener("keydown", function(ev){
+        if(Breaks.handleKeydown(area, ev)){
+          HistoryManager.record(inst, area, { label:"Remove Page Break", repeatable:false });
+          if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+          OutputBinding.syncDebounced(inst);
+          return;
+        }
+        HistoryManager.handleKeydown(inst, area, ev, ctx);
+      });
       render();
       function render(attempt){
         attempt = attempt || 0;
@@ -7012,7 +7104,14 @@
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
     this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
-    this.el.addEventListener("keydown", (function(self){ return function(ev){ HistoryManager.handleKeydown(self, self.el, ev); }; })(this));
+    this.el.addEventListener("keydown", (function(self){ return function(ev){
+      if(Breaks.handleKeydown(self.el, ev)){
+        HistoryManager.record(self, self.el, { label:"Remove Page Break", repeatable:false });
+        OutputBinding.syncDebounced(self);
+        return;
+      }
+      HistoryManager.handleKeydown(self, self.el, ev);
+    }; })(this));
     HistoryManager.init(this, this.el);
     TableResizer.attach(this);
     this.el.__winst = this;
