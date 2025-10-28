@@ -5802,6 +5802,19 @@
       state.cells.clear();
       state.table=null;
     }
+    function resolveRoot(inst, ctx){
+      if(ctx && ctx.area) return ctx.area;
+      if(ctx && ctx.root) return ctx.root;
+      if(inst && inst.el) return inst.el;
+      return null;
+    }
+    function resolveState(inst, ctx){
+      const root=resolveRoot(inst, ctx);
+      if(!root) return null;
+      const entry=states.get(root);
+      if(!entry || !entry.state) return null;
+      return entry.state;
+    }
     function isValidAnchor(state){
       if(!state.anchor) return null;
       if(!state.anchor.isConnected || !state.root.contains(state.anchor)){
@@ -6101,7 +6114,132 @@
       root.addEventListener("focusin", onFocusIn);
       states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
     }
-    return { attach };
+    function getSelection(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return { table:null, cells:[], anchor:null };
+      const table=(state.table && state.table.isConnected && state.root.contains(state.table)) ? state.table : null;
+      if(!table){
+        clearSelection(state);
+        return { table:null, cells:[], anchor:null };
+      }
+      const cells=Array.from(state.cells).filter(function(cell){
+        return cell && cell.isConnected && table.contains(cell);
+      });
+      if(!cells.length){
+        clearSelection(state);
+        return { table:null, cells:[], anchor:null };
+      }
+      return { table, cells, anchor:isValidAnchor(state) };
+    }
+    function setSelection(inst, ctx, cells){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      if(!Array.isArray(cells) || !cells.length){
+        clearSelection(state);
+        state.anchor=null;
+        return;
+      }
+      const table=tableFromCell(cells[0]);
+      setSelectedCells(state, cells, table || null);
+      state.anchor=cells[0];
+    }
+    function clearPublic(inst, ctx){
+      const state=resolveState(inst, ctx);
+      if(!state) return;
+      clearSelection(state);
+      state.anchor=null;
+    }
+    return { attach, getSelection, setSelection, clear:clearPublic, focusCell, getCellPosition };
+  })();
+  const TableMerge=(function(){
+    function hasContent(cell){
+      if(!cell) return false;
+      const text=(cell.textContent||"").replace(/\u00a0/g," ").trim();
+      if(text) return true;
+      if(cell.querySelector){
+        return !!cell.querySelector("img,table,svg,canvas,video,figure,ul,ol,li,blockquote,hr,pre,code");
+      }
+      return false;
+    }
+    function spanValue(cell, attr){
+      if(!cell) return 1;
+      const parsed=parseInt(cell.getAttribute(attr),10);
+      if(parsed && parsed>1) return parsed;
+      const prop=attr==="rowspan" ? cell.rowSpan : cell.colSpan;
+      return prop && prop>1 ? prop : 1;
+    }
+    function merge(inst, ctx){
+      const selection=TableSelection.getSelection(inst, ctx);
+      if(!selection || !selection.table){
+        return { merged:false, reason:"Select two or more table cells before merging." };
+      }
+      const table=selection.table;
+      const cells=selection.cells.filter(function(cell){
+        return cell && cell.isConnected && table.contains(cell);
+      });
+      if(cells.length<=1){
+        return { merged:false, reason:"Select two or more table cells before merging." };
+      }
+      const positions=cells.map(function(cell){ return TableSelection.getCellPosition(cell); }).filter(Boolean);
+      if(positions.length!==cells.length){
+        return { merged:false, reason:"Unable to merge the current selection." };
+      }
+      let minRow=Infinity, maxRow=-Infinity, minCol=Infinity, maxCol=-Infinity;
+      for(let i=0;i<positions.length;i++){
+        const pos=positions[i];
+        if(pos.table!==table) return { merged:false, reason:"Unable to merge cells from different tables." };
+        if(pos.rowIndex<minRow) minRow=pos.rowIndex;
+        if(pos.rowIndex>maxRow) maxRow=pos.rowIndex;
+        if(pos.colIndex<minCol) minCol=pos.colIndex;
+        if(pos.colIndex>maxCol) maxCol=pos.colIndex;
+      }
+      const expectedCount=(maxRow-minRow+1)*(maxCol-minCol+1);
+      if(expectedCount!==positions.length){
+        return { merged:false, reason:"Please select a rectangular block of cells to merge." };
+      }
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(spanValue(cell,"rowspan")>1 || spanValue(cell,"colspan")>1){
+          return { merged:false, reason:"Merging cells that already span multiple rows or columns isn't supported." };
+        }
+      }
+      let baseCell=null;
+      for(let i=0;i<positions.length;i++){
+        const pos=positions[i];
+        const cell=cells[i];
+        if(pos.rowIndex===minRow && pos.colIndex===minCol){
+          baseCell=cell;
+          break;
+        }
+      }
+      if(!baseCell) baseCell=cells[0];
+      const doc=baseCell.ownerDocument || document;
+      const rowSpan=maxRow-minRow+1;
+      const colSpan=maxCol-minCol+1;
+      baseCell.rowSpan=rowSpan;
+      baseCell.colSpan=colSpan;
+      if(rowSpan>1) baseCell.setAttribute("rowspan", String(rowSpan));
+      else baseCell.removeAttribute("rowspan");
+      if(colSpan>1) baseCell.setAttribute("colspan", String(colSpan));
+      else baseCell.removeAttribute("colspan");
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(cell===baseCell) continue;
+        if(hasContent(baseCell) && hasContent(cell)){
+          baseCell.appendChild(doc.createElement("br"));
+        }
+        while(cell.firstChild){
+          baseCell.appendChild(cell.firstChild);
+        }
+        const parent=cell.parentNode;
+        if(parent){ parent.removeChild(cell); }
+      }
+      TableSelection.setSelection(inst, ctx, [baseCell]);
+      TableSelection.focusCell(baseCell);
+      TableResizer.ensureTable(table);
+      return { merged:true, table, cell:baseCell };
+    }
+    return { merge };
   })();
   const ListUI=(function(){
     function ensureListStyles(){
@@ -8296,6 +8434,19 @@
         HistoryManager.record(inst, target, { label:"Insert Table", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "table.mergeCells":{ label:"Merge Cells", kind:"button", ariaLabel:"Merge selected table cells",
+      run:function(inst, arg){
+        const ctx=arg && arg.ctx;
+        const result=TableMerge.merge(inst, ctx);
+        if(!result || !result.merged){
+          if(result && result.reason){ window.alert(result.reason); }
+          return;
+        }
+        const target=HistoryManager.resolveTarget(inst, ctx);
+        HistoryManager.record(inst, target, { label:"Merge Table Cells", repeatable:false });
+        if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+        OutputBinding.syncDebounced(inst);
+      } },
     "table.borderColor":{
       kind:"custom",
       ariaLabel:"Table border color or visibility",
@@ -8384,7 +8535,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign","table.mergeCells"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
@@ -8401,7 +8552,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign","table.mergeCells"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
