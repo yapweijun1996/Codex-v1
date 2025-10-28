@@ -6042,40 +6042,150 @@
       const wrap=document.createElement("div");
       wrap.style.display="flex";
       wrap.style.flexDirection="column";
+      wrap.style.alignItems="flex-start";
       wrap.style.gap="6px";
       wrap.setAttribute("role","group");
       wrap.setAttribute("aria-label","Insert image controls");
-      const row=document.createElement("div");
-      row.style.display="flex";
-      row.style.flexWrap="wrap";
-      row.style.gap="8px";
-      const uploadBtn=WDom.btn("Upload Image", false, "Upload an image from your device");
-      uploadBtn.style.fontSize="12px";
-      uploadBtn.style.padding="6px 10px";
-      uploadBtn.style.lineHeight="1.2";
-      const urlBtn=WDom.btn("Image from URL", false, "Insert image from a URL");
-      urlBtn.style.fontSize="12px";
-      urlBtn.style.padding="6px 10px";
-      urlBtn.style.lineHeight="1.2";
+      const triggerWrap=document.createElement("div");
+      triggerWrap.style.position="relative";
+      triggerWrap.style.display="inline-flex";
+      triggerWrap.style.flexDirection="column";
+      triggerWrap.style.alignItems="stretch";
+      triggerWrap.style.minWidth="0";
+      const trigger=WDom.btn("Insert Image", false, "Insert an image");
+      trigger.style.display="inline-flex";
+      trigger.style.alignItems="center";
+      trigger.style.gap="6px";
+      trigger.style.padding="6px 12px";
+      trigger.style.fontSize="13px";
+      trigger.style.lineHeight="1.3";
+      trigger.setAttribute("aria-haspopup","menu");
+      trigger.setAttribute("aria-expanded","false");
+      trigger.setAttribute("data-weditor-image-trigger","1");
+      const caret=document.createElement("span");
+      caret.textContent="▾";
+      caret.style.fontSize="12px";
+      caret.style.lineHeight="1";
+      caret.style.marginLeft="2px";
+      caret.style.color=WCfg.UI.textDim;
+      trigger.appendChild(caret);
+      const menu=document.createElement("div");
+      menu.setAttribute("role","menu");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 4px)";
+      menu.style.left="0";
+      menu.style.display="flex";
+      menu.style.flexDirection="column";
+      menu.style.padding="6px";
+      menu.style.gap="4px";
+      menu.style.minWidth="180px";
+      menu.style.boxShadow="0 6px 16px rgba(0,0,0,.12)";
+      menu.style.borderRadius="8px";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.background="#fff";
+      menu.style.zIndex="10";
+      menu.hidden=true;
+      const menuItems=[];
+      function closeMenu(){
+        if(menu.hidden) return;
+        menu.hidden=true;
+        trigger.setAttribute("aria-expanded","false");
+        document.removeEventListener("mousedown", onDocDown, true);
+        document.removeEventListener("focusin", onDocDown, true);
+        document.removeEventListener("keydown", onDocKey, true);
+      }
+      function openMenu(){
+        if(!menu.hidden) return;
+        menu.hidden=false;
+        trigger.setAttribute("aria-expanded","true");
+        document.addEventListener("mousedown", onDocDown, true);
+        document.addEventListener("focusin", onDocDown, true);
+        document.addEventListener("keydown", onDocKey, true);
+        window.setTimeout(function(){ if(menuItems[0]) menuItems[0].focus(); }, 0);
+      }
+      function onDocDown(ev){
+        if(!wrap.contains(ev.target)) closeMenu();
+      }
+      function onDocKey(ev){
+        if(ev.key==="Escape"){ closeMenu(); window.setTimeout(function(){ trigger.focus(); }, 0); }
+      }
+      trigger.addEventListener("click", function(ev){ ev.preventDefault(); if(menu.hidden) openMenu(); else closeMenu(); });
+      trigger.addEventListener("keydown", function(ev){
+        if(ev.key==="ArrowDown" || ev.key==="Enter" || ev.key===" "){
+          ev.preventDefault();
+          if(menu.hidden) openMenu();
+        } else if(ev.key==="Escape" && !menu.hidden){
+          ev.preventDefault();
+          closeMenu();
+        }
+      });
+      function createMenuButton(label, description, handler){
+        const btn=document.createElement("button");
+        btn.type="button";
+        btn.setAttribute("role","menuitem");
+        btn.textContent=label;
+        btn.style.display="flex";
+        btn.style.flexDirection="column";
+        btn.style.alignItems="flex-start";
+        btn.style.gap="2px";
+        btn.style.padding="8px";
+        btn.style.border="0";
+        btn.style.background="transparent";
+        btn.style.font="13px/1.4 Segoe UI,system-ui";
+        btn.style.color=WCfg.UI.text;
+        btn.style.borderRadius="6px";
+        btn.style.textAlign="left";
+        btn.style.cursor="pointer";
+        if(description){
+          const sub=document.createElement("span");
+          sub.textContent=description;
+          sub.style.font="11px/1.4 Segoe UI,system-ui";
+          sub.style.color=WCfg.UI.textDim;
+          btn.appendChild(sub);
+        }
+        btn.addEventListener("mouseenter", function(){ btn.style.background="#f7f7f7"; });
+        btn.addEventListener("mouseleave", function(){ btn.style.background="transparent"; });
+        btn.addEventListener("click", function(ev){
+          ev.preventDefault();
+          closeMenu();
+          handler();
+        });
+        btn.addEventListener("keydown", function(ev){
+          if(ev.key==="ArrowDown" || ev.key==="ArrowUp"){
+            ev.preventDefault();
+            if(menuItems.length<2) return;
+            const idx=menuItems.indexOf(btn);
+            if(idx===-1) return;
+            const nextIdx=ev.key==="ArrowDown" ? (idx+1)%menuItems.length : (idx-1+menuItems.length)%menuItems.length;
+            const next=menuItems[nextIdx];
+            if(next) next.focus();
+          } else if(ev.key==="Home"){ ev.preventDefault(); if(menuItems[0]) menuItems[0].focus(); }
+          else if(ev.key==="End"){ ev.preventDefault(); const last=menuItems[menuItems.length-1]; if(last) last.focus(); }
+        });
+        menuItems.push(btn);
+        return btn;
+      }
       const fileInput=document.createElement("input");
       fileInput.type="file";
       fileInput.accept="image/*";
       fileInput.style.display="none";
-      uploadBtn.addEventListener("click", function(){ fileInput.click(); });
+      const uploadBtn=createMenuButton("Upload from device", "Choose an image file to insert", function(){ fileInput.click(); });
+      const urlBtn=createMenuButton("Use image URL", "Paste a direct link to an image", function(){ promptForURL(inst, ctx); });
+      menu.appendChild(uploadBtn);
+      menu.appendChild(urlBtn);
+      triggerWrap.appendChild(trigger);
+      triggerWrap.appendChild(menu);
+      wrap.appendChild(triggerWrap);
+      wrap.appendChild(fileInput);
       fileInput.addEventListener("change", function(){
         const file=fileInput.files && fileInput.files[0];
         if(file) handleFile(inst, ctx, file);
         fileInput.value="";
       });
-      urlBtn.addEventListener("click", function(){ promptForURL(inst, ctx); });
-      row.appendChild(uploadBtn);
-      row.appendChild(urlBtn);
-      wrap.appendChild(row);
-      wrap.appendChild(fileInput);
       const helper=document.createElement("div");
-      helper.style.font="11px/1.4 Segoe UI,system-ui";
+      helper.style.font="11px/1.5 Segoe UI,system-ui";
       helper.style.color=WCfg.UI.textDim;
-      helper.textContent="Upload from your computer or paste a link. Drag the image or use the corner handles to resize.";
+      helper.textContent="Insert from your device or a web link. Resize the image after it appears.";
       wrap.appendChild(helper);
       return wrap;
     }
