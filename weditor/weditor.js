@@ -1184,25 +1184,63 @@
       overlay.style.border="1px dashed "+WCfg.UI.brand;
       overlay.style.borderRadius="4px";
       overlay.style.boxSizing="border-box";
-      overlay.style.pointerEvents="none";
+      overlay.style.pointerEvents="auto";
       overlay.style.display="none";
       overlay.style.zIndex="10";
       overlay.style.left="0";
       overlay.style.top="0";
-      const handle=document.createElement("div");
-      handle.setAttribute("data-weditor-overlay","1");
-      handle.style.position="absolute";
-      handle.style.width="14px";
-      handle.style.height="14px";
-      handle.style.borderRadius="50%";
-      handle.style.background=WCfg.UI.brand;
-      handle.style.border="2px solid #fff";
-      handle.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
-      handle.style.right="-7px";
-      handle.style.bottom="-7px";
-      handle.style.cursor="nwse-resize";
-      handle.style.pointerEvents="auto";
-      overlay.appendChild(handle);
+      const dragSurface=document.createElement("div");
+      dragSurface.setAttribute("data-weditor-overlay","1");
+      dragSurface.style.position="absolute";
+      dragSurface.style.left="0";
+      dragSurface.style.top="0";
+      dragSurface.style.right="0";
+      dragSurface.style.bottom="0";
+      dragSurface.style.cursor="move";
+      dragSurface.style.pointerEvents="auto";
+      overlay.appendChild(dragSurface);
+      const handles=[];
+      const handleConfig=[
+        { dir:"nw", cursor:"nwse-resize" },
+        { dir:"n", cursor:"ns-resize" },
+        { dir:"ne", cursor:"nesw-resize" },
+        { dir:"e", cursor:"ew-resize" },
+        { dir:"se", cursor:"nwse-resize" },
+        { dir:"s", cursor:"ns-resize" },
+        { dir:"sw", cursor:"nesw-resize" },
+        { dir:"w", cursor:"ew-resize" }
+      ];
+      function createHandle(meta){
+        const h=document.createElement("div");
+        h.setAttribute("data-weditor-overlay","1");
+        h.setAttribute("data-direction", meta.dir);
+        h.style.position="absolute";
+        h.style.width="12px";
+        h.style.height="12px";
+        h.style.borderRadius="50%";
+        h.style.background=WCfg.UI.brand;
+        h.style.border="2px solid #fff";
+        h.style.boxShadow="0 1px 4px rgba(0,0,0,.3)";
+        h.style.cursor=meta.cursor;
+        h.style.pointerEvents="auto";
+        const dir=meta.dir;
+        if(dir.indexOf("n")>=0){ h.style.top="-7px"; }
+        if(dir.indexOf("s")>=0){ h.style.bottom="-7px"; }
+        if(dir.indexOf("e")>=0){ h.style.right="-7px"; }
+        if(dir.indexOf("w")>=0){ h.style.left="-7px"; }
+        if(dir==="n"){ h.style.left="50%"; h.style.transform="translateX(-50%)"; }
+        if(dir==="s"){ h.style.left="50%"; h.style.transform="translateX(-50%)"; }
+        if(dir==="e"){ h.style.top="50%"; h.style.transform="translateY(-50%)"; }
+        if(dir==="w"){ h.style.top="50%"; h.style.transform="translateY(-50%)"; }
+        if(dir==="ne"){ h.style.top="-7px"; h.style.right="-7px"; }
+        if(dir==="nw"){ h.style.top="-7px"; h.style.left="-7px"; }
+        if(dir==="se"){ h.style.bottom="-7px"; h.style.right="-7px"; }
+        if(dir==="sw"){ h.style.bottom="-7px"; h.style.left="-7px"; }
+        handles.push(h);
+        overlay.appendChild(h);
+        return h;
+      }
+      for(let i=0;i<handleConfig.length;i++) createHandle(handleConfig[i]);
       const readout=document.createElement("div");
       readout.setAttribute("data-weditor-overlay","1");
       readout.style.position="absolute";
@@ -1221,6 +1259,7 @@
       editor.__weditorImageOverlay = overlay;
       let activeImg=null;
       let raf=null;
+      const MIN_SIZE=32;
       function hideOverlay(){
         overlay.style.display="none";
         readout.textContent="";
@@ -1284,52 +1323,175 @@
       });
       observer.observe(editor, { childList:true, subtree:true, attributes:true });
       let resizing=false;
-      handle.addEventListener("pointerdown", function(ev){
-        if(!activeImg){ return; }
+      function dispatchEditorInput(){
+        try {
+          const evt=new Event("input", { bubbles:true });
+          editor.dispatchEvent(evt);
+        } catch(err){
+          const evt=document.createEvent ? document.createEvent("Event") : null;
+          if(evt && evt.initEvent){ evt.initEvent("input", true, false); editor.dispatchEvent(evt); }
+        }
+      }
+      function rangeFromPoint(x, y){
+        const doc=editor.ownerDocument || document;
+        if(doc.caretRangeFromPoint){
+          return doc.caretRangeFromPoint(x, y);
+        }
+        if(doc.caretPositionFromPoint){
+          const pos=doc.caretPositionFromPoint(x, y);
+          if(pos){
+            const range=doc.createRange();
+            range.setStart(pos.offsetNode, pos.offset);
+            range.collapse(true);
+            return range;
+          }
+        }
+        return null;
+      }
+      function startResize(ev, direction){
+        if(!activeImg) return;
         resizing=true;
         ev.preventDefault();
         ev.stopPropagation();
+        const rect=activeImg.getBoundingClientRect();
+        const startWidth=Math.max(MIN_SIZE, rect.width);
+        const startHeight=Math.max(1, rect.height);
         const startX=ev.clientX;
         const startY=ev.clientY;
-        const startWidth=activeImg.getBoundingClientRect().width;
-        const startHeight=activeImg.getBoundingClientRect().height || 1;
-        const ratio=(activeImg.naturalWidth&&activeImg.naturalHeight)?(activeImg.naturalWidth/activeImg.naturalHeight):(startWidth/Math.max(startHeight,1));
+        const ratio=(activeImg.naturalWidth&&activeImg.naturalHeight)?(activeImg.naturalWidth/Math.max(activeImg.naturalHeight,1)):(startWidth/Math.max(startHeight,1));
+        activeImg.style.maxWidth="";
+        activeImg.style.maxHeight="";
+        activeImg.style.width=Math.round(startWidth)+"px";
+        activeImg.style.height=Math.round(startHeight)+"px";
+        if(!activeImg.style.objectFit) activeImg.style.objectFit="contain";
         const pointerId=ev.pointerId;
-        try { handle.setPointerCapture(pointerId); } catch(e){}
-        function applySize(width){
-          const safeWidth=Math.max(24, width);
-          const calcHeight=safeWidth/ratio;
-          activeImg.style.maxWidth="";
-          activeImg.style.maxHeight="";
-          activeImg.style.width=Math.round(safeWidth)+"px";
-          activeImg.style.height=Math.round(calcHeight)+"px";
-          if(!activeImg.style.objectFit) activeImg.style.objectFit="contain";
-          scheduleOverlay();
-        }
-        function onMove(moveEv){
+        try { ev.target.setPointerCapture(pointerId); } catch(e){}
+        function resizeWithDelta(moveEv){
           if(!resizing) return;
           moveEv.preventDefault();
+          let newWidth=startWidth;
+          let newHeight=startHeight;
+          const dir=direction;
           const deltaX=moveEv.clientX-startX;
           const deltaY=moveEv.clientY-startY;
-          const delta=Math.abs(deltaX)>Math.abs(deltaY)?deltaX:deltaY;
-          applySize(startWidth+delta);
+          const isHorizontal=/e|w/.test(dir);
+          const isVertical=/n|s/.test(dir);
+          if(dir.length===2){
+            let adjX=deltaX;
+            let adjY=deltaY;
+            if(dir.indexOf("w")>=0) adjX=-adjX;
+            if(dir.indexOf("n")>=0) adjY=-adjY;
+            const yWeighted=adjY * (startWidth/Math.max(startHeight,1));
+            const delta=Math.abs(adjX)>=Math.abs(yWeighted)?adjX:yWeighted;
+            newWidth=Math.max(MIN_SIZE, startWidth+delta);
+            newHeight=Math.max(MIN_SIZE/Math.max(ratio,0.0001), newWidth/Math.max(ratio,0.0001));
+          } else if(isHorizontal){
+            const adjust = dir.indexOf("w")>=0 ? -deltaX : deltaX;
+            newWidth=Math.max(MIN_SIZE, startWidth+adjust);
+            newHeight=startHeight;
+          } else if(isVertical){
+            const adjust = dir.indexOf("n")>=0 ? -deltaY : deltaY;
+            newHeight=Math.max(MIN_SIZE/Math.max(ratio,0.0001), startHeight+adjust);
+            newWidth=startWidth;
+          }
+          if(dir.length===2){
+            activeImg.style.width=Math.round(newWidth)+"px";
+            activeImg.style.height=Math.round(newHeight)+"px";
+          } else if(isHorizontal){
+            activeImg.style.width=Math.round(newWidth)+"px";
+            activeImg.style.height=Math.round(newHeight)+"px";
+          } else if(isVertical){
+            activeImg.style.height=Math.round(newHeight)+"px";
+            activeImg.style.width=Math.round(newWidth)+"px";
+          }
+          scheduleOverlay();
         }
-        function finish(upEv){
+        function finishResize(upEv){
           resizing=false;
-          document.removeEventListener("pointermove", onMove);
-          document.removeEventListener("pointerup", finish);
-          document.removeEventListener("pointercancel", finish);
-          if(handle.hasPointerCapture && handle.hasPointerCapture(pointerId)){
-            try { handle.releasePointerCapture(pointerId); } catch(e){}
+          document.removeEventListener("pointermove", resizeWithDelta);
+          document.removeEventListener("pointerup", finishResize);
+          document.removeEventListener("pointercancel", finishResize);
+          const target=ev.target;
+          if(target && target.hasPointerCapture && target.hasPointerCapture(pointerId)){
+            try { target.releasePointerCapture(pointerId); } catch(e){}
           }
           if(upEv) upEv.preventDefault();
           scheduleOverlay();
+          dispatchEditorInput();
+        }
+        document.addEventListener("pointermove", resizeWithDelta);
+        document.addEventListener("pointerup", finishResize, { once:false });
+        document.addEventListener("pointercancel", finishResize, { once:false });
+      }
+      for(let i=0;i<handles.length;i++){
+        handles[i].addEventListener("pointerdown", function(ev){
+          const dir=this.getAttribute("data-direction")||"se";
+          startResize(ev, dir);
+        });
+      }
+      let dragging=false;
+      dragSurface.addEventListener("pointerdown", function(ev){
+        if(!activeImg) return;
+        dragging=true;
+        ev.preventDefault();
+        ev.stopPropagation();
+        editor.focus();
+        overlay.style.opacity="0.65";
+        overlay.style.visibility="hidden";
+        overlay.style.pointerEvents="none";
+        let lastPointerX=ev.clientX;
+        let lastPointerY=ev.clientY;
+        const pointerId=ev.pointerId;
+        try { dragSurface.setPointerCapture(pointerId); } catch(e){}
+        const sel=window.getSelection();
+        if(sel){ sel.removeAllRanges(); }
+        function onMove(moveEv){
+          if(!dragging) return;
+          moveEv.preventDefault();
+          lastPointerX=moveEv.clientX;
+          lastPointerY=moveEv.clientY;
+          const range=rangeFromPoint(moveEv.clientX, moveEv.clientY);
+          if(range && editor.contains(range.commonAncestorContainer)){
+            const selection=window.getSelection();
+            if(selection){ selection.removeAllRanges(); selection.addRange(range); }
+          }
+        }
+        function finishDrag(upEv){
+          dragging=false;
+          overlay.style.opacity="1";
+          overlay.style.visibility="visible";
+          overlay.style.pointerEvents="auto";
+          document.removeEventListener("pointermove", onMove);
+          document.removeEventListener("pointerup", finishDrag);
+          document.removeEventListener("pointercancel", finishDrag);
+          if(dragSurface.hasPointerCapture && dragSurface.hasPointerCapture(pointerId)){
+            try { dragSurface.releasePointerCapture(pointerId); } catch(e){}
+          }
+          const dropX = upEv && typeof upEv.clientX === "number" ? upEv.clientX : lastPointerX;
+          const dropY = upEv && typeof upEv.clientY === "number" ? upEv.clientY : lastPointerY;
+          const dropRange=rangeFromPoint(dropX, dropY);
+          if(dropRange && editor.contains(dropRange.commonAncestorContainer) && !overlay.contains(dropRange.commonAncestorContainer)){
+            dropRange.collapse(true);
+            try{
+              dropRange.insertNode(activeImg);
+              const after=dropRange.cloneRange();
+              after.setStartAfter(activeImg);
+              after.collapse(true);
+              const selection=window.getSelection();
+              if(selection){ selection.removeAllRanges(); selection.addRange(after); }
+            } catch(err){}
+            scheduleOverlay();
+            dispatchEditorInput();
+          } else {
+            scheduleOverlay();
+          }
+          if(upEv) upEv.preventDefault();
         }
         document.addEventListener("pointermove", onMove);
-        document.addEventListener("pointerup", finish, { once:false });
-        document.addEventListener("pointercancel", finish, { once:false });
+        document.addEventListener("pointerup", finishDrag, { once:false });
+        document.addEventListener("pointercancel", finishDrag, { once:false });
       });
-      editor.addEventListener("mousedown", function(ev){ if(ev.target!==handle) scheduleOverlay(); });
+      editor.addEventListener("mousedown", function(){ scheduleOverlay(); });
       editor.addEventListener("focus", scheduleOverlay);
       editor.addEventListener("dragstart", function(ev){ if(resizing){ ev.preventDefault(); ev.stopPropagation(); } });
       editor.__weditorHideOverlay=hideOverlay;
@@ -2066,7 +2228,7 @@
         }
       }, 0);
     }
-    return { open };
+    return { open, enableImageResizer };
   })();
   const StateBinding=(function(){
     function parse(json){
@@ -7135,6 +7297,111 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.image":{
+      kind:"custom",
+      ariaLabel:"Insert image",
+      render:function(inst, ctx){
+        const wrap=document.createElement("div");
+        wrap.style.display="flex";
+        wrap.style.flexWrap="wrap";
+        wrap.style.gap="8px";
+        wrap.style.alignItems="center";
+        const uploadBtn=WDom.btn("Upload image", false, "Upload an image from your device");
+        uploadBtn.style.padding="6px 12px";
+        uploadBtn.style.fontSize="12px";
+        const urlBtn=WDom.btn("From URL", false, "Insert image from a web address");
+        urlBtn.style.padding="6px 12px";
+        urlBtn.style.fontSize="12px";
+        const fileInput=document.createElement("input");
+        fileInput.type="file";
+        fileInput.accept="image/*";
+        fileInput.style.display="none";
+        wrap.appendChild(uploadBtn);
+        wrap.appendChild(urlBtn);
+        wrap.appendChild(fileInput);
+        function resolveTarget(){ return (ctx && ctx.area) ? ctx.area : inst.el; }
+        function ensureFocus(target){
+          if(!target) return;
+          try { target.focus({ preventScroll:true }); }
+          catch(err){ if(typeof target.focus==="function") target.focus(); }
+        }
+        function toAltText(label){
+          if(!label) return "Inserted image";
+          return label.replace(/\.[^.]+$/,"").replace(/[^a-z0-9\s_-]/gi," ").trim() || "Inserted image";
+        }
+        function sanitizeSource(src){
+          if(!src) return null;
+          const trimmed=src.trim();
+          if(!trimmed) return null;
+          if(/^data:image\//i.test(trimmed)) return trimmed;
+          if(/^https?:\/\//i.test(trimmed)) return trimmed;
+          if(/^blob:/i.test(trimmed)) return trimmed;
+          return null;
+        }
+        function insertImage(target, src, alt){
+          if(!target || !src) return;
+          ensureFocus(target);
+          const doc=target.ownerDocument || document;
+          const win=doc.defaultView || window;
+          let sel=win.getSelection ? win.getSelection() : window.getSelection();
+          if(!sel || sel.rangeCount===0 || !target.contains(sel.anchorNode)){
+            WDom.placeCaretAtEnd(target);
+            sel=win.getSelection ? win.getSelection() : window.getSelection();
+          }
+          let range=(sel && sel.rangeCount) ? sel.getRangeAt(0).cloneRange() : null;
+          if(!range || !target.contains(range.commonAncestorContainer)){
+            range=doc.createRange();
+            range.selectNodeContents(target);
+            range.collapse(false);
+          }
+          const img=doc.createElement("img");
+          img.src=src;
+          img.alt=alt || "Inserted image";
+          img.style.maxWidth="100%";
+          img.style.height="auto";
+          img.style.objectFit="contain";
+          img.style.display="block";
+          img.draggable=false;
+          range.deleteContents();
+          range.insertNode(img);
+          const after=doc.createRange();
+          after.setStartAfter(img);
+          after.collapse(true);
+          if(sel){ sel.removeAllRanges(); sel.addRange(after); }
+          Normalizer.fixStructure(target);
+          Breaks.ensurePlaceholders(target);
+          if(HFEditor && typeof HFEditor.enableImageResizer==="function"){ HFEditor.enableImageResizer(target); }
+          if(target.__weditorHideOverlay) target.__weditorHideOverlay();
+          HistoryManager.record(inst, target, { label:"Insert Image", repeatable:false });
+          OutputBinding.syncDebounced(inst);
+        }
+        uploadBtn.addEventListener("click", function(){ fileInput.value=""; fileInput.click(); });
+        fileInput.addEventListener("change", function(){
+          const target=resolveTarget();
+          const file=(fileInput.files && fileInput.files[0]) || null;
+          if(!target || !file) return;
+          if(file.type && file.type.indexOf("image/")!==0){ window.alert("Please choose an image file."); return; }
+          const reader=new FileReader();
+          reader.onload=function(){
+            const result=typeof reader.result==="string" ? reader.result : null;
+            if(!result) return;
+            insertImage(target, result, toAltText(file.name||""));
+          };
+          reader.readAsDataURL(file);
+        });
+        urlBtn.addEventListener("click", function(){
+          const target=resolveTarget();
+          if(!target) return;
+          const input=window.prompt("Enter image URL", "https://picsum.photos/seed/weditor/600/360");
+          if(input===null) return;
+          const safeSrc=sanitizeSource(input);
+          if(!safeSrc){ window.alert("Please enter a valid http(s) or data:image URL."); return; }
+          const alt=toAltText((safeSrc.split(/[?#]/)[0]||"").split("/").pop()||"");
+          insertImage(target, safeSrc, alt);
+        });
+        return wrap;
+      }
+    },
     "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
       run:function(inst, arg){
         const target=(arg && arg.ctx && arg.ctx.area) ? arg.ctx.area : inst.el;
@@ -7296,7 +7563,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image","insert.table"] }] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7313,7 +7580,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.table"] },
+      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image","insert.table"] }] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7373,6 +7640,7 @@
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
     Breaks.ensurePlaceholders(this.el);
+    if(HFEditor && typeof HFEditor.enableImageResizer==="function"){ HFEditor.enableImageResizer(this.el); }
     this.el.addEventListener("paste", function(self){ return function(){ window.setTimeout(function(){ Normalizer.fixStructure(self.el); Breaks.ensurePlaceholders(self.el); },0); }; }(this));
     const parent=this.el.parentNode; parent.replaceChild(shell, this.el);
     shell.appendChild(toolbarWrap); shell.appendChild(this.el);
