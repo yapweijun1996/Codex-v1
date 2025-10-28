@@ -814,6 +814,81 @@
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
     const FOOTER_BASE_STYLE="padding:0;border-top:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:12px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
+    function ensureHFCache(state){
+      if(!state || typeof state!=="object") return null;
+      if(!state.__weditorHFCache){
+        state.__weditorHFCache={ signature:null, headerMin:0, footerMin:0 };
+      }
+      return state.__weditorHFCache;
+    }
+    function signatureForHF(state){
+      if(!state) return "";
+      return [
+        state.headerEnabled?"1":"0",
+        state.headerHTML||"",
+        HFAlign.normalize(state.headerAlign||"")||"",
+        state.footerEnabled?"1":"0",
+        state.footerHTML||"",
+        HFAlign.normalize(state.footerAlign||"")||""
+      ].join("|");
+    }
+    function applyMinHeight(node, value, fallback){
+      if(!node) return;
+      const min=Math.max(fallback||0, value||0);
+      if(node.style.minHeight!==min+"px") node.style.minHeight=min+"px";
+      node.setAttribute("data-offset-height", String(min));
+    }
+    function collectImagePromises(root){
+      const promises=[];
+      if(!root || !root.querySelectorAll) return promises;
+      const imgs=root.querySelectorAll("img");
+      for(let i=0;i<imgs.length;i++){
+        const img=imgs[i];
+        const src=img && img.getAttribute ? img.getAttribute("src") : null;
+        if(!src) continue;
+        if(img.complete && img.naturalWidth){ continue; }
+        const promise=new Promise(function(resolve){
+          let settled=false;
+          function done(){ if(settled) return; settled=true; resolve(); }
+          try {
+            if(typeof img.decode==="function"){ img.decode().then(done).catch(done); }
+            else {
+              const loader=new Image();
+              loader.onload=done; loader.onerror=done;
+              loader.src=src;
+            }
+          } catch(err){
+            const fallbackImg=new Image();
+            fallbackImg.onload=done; fallbackImg.onerror=done;
+            fallbackImg.src=src;
+          }
+          img.addEventListener("load", done, { once:true });
+          img.addEventListener("error", done, { once:true });
+        });
+        promises.push(promise);
+      }
+      return promises;
+    }
+    function preloadHFHTML(html){
+      if(!html) return Promise.resolve();
+      const holder=document.createElement("div");
+      holder.innerHTML=substituteTokensForMeasure(Sanitizer.clean(html));
+      const promises=collectImagePromises(holder);
+      if(!promises.length) return Promise.resolve();
+      return Promise.all(promises).then(function(){ return null; });
+    }
+    function waitForDocumentFonts(){
+      if(document.fonts && document.fonts.ready && typeof document.fonts.ready.then==="function"){
+        return document.fonts.ready.catch(function(){ return null; });
+      }
+      return Promise.resolve();
+    }
+    function ensureHeaderFooterMedia(state){
+      const promises=[waitForDocumentFonts()];
+      if(state && state.headerEnabled && state.headerHTML){ promises.push(preloadHFHTML(state.headerHTML)); }
+      if(state && state.footerEnabled && state.footerHTML){ promises.push(preloadHFHTML(state.footerHTML)); }
+      return Promise.all(promises).then(function(){ return null; });
+    }
     function observeMedia(container, callback){
       if(!container || !container.querySelectorAll || typeof callback!=="function") return;
       const imgs=container.querySelectorAll("img");
@@ -940,11 +1015,29 @@
       const {headerEnabled, footerEnabled, headerHTML, footerHTML}=state;
       const headerAlign=HFAlign.normalize(state.headerAlign);
       const footerAlign=HFAlign.normalize(state.footerAlign);
+      const hfCache=ensureHFCache(state);
+      if(hfCache){
+        const sig=signatureForHF({
+          headerEnabled, footerEnabled, headerHTML, footerHTML,
+          headerAlign, footerAlign
+        });
+        if(hfCache.signature!==sig){
+          hfCache.signature=sig;
+          hfCache.headerMin=0;
+          hfCache.footerMin=0;
+        }
+      }
       const {A4W,A4H,PAD,UI,Style}=WCfg;
       const textStyle=StyleMirror.capture(state && state.el ? state.el : null);
       const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign);
-      const headerHeight=layout.headerHeight;
-      const footerHeight=layout.footerHeight;
+      let headerHeight=layout.headerHeight;
+      let footerHeight=layout.footerHeight;
+      if(hfCache){
+        if(headerEnabled){ headerHeight=Math.max(headerHeight, hfCache.headerMin||0, WCfg.HDR_MIN); }
+        else { hfCache.headerMin=0; }
+        if(footerEnabled){ footerHeight=Math.max(footerHeight, hfCache.footerMin||0, WCfg.FTR_MIN); }
+        else { hfCache.footerMin=0; }
+      }
       const AVAIL=Math.max(64, A4H - headerHeight - footerHeight - 2*PAD);
       const sourceHTML=Sanitizer.clean(rawHTML);
       const src=document.createElement("div"); src.innerHTML=sourceHTML;
@@ -1032,21 +1125,35 @@
           const actual=Math.max(measuredHeight||0, rectHeight, WCfg.HDR_MIN);
           topOffset=Math.max(topOffset, actual);
           const applied=Math.max(actual, WCfg.HDR_MIN);
-          pg.headerNode.style.minHeight=applied+"px";
-          pg.headerNode.setAttribute("data-offset-height", String(applied));
+          applyMinHeight(pg.headerNode, applied, WCfg.HDR_MIN);
+          if(hfCache){ hfCache.headerMin=Math.max(hfCache.headerMin||0, applied); }
         }
         let bottomOffset = pg.footerNode ? Math.max(WCfg.FTR_MIN, baseFooter) : 0;
         if(pg.footerNode){
           const rect=pg.footerNode.getBoundingClientRect();
           const actual=Math.max(Math.ceil(rect.height||0), WCfg.FTR_MIN);
           bottomOffset=Math.max(bottomOffset, actual);
-          pg.footerNode.style.minHeight=Math.max(actual, WCfg.FTR_MIN)+"px";
+          const appliedFooter=Math.max(actual, WCfg.FTR_MIN);
+          applyMinHeight(pg.footerNode, appliedFooter, WCfg.FTR_MIN);
+          if(hfCache){ hfCache.footerMin=Math.max(hfCache.footerMin||0, appliedFooter); }
+        } else if(hfCache){
+          hfCache.footerMin=0;
         }
         pg.headerHeight = pg.headerNode ? topOffset : 0;
         pg.footerHeight = pg.footerNode ? bottomOffset : 0;
         if(pg.content){
-          pg.content.style.top = pg.headerNode ? topOffset+"px" : "0px";
-          pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
+          if(pg.headerNode){
+            const currentTop=parseFloat(pg.content.style.top||"0")||0;
+            pg.content.style.top=Math.max(currentTop, topOffset)+"px";
+          } else {
+            pg.content.style.top="0px";
+          }
+          if(pg.footerNode){
+            const currentBottom=parseFloat(pg.content.style.bottom||"0")||0;
+            pg.content.style.bottom=Math.max(currentBottom, bottomOffset)+"px";
+          } else {
+            pg.content.style.bottom="0px";
+          }
         }
       }
       for(let i=0;i<pages.length;i++){
@@ -1067,7 +1174,24 @@
       return { pages: pages.map(function(p){ return p.page; }), pagesHTML };
     }
     function pagesHTML(inst){ return paginate(Breaks.serialize(inst.el), inst).pagesHTML; }
-    return { paginate, pagesHTML };
+    function prepareForPrint(inst){
+      if(!inst || !inst.el){
+        return Promise.resolve("");
+      }
+      const state={
+        headerEnabled:!!inst.headerEnabled,
+        footerEnabled:!!inst.footerEnabled,
+        headerHTML:inst.headerHTML||"",
+        footerHTML:inst.footerHTML||""
+      };
+      return ensureHeaderFooterMedia(state).then(function(){
+        const out=paginate(Breaks.serialize(inst.el), inst);
+        return out.pagesHTML;
+      }).catch(function(){
+        return pagesHTML(inst);
+      });
+    }
+    return { paginate, pagesHTML, prepareForPrint };
   })();
   const ExportUI=(function(){
     function open(pagedHTML, rawHTML){
@@ -7184,8 +7308,20 @@
         OutputBinding.syncDebounced(inst);
       } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
-    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); PrintUI.open(html); } },
-    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack(); const html=Paginator.pagesHTML(inst); ExportUI.open(html, Sanitizer.clean(Breaks.serialize(inst.el))); } },
+    "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){
+      if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
+      Paginator.prepareForPrint(inst).then(function(html){
+        const outHtml=html && html.trim()?html:Paginator.pagesHTML(inst);
+        PrintUI.open(outHtml);
+      });
+    } },
+    "export":{ label:"Export", kind:"button", ariaLabel:"Export HTML", run:function(inst, arg){
+      if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
+      Paginator.prepareForPrint(inst).then(function(html){
+        const outHtml=html && html.trim()?html:Paginator.pagesHTML(inst);
+        ExportUI.open(outHtml, Sanitizer.clean(Breaks.serialize(inst.el)));
+      });
+    } },
     "fullscreen.close":{ label:"Close", kind:"button", ariaLabel:"Close fullscreen", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.close) arg.ctx.close(); } },
     "fullscreen.saveClose":{ label:"Close", primary:true, kind:"button", ariaLabel:"Save changes and close", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.saveClose) arg.ctx.saveClose(); } }
   };
