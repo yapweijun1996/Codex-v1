@@ -6040,43 +6040,127 @@
     }
     function create(inst, ctx){
       const wrap=document.createElement("div");
-      wrap.style.display="flex";
-      wrap.style.flexDirection="column";
-      wrap.style.gap="6px";
+      wrap.style.position="relative";
+      wrap.style.display="inline-flex";
+      wrap.style.alignItems="stretch";
+      wrap.style.gap="0";
       wrap.setAttribute("role","group");
       wrap.setAttribute("aria-label","Insert image controls");
-      const row=document.createElement("div");
-      row.style.display="flex";
-      row.style.flexWrap="wrap";
-      row.style.gap="8px";
-      const uploadBtn=WDom.btn("Upload Image", false, "Upload an image from your device");
-      uploadBtn.style.fontSize="12px";
-      uploadBtn.style.padding="6px 10px";
-      uploadBtn.style.lineHeight="1.2";
-      const urlBtn=WDom.btn("Image from URL", false, "Insert image from a URL");
-      urlBtn.style.fontSize="12px";
-      urlBtn.style.padding="6px 10px";
-      urlBtn.style.lineHeight="1.2";
+      const trigger=WDom.btn("Insert Image", false, "Insert an image");
+      trigger.style.display="inline-flex";
+      trigger.style.alignItems="center";
+      trigger.style.gap="6px";
+      const caret=document.createElement("span");
+      caret.setAttribute("aria-hidden","true");
+      caret.textContent="▼";
+      caret.style.fontSize="10px";
+      caret.style.marginLeft="2px";
+      const label=document.createElement("span");
+      label.textContent="Insert Image";
+      label.style.fontWeight="600";
+      trigger.textContent="";
+      trigger.appendChild(label);
+      trigger.appendChild(caret);
+      trigger.setAttribute("aria-haspopup","true");
+      trigger.setAttribute("aria-expanded","false");
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.right="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.alignItems="stretch";
+      menu.style.minWidth="200px";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="10px";
+      menu.style.boxShadow="0 12px 28px rgba(0,0,0,.12)";
+      menu.style.padding="8px";
+      menu.style.zIndex="20";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      let firstMenuButton=null;
+      function closeMenu(){
+        menu.style.display="none";
+        menu.setAttribute("aria-hidden","true");
+        trigger.setAttribute("aria-expanded","false");
+        document.removeEventListener("mousedown", handleOutside);
+        document.removeEventListener("keydown", handleKeydown);
+      }
+      function openMenu(){
+        menu.style.display="flex";
+        menu.setAttribute("aria-hidden","false");
+        trigger.setAttribute("aria-expanded","true");
+        document.addEventListener("mousedown", handleOutside);
+        document.addEventListener("keydown", handleKeydown);
+        if(firstMenuButton){
+          firstMenuButton.focus();
+        }
+      }
+      function toggleMenu(){
+        if(menu.style.display==="flex"){ closeMenu(); }
+        else { openMenu(); }
+      }
+      function handleOutside(evt){
+        if(!wrap.contains(evt.target)){ closeMenu(); }
+      }
+      function handleKeydown(evt){
+        if(evt.key==="Escape"){ closeMenu(); trigger.focus(); }
+      }
+      trigger.addEventListener("click", function(e){
+        e.preventDefault();
+        toggleMenu();
+      });
       const fileInput=document.createElement("input");
       fileInput.type="file";
       fileInput.accept="image/*";
       fileInput.style.display="none";
-      uploadBtn.addEventListener("click", function(){ fileInput.click(); });
+      function makeMenuButton(text, hint){
+        const btn=WDom.btn(text, false, hint||"");
+        btn.style.width="100%";
+        btn.style.textAlign="left";
+        btn.style.fontSize="13px";
+        btn.style.padding="8px 12px";
+        btn.style.display="flex";
+        btn.style.flexDirection="column";
+        btn.style.alignItems="flex-start";
+        btn.style.gap="4px";
+        btn.onmouseenter=function(){ btn.style.background="#f2f8fd"; };
+        btn.onmouseleave=function(){ btn.style.background="#fff"; };
+        return btn;
+      }
+      const uploadBtn=makeMenuButton("Upload from device", "Upload an image from your device");
+      if(!firstMenuButton) firstMenuButton=uploadBtn;
+      uploadBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        closeMenu();
+        fileInput.click();
+      });
+      const urlBtn=makeMenuButton("Use image URL", "Insert image from a URL");
+      urlBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        closeMenu();
+        promptForURL(inst, ctx);
+      });
+      const helper=document.createElement("div");
+      helper.textContent="Tip: After inserting, drag the corners to resize.";
+      helper.style.font="11px/1.4 Segoe UI,system-ui";
+      helper.style.color=WCfg.UI.textDim;
+      helper.style.padding="4px 12px 2px";
+      helper.style.borderTop="1px solid "+WCfg.UI.borderSubtle;
+      helper.style.marginTop="6px";
+      helper.style.paddingTop="8px";
+      menu.appendChild(uploadBtn);
+      menu.appendChild(urlBtn);
+      menu.appendChild(helper);
       fileInput.addEventListener("change", function(){
         const file=fileInput.files && fileInput.files[0];
         if(file) handleFile(inst, ctx, file);
         fileInput.value="";
       });
-      urlBtn.addEventListener("click", function(){ promptForURL(inst, ctx); });
-      row.appendChild(uploadBtn);
-      row.appendChild(urlBtn);
-      wrap.appendChild(row);
+      wrap.appendChild(trigger);
+      wrap.appendChild(menu);
       wrap.appendChild(fileInput);
-      const helper=document.createElement("div");
-      helper.style.font="11px/1.4 Segoe UI,system-ui";
-      helper.style.color=WCfg.UI.textDim;
-      helper.textContent="Upload from your computer or paste a link. Drag the image or use the corner handles to resize.";
-      wrap.appendChild(helper);
       return wrap;
     }
     return { create };
