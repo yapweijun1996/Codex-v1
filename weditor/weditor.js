@@ -533,6 +533,112 @@
       if(targetEl && typeof targetEl.focus==="function") targetEl.focus();
       placeCaret(firstCaretPosition(caretTarget));
     }
+    function removeCommentNode(comment){
+      if(!isBreakComment(comment)) return false;
+      removePlaceholderFor(comment);
+      if(comment && comment.parentNode){ comment.parentNode.removeChild(comment); }
+      return true;
+    }
+    function findSibling(node, direction){
+      if(!node) return null;
+      const step = direction === "backward" ? -1 : 1;
+      const siblings = node.parentNode ? node.parentNode.childNodes : null;
+      if(!siblings) return null;
+      let index = Array.prototype.indexOf.call(siblings, node);
+      if(index<0) return null;
+      index += step;
+      while(index>=0 && index<siblings.length){
+        const current = siblings[index];
+        if(isWhitespace(current)){ index += step; continue; }
+        return current;
+      }
+      return null;
+    }
+    function findBreakBefore(node, root){
+      let current=node;
+      while(current && current!==root){
+        if(isPlaceholder(current)){
+          let comment=current.previousSibling;
+          while(isWhitespace(comment)) comment=comment?comment.previousSibling:null;
+          if(isBreakComment(comment)) return comment;
+        }
+        const parent=current.parentNode;
+        if(parent){
+          const before=findSibling(current, "backward");
+          if(before){
+            if(isBreakComment(before)) return before;
+            if(isPlaceholder(before)){
+              let comment=before.previousSibling;
+              while(isWhitespace(comment)) comment=comment?comment.previousSibling:null;
+              if(isBreakComment(comment)) return comment;
+            }
+            return null;
+          }
+        }
+        current=parent;
+      }
+      return null;
+    }
+    function findBreakAfter(node, root){
+      let current=node;
+      while(current && current!==root){
+        const parent=current.parentNode;
+        if(parent){
+          const after=findSibling(current, "forward");
+          if(after){
+            if(isBreakComment(after)) return after;
+            if(isPlaceholder(after)){
+              let comment=after.previousSibling;
+              while(isWhitespace(comment)) comment=comment?comment.previousSibling:null;
+              if(isBreakComment(comment)) return comment;
+            }
+            return null;
+          }
+        }
+        current=parent;
+      }
+      return null;
+    }
+    function findBreakNearCaret(targetEl, direction){
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel || sel.rangeCount===0) return null;
+      const range=sel.getRangeAt(0);
+      if(!range || !targetEl.contains(range.startContainer)) return null;
+      if(!range.collapsed) return null;
+      let container=range.startContainer;
+      let offset=range.startOffset;
+      if(container.nodeType===3){
+        const text=container.nodeValue||"";
+        if(direction==="backward" && offset>0){
+          const before=text.slice(0, offset);
+          if(before.trim()) return null;
+          offset=0;
+        }
+        if(direction==="forward" && offset<text.length){
+          const after=text.slice(offset);
+          if(after.trim()) return null;
+          offset=text.length;
+        }
+        if(container.parentNode){
+          const parentIndex=Array.prototype.indexOf.call(container.parentNode.childNodes, container);
+          if(parentIndex>=0){
+            container=container.parentNode;
+            if(direction==="backward") offset=parentIndex;
+            else offset=parentIndex+1;
+          }
+        }
+      }
+      if(container.nodeType===1){
+        if(direction==="backward"){
+          if(offset>0) return findBreakBefore(container.childNodes[offset-1], targetEl);
+          return findBreakBefore(container, targetEl);
+        }
+        if(offset<container.childNodes.length) return findBreakAfter(container.childNodes[offset], targetEl);
+        return findBreakAfter(container, targetEl);
+      }
+      if(isPlaceholder(container)){ return direction==="backward" ? findBreakBefore(container, targetEl) : findBreakAfter(container, targetEl); }
+      return null;
+    }
     function remove(targetEl){
       const sel=window.getSelection ? window.getSelection() : null; let node=(sel && sel.rangeCount) ? sel.anchorNode : null;
       if(!node || !targetEl.contains(node)){
@@ -544,7 +650,12 @@
       let b=node.previousSibling; while(isWhitespace(b)) b=b.previousSibling; if(isBreakComment(b)){ removePlaceholderFor(b); b.remove(); return true; }
       alert("No page break found next to the cursor."); return false;
     }
-    return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize };
+    function removeByDirection(targetEl, direction){
+      const comment=findBreakNearCaret(targetEl, direction);
+      if(!comment) return false;
+      return removeCommentNode(comment);
+    }
+    return { insert, remove, ensurePlaceholders, stripPlaceholders, serialize, removeByDirection };
   })();
   const Paginator=(function(){
     const HEADER_BASE_STYLE="padding:0;border-bottom:1px solid "+WCfg.UI.border+";background:#fff;color:"+WCfg.UI.text+";font:14px Segoe UI,system-ui;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:6px;box-sizing:border-box;";
@@ -3777,6 +3888,17 @@
           if(ctx && ctx.refreshPreview) ctx.refreshPreview();
         }
         return ok;
+      }
+      if(ev.key==="Backspace" || ev.key==="Delete"){
+        const direction = ev.key==="Backspace" ? "backward" : "forward";
+        const removed = Breaks.removeByDirection(target, direction);
+        if(removed){
+          ev.preventDefault();
+          record(inst, target, { label:"Remove Page Break", repeatable:false });
+          if(inst && target===inst.el) OutputBinding.syncDebounced(inst);
+          if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+          return true;
+        }
       }
       return false;
     }
