@@ -6062,7 +6062,7 @@
       trigger.style.alignItems="center";
       trigger.style.justifyContent="center";
       trigger.style.gap="6px";
-      trigger.style.padding="6px 14px";
+      trigger.style.padding="8px 14px";
       trigger.style.minWidth="0";
       trigger.style.whiteSpace="nowrap";
       trigger.style.width="auto";
