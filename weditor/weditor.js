@@ -1020,33 +1020,48 @@
       measWrap.appendChild(measurePagesHost);
       for(let i=0;i<pages.length;i++){ measurePagesHost.appendChild(pages[i].page); }
       const total=pages.length, dateStr=(new Date()).toISOString().slice(0,10);
-      function adjustPageOffsets(pg){
+      function adjustPageOffsets(pg, attempt){
+        attempt = attempt || 0;
         if(!pg) return;
+        const pageEl = pg.page;
+        if(pageEl && typeof pageEl.isConnected!=="undefined" && !pageEl.isConnected){
+          if(attempt<6){
+            window.requestAnimationFrame(function(){ adjustPageOffsets(pg, attempt+1); });
+          }
+          return;
+        }
         const baseHeader=Math.max(0, pg.baseHeaderHeight||0);
         const baseFooter=Math.max(0, pg.baseFooterHeight||0);
         let topOffset = pg.headerNode ? Math.max(WCfg.HDR_MIN, baseHeader) : 0;
         if(pg.headerNode){
           const rect=pg.headerNode.getBoundingClientRect();
           const measuredHeight=pg.headerNode.offsetHeight;
+          const scrollHeight=pg.headerNode.scrollHeight;
           const rectHeight=Math.ceil(rect.height||0);
-          const actual=Math.max(measuredHeight||0, rectHeight, WCfg.HDR_MIN);
+          const actual=Math.max(measuredHeight||0, rectHeight, scrollHeight||0, WCfg.HDR_MIN);
           topOffset=Math.max(topOffset, actual);
-          const applied=Math.max(actual, WCfg.HDR_MIN);
-          pg.headerNode.style.minHeight=applied+"px";
-          pg.headerNode.setAttribute("data-offset-height", String(applied));
+          pg.headerNode.style.minHeight=topOffset+"px";
+          pg.headerNode.setAttribute("data-offset-height", String(topOffset));
         }
         let bottomOffset = pg.footerNode ? Math.max(WCfg.FTR_MIN, baseFooter) : 0;
         if(pg.footerNode){
           const rect=pg.footerNode.getBoundingClientRect();
-          const actual=Math.max(Math.ceil(rect.height||0), WCfg.FTR_MIN);
+          const measuredHeight=pg.footerNode.offsetHeight;
+          const scrollHeight=pg.footerNode.scrollHeight;
+          const rectHeight=Math.ceil(rect.height||0);
+          const actual=Math.max(measuredHeight||0, rectHeight, scrollHeight||0, WCfg.FTR_MIN);
           bottomOffset=Math.max(bottomOffset, actual);
-          pg.footerNode.style.minHeight=Math.max(actual, WCfg.FTR_MIN)+"px";
+          pg.footerNode.style.minHeight=bottomOffset+"px";
+          pg.footerNode.setAttribute("data-offset-height", String(bottomOffset));
         }
         pg.headerHeight = pg.headerNode ? topOffset : 0;
         pg.footerHeight = pg.footerNode ? bottomOffset : 0;
         if(pg.content){
           pg.content.style.top = pg.headerNode ? topOffset+"px" : "0px";
           pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
+        }
+        if(attempt<2){
+          window.requestAnimationFrame(function(){ adjustPageOffsets(pg, attempt+1); });
         }
       }
       for(let i=0;i<pages.length;i++){
