@@ -7369,9 +7369,17 @@
   WEditorInstance.prototype._mount=function(){
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
-    toolbarWrap.style.position = "static";
-    toolbarWrap.style.top = "";
-    toolbarWrap.style.zIndex = "";
+    const stickyPref = readBooleanAttribute(this.el, "data-toolbar-sticky");
+    const wantsSticky = stickyPref==null ? true : !!stickyPref;
+    if(wantsSticky && !this.el.classList.contains("weditor--toolbar-static")){
+      toolbarWrap.style.position = "sticky";
+      toolbarWrap.style.top = "0";
+      toolbarWrap.style.zIndex = "3";
+    } else {
+      toolbarWrap.style.position = "static";
+      toolbarWrap.style.top = "";
+      toolbarWrap.style.zIndex = "";
+    }
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
     applyStyles(this.el, WCfg.Style.editor);
     this.el.setAttribute("contenteditable","true");
