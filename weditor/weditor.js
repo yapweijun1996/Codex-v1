@@ -350,30 +350,53 @@
   })();
   const HFAlign=(function(){
     const allowed={ left:"left", center:"center", right:"right" };
+    const verticalAllowed={ top:"top", middle:"middle", bottom:"bottom" };
     function normalize(value){
       const key=(value==null?"":String(value)).toLowerCase();
       return allowed[key] || "left";
+    }
+    function normalizeVertical(value){
+      const key=(value==null?"":String(value)).toLowerCase();
+      return verticalAllowed[key] || "middle";
     }
     function flexJustify(norm){
       if(norm==="center") return "center";
       if(norm==="right") return "flex-end";
       return "flex-start";
     }
-    function applyHeader(node, align){
+    function flexAlign(norm){
+      if(norm==="top") return "flex-start";
+      if(norm==="bottom") return "flex-end";
+      return "center";
+    }
+    function applyHeader(node, align, vAlign){
       if(!node || !node.style) return;
       const norm=normalize(align);
       node.style.justifyContent=flexJustify(norm);
       node.style.textAlign=norm;
+      node.style.alignItems=flexAlign(normalizeVertical(vAlign));
     }
     function applyEditor(node, align){
       if(!node || !node.style) return;
       node.style.textAlign=normalize(align);
     }
-    function applyFooter(node, align){
-      if(!node || !node.style) return;
-      node.style.textAlign=normalize(align);
+    function applyFooter(node, align, vAlign){
+      if(!node) return;
+      const norm=normalize(align);
+      const vertical=normalizeVertical(vAlign);
+      if(node.style){
+        node.style.textAlign=norm;
+      }
+      const parent=(node.parentNode && node.parentNode.style)?node.parentNode:null;
+      const alignItemsValue=flexAlign(vertical);
+      if(parent){
+        parent.style.alignItems=alignItemsValue;
+      } else if(node.style){
+        node.style.alignItems=alignItemsValue;
+        node.style.justifyContent=flexJustify(norm);
+      }
     }
-    return { normalize, applyHeader, applyEditor, applyFooter };
+    return { normalize, normalizeVertical, applyHeader, applyEditor, applyFooter };
   })();
   const Tokens=(function(){
     function apply(root, ctx){
@@ -844,6 +867,8 @@
       const headerEnabled=opts.headerEnabled, footerEnabled=opts.footerEnabled, headerHTML=opts.headerHTML, footerHTML=opts.footerHTML;
       const headerAlign=HFAlign.normalize(opts.headerAlign);
       const footerAlign=HFAlign.normalize(opts.footerAlign);
+      const headerVAlign=HFAlign.normalizeVertical(opts.headerVAlign);
+      const footerVAlign=HFAlign.normalizeVertical(opts.footerVAlign);
       const headerHeight=opts.headerHeight!=null ? opts.headerHeight : (headerEnabled?WCfg.HDR_H:0);
       const footerHeight=opts.footerHeight!=null ? opts.footerHeight : (footerEnabled?WCfg.FTR_H:0);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
@@ -858,7 +883,7 @@
         const minHeaderHeight=Math.max(WCfg.HDR_MIN, headerHeight);
         header.style.cssText="position:relative;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+minHeaderHeight+"px;";
         header.innerHTML=headerHTML;
-        HFAlign.applyHeader(header, headerAlign);
+        HFAlign.applyHeader(header, headerAlign, headerVAlign);
         page.appendChild(header);
       }
       const content=document.createElement("div");
@@ -881,7 +906,7 @@
         fl.className="weditor_page-footer-left";
         fl.style.cssText="flex:1 1 auto;min-width:160px";
         fl.innerHTML=footerHTML;
-        HFAlign.applyFooter(fl, footerAlign);
+        HFAlign.applyFooter(fl, footerAlign, footerVAlign);
         footer.appendChild(fl);
         page.appendChild(footer);
       }
@@ -903,7 +928,7 @@
         if(!img.style.objectFit) img.style.objectFit="contain";
       }
     }
-    function measureSection(kind, html, align){
+    function measureSection(kind, html, align, vAlign){
       const host=document.createElement("div");
       host.style.cssText="position:absolute;left:-99999px;top:-99999px;width:"+WCfg.A4W+"px;visibility:hidden;pointer-events:none;opacity:0;";
       const box=document.createElement("div");
@@ -916,12 +941,12 @@
         left.style.cssText="flex:1 1 auto;min-width:160px";
         left.innerHTML=html;
         enforceHFImageSizing(left);
-        HFAlign.applyFooter(left, align);
+        HFAlign.applyFooter(left, align, vAlign);
         box.appendChild(left);
       }else{
         box.innerHTML=html;
         enforceHFImageSizing(box);
-        HFAlign.applyHeader(box, align);
+        HFAlign.applyHeader(box, align, vAlign);
       }
       host.appendChild(box);
       document.body.appendChild(host);
@@ -931,18 +956,20 @@
       document.body.removeChild(host);
       return Math.max(minHeight, height);
     }
-    function measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign){
-      const headerHeight = headerEnabled ? measureSection("header", substituteTokensForMeasure(headerHTML||""), headerAlign) : 0;
-      const footerHeight = footerEnabled ? measureSection("footer", substituteTokensForMeasure(footerHTML||""), footerAlign) : 0;
+    function measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign, headerVAlign, footerVAlign){
+      const headerHeight = headerEnabled ? measureSection("header", substituteTokensForMeasure(headerHTML||""), headerAlign, headerVAlign) : 0;
+      const footerHeight = footerEnabled ? measureSection("footer", substituteTokensForMeasure(footerHTML||""), footerAlign, footerVAlign) : 0;
       return { headerHeight, footerHeight };
     }
     function paginate(rawHTML, state){
       const {headerEnabled, footerEnabled, headerHTML, footerHTML}=state;
       const headerAlign=HFAlign.normalize(state.headerAlign);
       const footerAlign=HFAlign.normalize(state.footerAlign);
+      const headerVAlign=HFAlign.normalizeVertical(state.headerVAlign);
+      const footerVAlign=HFAlign.normalizeVertical(state.footerVAlign);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
       const textStyle=StyleMirror.capture(state && state.el ? state.el : null);
-      const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign);
+      const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign, headerVAlign, footerVAlign);
       const headerHeight=layout.headerHeight;
       const footerHeight=layout.footerHeight;
       const AVAIL=Math.max(64, A4H - headerHeight - footerHeight - 2*PAD);
@@ -970,9 +997,9 @@
       const CONTENT_WIDTH=A4W - 2*PAD;
       const measWrap=document.createElement("div"); measWrap.style.cssText="position:absolute;left:-99999px;top:-99999px;visibility:hidden;width:"+A4W+"px";
       document.body.appendChild(measWrap);
-      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle});
+      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, headerVAlign, footerVAlign, textStyle});
       const measContent=measPage.content; measWrap.appendChild(measPage.page);
-      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); let used=0;
+      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, headerVAlign, footerVAlign, textStyle}); let used=0;
       function hasContent(pg){
         if(!pg || !pg.content) return false;
         const text=(pg.content.textContent||"").replace(/\u00a0/g," ").replace(/\u200b/g,"").trim();
@@ -981,7 +1008,7 @@
         return !!pg.content.querySelector("img,table,svg,canvas,video,figure,ul,ol,li,blockquote,hr,pre,code");
       }
       function push(force){ if(force || hasContent(cur)){ pages.push(cur); } }
-      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); used=0; }
+      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, headerVAlign, footerVAlign, textStyle}); used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
         for(let k=0;k<imgs.length;k++){
@@ -1475,7 +1502,7 @@
       }
       return out;
     }
-    function section(kind, titleText, description, enabled, html, align){
+    function section(kind, titleText, description, enabled, html, align, vAlign){
       const changeHandlers=[];
       function notifyChange(){ for(let i=0;i<changeHandlers.length;i++){ changeHandlers[i](); } }
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
@@ -1496,6 +1523,7 @@
       editor.innerHTML = Sanitizer.clean(html || "");
       decorateTokens(editor);
       let alignValue=HFAlign.normalize(align);
+      let verticalAlignValue=HFAlign.normalizeVertical(vAlign);
       function enforceImageSizing(target){
         const imgs=target.querySelectorAll ? target.querySelectorAll("img") : [];
         for(let i=0;i<imgs.length;i++){
@@ -1564,6 +1592,37 @@
       alignRow.appendChild(alignLabel);
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
+      const verticalButtons=[];
+      const verticalRow=document.createElement("div"); applyStyles(verticalRow, WCfg.Style.hfAlignRow);
+      const verticalLabel=document.createElement("span");
+      verticalLabel.textContent="Vertical Align 垂直對齊";
+      verticalLabel.style.font="12px/1.4 Segoe UI,system-ui";
+      verticalLabel.style.color=WCfg.UI.textDim;
+      const verticalGroup=document.createElement("div"); applyStyles(verticalGroup, WCfg.Style.hfAlignGroup);
+      verticalGroup.setAttribute("role","group");
+      verticalGroup.setAttribute("aria-label", titleText+" vertical alignment controls");
+      const verticalOptions=[
+        { value:"top", label:"Top", title:"Align top / 靠上" },
+        { value:"middle", label:"Middle", title:"Align middle / 置中" },
+        { value:"bottom", label:"Bottom", title:"Align bottom / 靠下" }
+      ];
+      for(let i=0;i<verticalOptions.length;i++){
+        const opt=verticalOptions[i];
+        const btn=document.createElement("button");
+        btn.type="button";
+        applyStyles(btn, WCfg.Style.hfAlignBtn);
+        btn.textContent=opt.label;
+        btn.title=opt.title;
+        btn.setAttribute("data-valign", opt.value);
+        btn.setAttribute("aria-pressed","false");
+        if(i<verticalOptions.length-1) btn.style.borderRight="1px solid "+WCfg.UI.borderSubtle;
+        btn.addEventListener("click", function(){ if(!toggle.checked) return; setVerticalAlign(opt.value); });
+        verticalGroup.appendChild(btn);
+        verticalButtons.push({ value:opt.value, button:btn });
+      }
+      verticalRow.appendChild(verticalLabel);
+      verticalRow.appendChild(verticalGroup);
+      wrap.appendChild(verticalRow);
       const templateButtons=[];
       const templates=TEMPLATE_LIBRARY[kind]||[];
       if(templates.length){
@@ -1592,6 +1651,7 @@
             Normalizer.fixStructure(editor);
             enforceImageSizing(editor);
             setAlign(tpl.align || "left");
+            if(typeof tpl.vAlign!=="undefined") setVerticalAlign(tpl.vAlign);
             WDom.placeCaretAtEnd(editor);
             notifyChange();
           });
@@ -1613,11 +1673,24 @@
           item.button.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
           item.button.style.fontWeight=active?"600":"400";
         }
+        for(let i=0;i<verticalButtons.length;i++){
+          const item=verticalButtons[i];
+          const active=item.value===verticalAlignValue;
+          item.button.setAttribute("aria-pressed", active?"true":"false");
+          item.button.style.background=active?"#e6f2fb":"#fff";
+          item.button.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
+          item.button.style.fontWeight=active?"600":"400";
+        }
         notifyChange();
       }
       function setAlign(next){
         const norm=HFAlign.normalize(next);
         alignValue=norm;
+        updateAlignUI();
+      }
+      function setVerticalAlign(next){
+        const norm=HFAlign.normalizeVertical(next);
+        verticalAlignValue=norm;
         updateAlignUI();
       }
       updateAlignUI();
@@ -1799,6 +1872,12 @@
           btn.style.opacity=on?"1":"0.55";
           btn.style.cursor=on?"pointer":"not-allowed";
         }
+        for(let i=0;i<verticalButtons.length;i++){
+          const btn=verticalButtons[i].button;
+          btn.disabled=!on;
+          btn.style.opacity=on?"1":"0.55";
+          btn.style.cursor=on?"pointer":"not-allowed";
+        }
         updateAlignUI();
       }
       toggle.addEventListener("change", sync);
@@ -1828,6 +1907,7 @@
           return Sanitizer.clean(clone.innerHTML);
         },
         getAlign:function(){ return alignValue; },
+        getVerticalAlign:function(){ return verticalAlignValue; },
         onChange:function(cb){ if(typeof cb==="function") changeHandlers.push(cb); }
       };
     }
@@ -1853,8 +1933,8 @@
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
       const tokenHint="Smart tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
-      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
-      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
+      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign, inst.headerVAlign);
+      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign, inst.footerVAlign);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
@@ -1891,13 +1971,8 @@
         msg.style.width="100%";
         target.appendChild(msg);
       }
-      function applyFooterAlign(node, align){
-        const norm=HFAlign.normalize(align);
-        if(!node || !node.style) return;
-        if(norm==="center"){ node.style.justifyContent="center"; }
-        else if(norm==="right"){ node.style.justifyContent="flex-end"; }
-        else { node.style.justifyContent="flex-start"; }
-        node.style.textAlign=norm;
+      function applyFooterAlign(node, align, vAlign){
+        HFAlign.applyFooter(node, align, vAlign);
       }
       function renderPreview(){
         const headerEnabled=!!headerSection.toggle.checked;
@@ -1908,7 +1983,7 @@
           previewHeader.style.justifyContent="";
           previewHeader.style.textAlign="";
           previewHeader.innerHTML=Sanitizer.clean(replacePreviewTokens(headerHTML));
-          HFAlign.applyHeader(previewHeader, headerSection.getAlign());
+          HFAlign.applyHeader(previewHeader, headerSection.getAlign(), headerSection.getVerticalAlign());
         } else if(headerEnabled){
           setPreviewMessage(previewHeader, "Header empty · Enter text in the left editor.");
         } else {
@@ -1918,7 +1993,7 @@
           previewFooter.style.justifyContent="";
           previewFooter.style.textAlign="";
           previewFooter.innerHTML=Sanitizer.clean(replacePreviewTokens(footerHTML));
-          applyFooterAlign(previewFooter, footerSection.getAlign());
+          applyFooterAlign(previewFooter, footerSection.getAlign(), footerSection.getVerticalAlign());
         } else if(footerEnabled){
           setPreviewMessage(previewFooter, "Footer empty · Enter text in the left editor.");
         } else {
@@ -2000,6 +2075,8 @@
         inst.footerHTML = Sanitizer.clean(footerSection.getHTML());
         inst.headerAlign = headerSection.getAlign();
         inst.footerAlign = footerSection.getAlign();
+        inst.headerVAlign = headerSection.getVerticalAlign();
+        inst.footerVAlign = footerSection.getVerticalAlign();
         if(ctx && ctx.refreshPreview) ctx.refreshPreview();
         HistoryManager.record(inst, inst ? inst.el : null, { label:"Update Header & Footer", repeatable:false });
         OutputBinding.syncDebounced(inst);
@@ -2065,8 +2142,14 @@
       if(!footerEnabledExplicit && inst.footerHTML && inst.footerHTML.trim()) inst.footerEnabled=true;
       if(header.align) inst.headerAlign=HFAlign.normalize(header.align);
       else if(data.headerAlign) inst.headerAlign=HFAlign.normalize(data.headerAlign);
+      if(header.vAlign) inst.headerVAlign=HFAlign.normalizeVertical(header.vAlign);
+      else if(data.headerVAlign) inst.headerVAlign=HFAlign.normalizeVertical(data.headerVAlign);
       if(footer.align) inst.footerAlign=HFAlign.normalize(footer.align);
       else if(data.footerAlign) inst.footerAlign=HFAlign.normalize(data.footerAlign);
+      if(footer.vAlign) inst.footerVAlign=HFAlign.normalizeVertical(footer.vAlign);
+      else if(data.footerVAlign) inst.footerVAlign=HFAlign.normalizeVertical(data.footerVAlign);
+      inst.headerVAlign=HFAlign.normalizeVertical(inst.headerVAlign);
+      inst.footerVAlign=HFAlign.normalizeVertical(inst.footerVAlign);
       inst.el.classList.toggle("weditor--no-header", !inst.headerEnabled);
       inst.el.classList.toggle("weditor--no-footer", !inst.footerEnabled);
       inst.el.classList.toggle("weditor--paged", inst.outputMode==="paged");
@@ -2081,13 +2164,19 @@
         header:{
           enabled:!!inst.headerEnabled,
           html:inst.headerHTML,
-          align:inst.headerAlign
+          align:inst.headerAlign,
+          vAlign:inst.headerVAlign
         },
         footer:{
           enabled:!!inst.footerEnabled,
           html:inst.footerHTML,
-          align:inst.footerAlign
-        }
+          align:inst.footerAlign,
+          vAlign:inst.footerVAlign
+        },
+        headerAlign: inst.headerAlign,
+        footerAlign: inst.footerAlign,
+        headerVAlign: inst.headerVAlign,
+        footerVAlign: inst.footerVAlign
       };
       return state;
     }
@@ -3636,6 +3725,8 @@
         footerHTML: inst.footerHTML,
         headerAlign: inst.headerAlign,
         footerAlign: inst.footerAlign,
+        headerVAlign: inst.headerVAlign,
+        footerVAlign: inst.footerVAlign,
         underlineStyle: inst.underlineStyle,
         highlightColor: inst.highlightColor,
         fontColor: inst.fontColor
@@ -3649,6 +3740,8 @@
       inst.footerHTML = state.footerHTML;
       inst.headerAlign = state.headerAlign;
       inst.footerAlign = state.footerAlign;
+      inst.headerVAlign = HFAlign.normalizeVertical(state.headerVAlign!=null ? state.headerVAlign : inst.headerVAlign);
+      inst.footerVAlign = HFAlign.normalizeVertical(state.footerVAlign!=null ? state.footerVAlign : inst.footerVAlign);
       inst.underlineStyle = state.underlineStyle;
       inst.highlightColor = state.highlightColor;
       inst.fontColor = state.fontColor;
@@ -3662,6 +3755,8 @@
         a.footerHTML===b.footerHTML &&
         a.headerAlign===b.headerAlign &&
         a.footerAlign===b.footerAlign &&
+        a.headerVAlign===b.headerVAlign &&
+        a.footerVAlign===b.footerVAlign &&
         a.underlineStyle===b.underlineStyle &&
         a.highlightColor===b.highlightColor &&
         a.fontColor===b.fontColor;
@@ -7242,6 +7337,8 @@
     this.footerHTML = "";
     this.headerAlign = HFAlign.normalize(editorEl.getAttribute("data-header-align"));
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
+    this.headerVAlign = HFAlign.normalizeVertical(editorEl.getAttribute("data-header-valign"));
+    this.footerVAlign = HFAlign.normalizeVertical(editorEl.getAttribute("data-footer-valign"));
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
