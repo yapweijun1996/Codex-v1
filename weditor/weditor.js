@@ -4688,6 +4688,273 @@
     }
     return { createUndo, createRedo };
   })();
+  const TableSelection=(function(){
+    const STATE=new WeakMap();
+    const STYLE_ID="weditor-table-selection-style";
+    const ROW_ATTR="data-weditor-row-selected";
+    const HIGHLIGHT_BG="rgba(15,108,189,0.12)";
+    const HIGHLIGHT_BORDER="rgba(15,108,189,0.35)";
+    function ensureState(root){
+      if(!root) return null;
+      let state=STATE.get(root);
+      if(!state){
+        state={ anchor:null, table:null, rows:[], cleanup:null };
+        STATE.set(root, state);
+      }
+      return state;
+    }
+    function ensureStyles(doc){
+      if(!doc) return;
+      if(doc.getElementById(STYLE_ID)) return;
+      const style=doc.createElement("style");
+      style.id=STYLE_ID;
+      style.type="text/css";
+      style.textContent="table tr["+ROW_ATTR+"]>td,table tr["+ROW_ATTR+"]>th{background-color:"+HIGHLIGHT_BG+";}"+
+        "table tr["+ROW_ATTR+"]{outline:1px solid "+HIGHLIGHT_BORDER+";}";
+      const head=doc.head || doc.getElementsByTagName("head")[0] || doc.documentElement;
+      if(head){ head.appendChild(style); }
+    }
+    function findCell(root, target){
+      let node=target;
+      while(node && node!==root){
+        if(node.nodeType===1){
+          const tag=(node.tagName||"").toLowerCase();
+          if(tag==="td" || tag==="th") return node;
+        }
+        node=node.parentNode;
+      }
+      return null;
+    }
+    function markRow(row){
+      if(!row || row.nodeType!==1) return;
+      row.setAttribute(ROW_ATTR, "1");
+    }
+    function unmarkRow(row){
+      if(!row || row.nodeType!==1) return;
+      row.removeAttribute(ROW_ATTR);
+    }
+    function clearSelection(root){
+      const state=STATE.get(root);
+      if(!state) return;
+      const rows=state.rows || [];
+      for(let i=0;i<rows.length;i++){ unmarkRow(rows[i]); }
+      if(state.table && state.table.querySelectorAll){
+        const leftovers=state.table.querySelectorAll("tr["+ROW_ATTR+"]");
+        for(let i=0;i<leftovers.length;i++){ unmarkRow(leftovers[i]); }
+      }
+      state.rows=[];
+      state.table=null;
+    }
+    function ensureCellHasContent(cell){
+      if(!cell) return;
+      const doc=cell.ownerDocument || document;
+      if(!cell.childNodes || cell.childNodes.length===0){
+        cell.appendChild(doc.createElement("br"));
+        return;
+      }
+      for(let i=0;i<cell.childNodes.length;i++){
+        const child=cell.childNodes[i];
+        if(child.nodeType===3 && child.nodeValue && child.nodeValue.trim()) return;
+        if(child.nodeType===1){
+          if((child.tagName||"").toLowerCase()==="br") return;
+          if(child.textContent && child.textContent.trim()) return;
+        }
+      }
+      cell.appendChild(doc.createElement("br"));
+    }
+    function focusCell(cell){
+      if(!cell) return;
+      const doc=cell.ownerDocument || document;
+      if(!doc || !doc.createRange) return;
+      const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel) return;
+      ensureCellHasContent(cell);
+      const range=doc.createRange();
+      range.selectNodeContents(cell);
+      range.collapse(true);
+      try{
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }catch(err){}
+    }
+    function applySelection(root, anchorCell, focusCellNode){
+      if(!anchorCell || !focusCellNode) return;
+      const state=ensureState(root);
+      if(!state) return;
+      const anchorTable=anchorCell.closest ? anchorCell.closest("table") : null;
+      const focusTable=focusCellNode.closest ? focusCellNode.closest("table") : null;
+      if(!anchorTable || !focusTable || anchorTable!==focusTable){
+        clearSelection(root);
+        state.table=null;
+        return;
+      }
+      clearSelection(root);
+      ensureStyles(anchorTable.ownerDocument || document);
+      const startRow=anchorCell.parentNode ? anchorCell.parentNode.rowIndex : anchorTable.rows ? anchorTable.rows.length-1 : 0;
+      const endRow=focusCellNode.parentNode ? focusCellNode.parentNode.rowIndex : startRow;
+      const min=Math.min(startRow, endRow);
+      const max=Math.max(startRow, endRow);
+      const rows=anchorTable.rows ? Array.prototype.slice.call(anchorTable.rows) : [];
+      const selected=[];
+      for(let i=0;i<rows.length;i++){
+        const row=rows[i];
+        const idx=typeof row.rowIndex==="number" ? row.rowIndex : i;
+        if(idx<min || idx>max) continue;
+        markRow(row);
+        selected.push(row);
+      }
+      state.rows=selected;
+      state.table=anchorTable;
+    }
+    function deleteSelection(inst, root){
+      const state=STATE.get(root);
+      if(!state || !state.rows || !state.rows.length) return false;
+      const table=state.table;
+      if(!table || !root.contains(table)){
+        clearSelection(root);
+        state.anchor=null;
+        return false;
+      }
+      const rows=state.rows.filter(function(row){ return row && row.parentNode && table.contains(row); });
+      if(!rows.length){
+        clearSelection(root);
+        state.anchor=null;
+        return false;
+      }
+      const doc=table.ownerDocument || document;
+      const indices=rows.map(function(row){ return typeof row.rowIndex==="number" ? row.rowIndex : 0; });
+      indices.sort(function(a,b){ return a-b; });
+      const minIndex=indices[0];
+      for(let i=0;i<rows.length;i++){ unmarkRow(rows[i]); }
+      for(let i=0;i<rows.length;i++){
+        const row=rows[i];
+        if(row.parentNode){ row.parentNode.removeChild(row); }
+      }
+      let focusTarget=null;
+      const remaining=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      if(remaining.length){
+        let targetIndex=minIndex;
+        if(targetIndex>=remaining.length) targetIndex=remaining.length-1;
+        const targetRow=remaining[targetIndex];
+        if(targetRow){
+          focusTarget=(targetRow.cells && targetRow.cells.length) ? targetRow.cells[0] : targetRow;
+        }
+      } else {
+        const parent=table.parentNode;
+        if(parent){
+          const paragraph=doc.createElement("p");
+          paragraph.appendChild(doc.createElement("br"));
+          parent.replaceChild(paragraph, table);
+          focusTarget=paragraph;
+        } else {
+          table.remove();
+        }
+      }
+      state.rows=[];
+      state.table=null;
+      state.anchor=null;
+      Normalizer.fixStructure(root);
+      Breaks.ensurePlaceholders(root);
+      if(focusTarget){
+        if(focusTarget.tagName){
+          const tag=focusTarget.tagName.toLowerCase();
+          if(tag==="td" || tag==="th"){
+            focusCell(focusTarget);
+          } else if(typeof focusTarget.focus==="function"){
+            try{ focusTarget.focus({ preventScroll:true }); }
+            catch(err){ focusTarget.focus(); }
+            WDom.placeCaretAtEnd(focusTarget);
+          } else {
+            WDom.placeCaretAtEnd(root);
+          }
+        } else {
+          WDom.placeCaretAtEnd(root);
+        }
+      } else {
+        WDom.placeCaretAtEnd(root);
+      }
+      if(inst){
+        HistoryManager.record(inst, root, { label:"Delete Table Rows", repeatable:false });
+        if(typeof OutputBinding!="undefined" && OutputBinding && typeof OutputBinding.syncDebounced==="function"){
+          OutputBinding.syncDebounced(inst);
+        }
+      }
+      return true;
+    }
+    function attach(inst){
+      if(!inst || !inst.el) return;
+      const root=inst.el;
+      const state=ensureState(root);
+      const doc=root.ownerDocument || document;
+      ensureStyles(doc);
+      function onMouseDown(ev){
+        const cell=findCell(root, ev.target);
+        const st=ensureState(root);
+        if(!cell){
+          if(!ev.shiftKey){
+            clearSelection(root);
+            st.anchor=null;
+          }
+          return;
+        }
+        if(!ev.shiftKey){
+          clearSelection(root);
+          st.anchor=cell;
+        }
+      }
+      function onClick(ev){
+        const cell=findCell(root, ev.target);
+        const st=ensureState(root);
+        if(!cell) return;
+        if(ev.shiftKey){
+          if(!st.anchor || !st.anchor.isConnected){
+            st.anchor=cell;
+            clearSelection(root);
+            return;
+          }
+          applySelection(root, st.anchor, cell);
+        } else {
+          st.anchor=cell;
+        }
+      }
+      function onFocusOut(ev){
+        if(ev.relatedTarget && root.contains(ev.relatedTarget)) return;
+        clearSelection(root);
+        const st=ensureState(root);
+        st.anchor=null;
+      }
+      root.addEventListener("mousedown", onMouseDown);
+      root.addEventListener("click", onClick);
+      root.addEventListener("focusout", onFocusOut);
+      state.cleanup=function(){
+        root.removeEventListener("mousedown", onMouseDown);
+        root.removeEventListener("click", onClick);
+        root.removeEventListener("focusout", onFocusOut);
+      };
+    }
+    function detach(root){
+      const state=STATE.get(root);
+      if(state && typeof state.cleanup==="function"){ state.cleanup(); }
+      clearSelection(root);
+      STATE.delete(root);
+    }
+    function handleKeydown(inst, root, ev){
+      if(!root || !ev || ev.defaultPrevented) return false;
+      if(ev.ctrlKey || ev.metaKey || ev.altKey) return false;
+      const key=String(ev.key||"");
+      if(key!=="Backspace" && key!=="Delete") return false;
+      const state=STATE.get(root);
+      if(!state || !state.rows || !state.rows.length) return false;
+      const removed=deleteSelection(inst, root);
+      if(removed){
+        ev.preventDefault();
+        ev.stopPropagation();
+        return true;
+      }
+      return false;
+    }
+    return { attach, detach, handleKeydown, clearSelection };
+  })();
   const TableResizer=(function(){
     const HANDLE_BUFFER=6;
     const MIN_WIDTH=10;
@@ -8047,6 +8314,9 @@
     this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
     this.el.addEventListener("keydown", (function(self){
       return function(ev){
+        if(TableSelection && typeof TableSelection.handleKeydown==="function" && TableSelection.handleKeydown(self, self.el, ev)){
+          return;
+        }
         if(Breaks.handleKeydown(self.el, ev)){
           HistoryManager.record(self, self.el, { label:"Remove Page Break", repeatable:false });
           OutputBinding.syncDebounced(self);
@@ -8056,6 +8326,7 @@
       };
     })(this));
     HistoryManager.init(this, this.el);
+    TableSelection.attach(this);
     TableResizer.attach(this);
     ImageTools.attach(this.el);
     this.el.__winst = this;
