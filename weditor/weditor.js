@@ -2841,6 +2841,11 @@
             if(entry.compact){
               applyStyles(group, WCfg.Style.toolbarGroupCompact);
             }
+            if(entry.items && entry.items.length===1 && entry.items[0]==="insert.image"){
+              group.style.flex="0 0 auto";
+              group.style.width="auto";
+              group.style.minWidth="0";
+            }
             if(entry.label){
               const title=document.createElement("div");
               title.textContent=entry.label;
@@ -5997,6 +6002,13 @@
       img.src=src;
       if(alt) img.alt=alt;
       img.loading="eager";
+      const ctxWidth=(ctx && ctx.area && ctx.area.clientWidth) || 0;
+      const targetWidth=(target && target.clientWidth) || 0;
+      const instWidth=(inst && inst.el && inst.el.clientWidth) || 0;
+      const availableWidth=ctxWidth || targetWidth || instWidth || 0;
+      const preferredWidth=Math.max(Math.min((availableWidth||0)*0.6, 640), 280);
+      const finalWidth=availableWidth?Math.min(preferredWidth, availableWidth):preferredWidth;
+      if(finalWidth && isFinite(finalWidth)) img.style.width=Math.round(finalWidth)+"px";
       img.style.maxWidth="100%";
       img.style.height="auto";
       img.style.display="inline-block";
@@ -6041,9 +6053,11 @@
     function create(inst, ctx){
       const container=document.createElement("div");
       container.style.position="relative";
-      container.style.display="inline-flex";
-      container.style.alignItems="stretch";
+      container.style.display="inline-block";
       container.style.minWidth="0";
+      container.style.flex="0 0 auto";
+      container.style.alignSelf="flex-start";
+      container.style.width="auto";
       container.setAttribute("role","group");
       container.setAttribute("aria-label","Insert image");
       const trigger=WDom.btn("Insert Image", false, "Insert image");
@@ -6055,6 +6069,8 @@
       trigger.style.gap="6px";
       trigger.style.padding="6px 14px";
       trigger.style.minWidth="0";
+      trigger.style.whiteSpace="nowrap";
+      trigger.style.width="auto";
       trigger.textContent="";
       const label=document.createElement("span");
       label.textContent="Insert Image";
@@ -7868,7 +7884,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image"] }, "insert.table"] },
+      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -7885,7 +7901,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.borderColor","table.cellVerticalAlign"] }
       ] },
-      { id:"insert", label:"Insert", items:[{ label:"Media", compact:true, items:["insert.image"] }, "insert.table"] },
+      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
