@@ -406,6 +406,88 @@
     }
     return { normalize, applyHeader, applyEditor, applyFooter };
   })();
+  const PAGE_TOKEN_CLASS_MAP={
+    header:{ page:"weditor_header_page_num", total:"weditor_header_page_num_total" },
+    footer:{ page:"weditor_footer_page_num", total:"weditor_footer_page_num_total" }
+  };
+  function ensurePageTokenHooks(html, scope){
+    if(typeof html!=="string" || !html) return typeof html==="string" ? html : "";
+    if(html.indexOf("{{page}}")===-1 && html.indexOf("{{total}}")===-1) return html;
+    if(typeof document==="undefined" || !document.createElement) return html;
+    const map=PAGE_TOKEN_CLASS_MAP[scope] || PAGE_TOKEN_CLASS_MAP.footer;
+    const container=document.createElement("div");
+    container.innerHTML=html;
+    wrapPageTokens(container, map);
+    return container.innerHTML;
+  }
+  function wrapPageTokens(root, map){
+    if(!root) return;
+    const nodes=[];
+    const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while((node=walker.nextNode())){
+      const value=node.nodeValue||"";
+      if(value.indexOf("{{page}}")===-1 && value.indexOf("{{total}}")===-1) continue;
+      const parent=node.parentNode;
+      if(!parent) continue;
+      if(hasHookAncestor(parent, map, root)) continue;
+      nodes.push(node);
+    }
+    for(let i=0;i<nodes.length;i++){
+      const textNode=nodes[i];
+      const frag=document.createDocumentFragment();
+      let remaining=textNode.nodeValue||"";
+      while(remaining){
+        const pageIdx=remaining.indexOf("{{page}}");
+        const totalIdx=remaining.indexOf("{{total}}");
+        const nextIdx=pageIdx===-1 ? totalIdx : (totalIdx===-1 ? pageIdx : Math.min(pageIdx,totalIdx));
+        if(nextIdx===-1){
+          frag.appendChild(document.createTextNode(remaining));
+          break;
+        }
+        if(nextIdx>0){
+          frag.appendChild(document.createTextNode(remaining.slice(0,nextIdx)));
+        }
+        if(nextIdx===pageIdx){
+          frag.appendChild(createTokenHookSpan(map.page, "{{page}}"));
+          remaining=remaining.slice(pageIdx+"{{page}}".length);
+        }else{
+          frag.appendChild(createTokenHookSpan(map.total, "{{total}}"));
+          remaining=remaining.slice(totalIdx+"{{total}}".length);
+        }
+      }
+      if(textNode.parentNode) textNode.parentNode.replaceChild(frag, textNode);
+    }
+  }
+  function hasHookAncestor(node, map, boundary){
+    const pageClass=map.page;
+    const totalClass=map.total;
+    while(node && node!==boundary){
+      if(node.nodeType===1){
+        const el=node;
+        if(hasClass(el, pageClass) || hasClass(el, totalClass) || (el.hasAttribute && el.hasAttribute("data-weditor-token"))){
+          return true;
+        }
+      }
+      node=node.parentNode;
+    }
+    return false;
+  }
+  function hasClass(el, className){
+    if(!el || !className) return false;
+    if(el.classList) return el.classList.contains(className);
+    const cls=typeof el.className==="string" ? el.className : "";
+    if(!cls) return false;
+    const parts=cls.split(/\s+/);
+    for(let i=0;i<parts.length;i++){ if(parts[i]===className) return true; }
+    return false;
+  }
+  function createTokenHookSpan(className, token){
+    const span=document.createElement("span");
+    span.className=className;
+    span.textContent=token;
+    return span;
+  }
   const Tokens=(function(){
     function apply(root, ctx){
       function repl(s){ return s.replace(/\{\{page\}\}/g, String(ctx.page)).replace(/\{\{total\}\}/g, String(ctx.total)).replace(/\{\{date\}\}/g, ctx.date); }
@@ -1841,7 +1923,7 @@
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
         '</div>'+""+
         '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1852,7 +1934,7 @@
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;border-radius:6px;">'+
         '</div>'+""+
         '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1865,7 +1947,7 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;font-size:11px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.72;">Left label</span>'+
           '<span style="text-align:center;opacity:.72;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1878,7 +1960,7 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;font-size:12px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.78;">Left label</span>'+
           '<span style="text-align:center;opacity:.78;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1968,10 +2050,10 @@
         {
           id:"project",
           label:"🗂️ Project Brief",
-          preview:'<span>Project Phoenix</span><span>Version {{page}} · {{date}}</span>',
+          preview:'<span>Project Phoenix</span><span>Version <span class="weditor_header_page_num">{{page}}</span> · {{date}}</span>',
           html:'<div style="display:flex;flex-direction:column;gap:4px;width:100%;">'+
             '<div style="font-size:15px;font-weight:600;">Project Phoenix</div>'+
-            '<div style="font-size:12px;color:#666;">Sprint Summary · Version {{page}} · {{date}}</div>'+
+            '<div style="font-size:12px;color:#666;">Sprint Summary · Version <span class="weditor_header_page_num">{{page}}</span> · {{date}}</div>'+
           '</div>',
           align:"left"
         },
@@ -1996,10 +2078,10 @@
         {
           id:"invoice",
           label:"🧾 Invoice / Quotation",
-          preview:'<span>Acme Finance</span><span>Page {{page}} of {{total}}</span>',
+          preview:'<span>Acme Finance</span><span>Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Acme Finance · Accounts Payable</div>'+
-            '<div style="text-align:right;">Page {{page}} of {{total}}</div>'+
+            '<div style="text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></div>'+
           '</div>',
           align:"left"
         },
@@ -2013,10 +2095,10 @@
         {
           id:"delivery",
           label:"🚚 Delivery Order",
-          preview:'<span>Logistics Hotline</span><span>{{page}}/{{total}}</span>',
+          preview:'<span>Logistics Hotline</span><span><span class="weditor_footer_page_num">{{page}}</span>/<span class="weditor_footer_page_num_total">{{total}}</span></span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Logistics Hotline · +65 6100 1234</div>'+
-            '<div style="text-align:center;">Page {{page}} / {{total}}</div>'+
+            '<div style="text-align:center;">Page <span class="weditor_footer_page_num">{{page}}</span> / <span class="weditor_footer_page_num_total">{{total}}</span></div>'+
             '<div style="text-align:right;">www.acme-shipping.com</div>'+
           '</div>',
           align:"left"
@@ -2027,7 +2109,7 @@
           preview:'<span>Prepared for Client</span><span>{{date}}</span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Prepared by Legal Team</div>'+
-            '<div style="text-align:right;">Version {{page}} · {{date}}</div>'+
+            '<div style="text-align:right;">Version <span class="weditor_footer_page_num">{{page}}</span> · {{date}}</div>'+
           '</div>',
           align:"left"
         },
@@ -2629,8 +2711,8 @@
       function saveAndClose(){
         inst.headerEnabled = !!headerSection.toggle.checked;
         inst.footerEnabled = !!footerSection.toggle.checked;
-        inst.headerHTML = Sanitizer.clean(headerSection.getHTML());
-        inst.footerHTML = Sanitizer.clean(footerSection.getHTML());
+        inst.headerHTML = ensurePageTokenHooks(Sanitizer.clean(headerSection.getHTML()), "header");
+        inst.footerHTML = ensurePageTokenHooks(Sanitizer.clean(footerSection.getHTML()), "footer");
         inst.headerAlign = headerSection.getAlign();
         inst.footerAlign = footerSection.getAlign();
         if(ctx && ctx.refreshPreview) ctx.refreshPreview();
@@ -2690,10 +2772,10 @@
       else if(typeof data.headerEnabled==="boolean") inst.headerEnabled=data.headerEnabled;
       if(typeof footer.enabled==="boolean") inst.footerEnabled=footer.enabled;
       else if(typeof data.footerEnabled==="boolean") inst.footerEnabled=data.footerEnabled;
-      if(typeof header.html==="string") inst.headerHTML=sanitizeHTML(header.html);
-      else if(typeof data.headerHTML==="string") inst.headerHTML=sanitizeHTML(data.headerHTML);
-      if(typeof footer.html==="string") inst.footerHTML=sanitizeHTML(footer.html);
-      else if(typeof data.footerHTML==="string") inst.footerHTML=sanitizeHTML(data.footerHTML);
+      if(typeof header.html==="string") inst.headerHTML=ensurePageTokenHooks(sanitizeHTML(header.html), "header");
+      else if(typeof data.headerHTML==="string") inst.headerHTML=ensurePageTokenHooks(sanitizeHTML(data.headerHTML), "header");
+      if(typeof footer.html==="string") inst.footerHTML=ensurePageTokenHooks(sanitizeHTML(footer.html), "footer");
+      else if(typeof data.footerHTML==="string") inst.footerHTML=ensurePageTokenHooks(sanitizeHTML(data.footerHTML), "footer");
       if(!headerEnabledExplicit && inst.headerHTML && inst.headerHTML.trim()) inst.headerEnabled=true;
       if(!footerEnabledExplicit && inst.footerHTML && inst.footerHTML.trim()) inst.footerEnabled=true;
       if(header.align) inst.headerAlign=HFAlign.normalize(header.align);
