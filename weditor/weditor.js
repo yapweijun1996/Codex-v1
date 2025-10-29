@@ -12,6 +12,17 @@
     const trimmed=value.trim();
     if(!trimmed) return "";
     if(/^javascript:/i.test(trimmed)) return "";
+    if(/^https?:\/\//i.test(trimmed)) return trimmed;
+    const schemeMatch=trimmed.match(/^([a-z0-9+.-]+):/i);
+    if(schemeMatch){
+      const scheme=schemeMatch[1].toLowerCase();
+      if(scheme!=="http" && scheme!=="https") return "";
+      return /^https?:\/\//i.test(trimmed) ? trimmed : "";
+    }
+    if(trimmed.startsWith("//")) return trimmed;
+    if(trimmed.startsWith("/")) return trimmed;
+    if(trimmed.startsWith("./")) return trimmed;
+    if(trimmed.startsWith("../")) return trimmed;
     return trimmed;
   }
   function escapeAttribute(value){
