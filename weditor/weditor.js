@@ -1841,7 +1841,7 @@
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
         '</div>'+""+
         '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1852,7 +1852,7 @@
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;border-radius:6px;">'+
         '</div>'+""+
         '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1865,7 +1865,7 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;font-size:11px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.72;">Left label</span>'+
           '<span style="text-align:center;opacity:.72;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1878,7 +1878,7 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;font-size:12px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.78;">Left label</span>'+
           '<span style="text-align:center;opacity:.78;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1999,7 +1999,7 @@
           preview:'<span>Acme Finance</span><span>Page {{page}} of {{total}}</span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Acme Finance · Accounts Payable</div>'+
-            '<div style="text-align:right;">Page {{page}} of {{total}}</div>'+
+            '<div style="text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></div>'+
           '</div>',
           align:"left"
         },
@@ -2016,7 +2016,7 @@
           preview:'<span>Logistics Hotline</span><span>{{page}}/{{total}}</span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Logistics Hotline · +65 6100 1234</div>'+
-            '<div style="text-align:center;">Page {{page}} / {{total}}</div>'+
+            '<div style="text-align:center;">Page <span class="weditor_footer_page_num">{{page}}</span> / <span class="weditor_footer_page_num_total">{{total}}</span></div>'+
             '<div style="text-align:right;">www.acme-shipping.com</div>'+
           '</div>',
           align:"left"
