@@ -1780,16 +1780,46 @@
         chip.parentNode.replaceChild(text, chip);
       }
     }
+    const LETTERHEAD_DEFAULT_LOGO="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
+    function normalizeLetterheadURL(value){
+      if(!value) return null;
+      const trimmed=String(value).trim();
+      if(!trimmed) return null;
+      try {
+        const base=(typeof window!=="undefined" && window.location && window.location.href) ? window.location.href : undefined;
+        const resolved=new URL(trimmed, base);
+        const protocol=resolved.protocol ? resolved.protocol.toLowerCase() : "";
+        if(protocol==="http:" || protocol==="https:"){
+          return resolved.href;
+        }
+      } catch(err){}
+      return null;
+    }
+    function applyTemplateContext(html, context){
+      if(!html) return html;
+      let output=String(html);
+      if(context && context.letterheadLogoURL){
+        const pattern=new RegExp(escapeRegExp(LETTERHEAD_DEFAULT_LOGO), "g");
+        output=output.replace(pattern, context.letterheadLogoURL);
+      }
+      return output;
+    }
+    function buildTemplateContext(inst){
+      if(!inst || !inst.el || !inst.el.getAttribute) return {};
+      const raw=inst.el.getAttribute("data-custom-letterhead-logo-url");
+      const url=normalizeLetterheadURL(raw);
+      return url ? { letterheadLogoURL:url } : {};
+    }
     const TEMPLATE_LIBRARY={
       header:[
         {
           id:"letterhead_image",
           label:"🖼️ Letterhead Banner",
           preview:'<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+            '<img src="'+LETTERHEAD_DEFAULT_LOGO+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
           '</div>',
           html:'<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+            '<img src="'+LETTERHEAD_DEFAULT_LOGO+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
           '</div>',
           align:"center"
         },
@@ -1902,7 +1932,7 @@
       }
       return out;
     }
-    function section(kind, titleText, description, enabled, html, align){
+    function section(kind, titleText, description, enabled, html, align, templateContext){
       const changeHandlers=[];
       function notifyChange(){ for(let i=0;i<changeHandlers.length;i++){ changeHandlers[i](); } }
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
@@ -2003,7 +2033,8 @@
           const card=document.createElement("button"); card.type="button"; applyStyles(card, WCfg.Style.hfTemplateCard);
           const cardTitle=document.createElement("div"); applyStyles(cardTitle, WCfg.Style.hfTemplateCardTitle); cardTitle.textContent=tpl.label;
           const cardPreview=document.createElement("div"); applyStyles(cardPreview, WCfg.Style.hfTemplateCardPreview);
-          cardPreview.innerHTML=Sanitizer.clean(tpl.preview||tpl.html||"");
+          const previewHTML=applyTemplateContext(tpl.preview||tpl.html||"", templateContext);
+          cardPreview.innerHTML=Sanitizer.clean(previewHTML);
           decorateTokens(cardPreview);
           card.appendChild(cardTitle);
           card.appendChild(cardPreview);
@@ -2012,7 +2043,8 @@
           card.addEventListener("click", function(){
             if(card.disabled) return;
             if(!toggle.checked){ toggle.checked=true; sync(); }
-            editor.innerHTML=Sanitizer.clean(tpl.html||"");
+            const templateHTML=applyTemplateContext(tpl.html||"", templateContext);
+            editor.innerHTML=Sanitizer.clean(templateHTML);
             reattachImageOverlay();
             if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
             decorateTokens(editor);
@@ -2280,8 +2312,9 @@
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
       const tokenHint="Smart tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
-      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
-      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
+      const templateContext=buildTemplateContext(inst);
+      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign, templateContext);
+      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign, templateContext);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
