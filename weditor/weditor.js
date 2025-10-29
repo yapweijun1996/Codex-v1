@@ -1841,7 +1841,7 @@
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
         '</div>'+""+
         '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1852,7 +1852,7 @@
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;border-radius:6px;">'+
         '</div>'+""+
         '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1865,7 +1865,7 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;font-size:11px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.72;">Left label</span>'+
           '<span style="text-align:center;opacity:.72;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
     }
@@ -1878,9 +1878,59 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;font-size:12px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.78;">Left label</span>'+
           '<span style="text-align:center;opacity:.78;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page {{page}} of {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
         '</div>'+
       '</div>';
+    }
+    const PAGE_TOTAL_REGEX=/\{\{\s*(page|total)\s*\}\}/i;
+    function wrapPageTokens(root, kind){
+      if(!root) return;
+      const classes=kind==="header"?
+        { page:"weditor_header_page_num", total:"weditor_header_page_num_total" }:
+        { page:"weditor_footer_page_num", total:"weditor_footer_page_num_total" };
+      function isWrapped(node){
+        if(!node || node.nodeType!==1) return false;
+        if(node.getAttribute && node.getAttribute("data-weditor-token-wrap")) return true;
+        if(node.classList && (node.classList.contains(classes.page) || node.classList.contains(classes.total))) return true;
+        return false;
+      }
+      const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+      const targets=[]; let node;
+      while((node=walker.nextNode())){
+        if(!node.nodeValue || !PAGE_TOTAL_REGEX.test(node.nodeValue)) continue;
+        const parent=node.parentNode;
+        let current=parent; let skip=false;
+        while(current && current!==root){
+          if(isWrapped(current)){ skip=true; break; }
+          current=current.parentNode;
+        }
+        if(skip) continue;
+        if(parent && parent.nodeType===1 && parent.hasAttribute && parent.hasAttribute("data-weditor-token")) continue;
+        targets.push(node);
+      }
+      for(let i=0;i<targets.length;i++){
+        const textNode=targets[i];
+        const value=textNode.nodeValue||"";
+        if(!PAGE_TOTAL_REGEX.test(value)) continue;
+        const frag=document.createDocumentFragment();
+        const regex=/\{\{\s*(page|total)\s*\}\}/gi;
+        let lastIndex=0; let match;
+        while((match=regex.exec(value))){
+          const before=value.slice(lastIndex, match.index);
+          if(before) frag.appendChild(document.createTextNode(before));
+          const token=(match[1]||"").toLowerCase();
+          const span=document.createElement("span");
+          span.className=token==="total"?classes.total:classes.page;
+          span.setAttribute("data-weditor-token-wrap", kind);
+          span.textContent="{{"+token+"}}";
+          frag.appendChild(span);
+          lastIndex=regex.lastIndex;
+        }
+        if(lastIndex<value.length) frag.appendChild(document.createTextNode(value.slice(lastIndex)));
+        if(frag.childNodes.length && textNode.parentNode){
+          textNode.parentNode.replaceChild(frag, textNode);
+        }
+      }
     }
     function decorateTokens(root){
       if(!root) return;
@@ -1968,10 +2018,10 @@
         {
           id:"project",
           label:"🗂️ Project Brief",
-          preview:'<span>Project Phoenix</span><span>Version {{page}} · {{date}}</span>',
+          preview:'<span>Project Phoenix</span><span>Version <span class="weditor_header_page_num">{{page}}</span> · {{date}}</span>',
           html:'<div style="display:flex;flex-direction:column;gap:4px;width:100%;">'+
             '<div style="font-size:15px;font-weight:600;">Project Phoenix</div>'+
-            '<div style="font-size:12px;color:#666;">Sprint Summary · Version {{page}} · {{date}}</div>'+
+            '<div style="font-size:12px;color:#666;">Sprint Summary · Version <span class="weditor_header_page_num">{{page}}</span> · {{date}}</div>'+
           '</div>',
           align:"left"
         },
@@ -1996,10 +2046,10 @@
         {
           id:"invoice",
           label:"🧾 Invoice / Quotation",
-          preview:'<span>Acme Finance</span><span>Page {{page}} of {{total}}</span>',
+          preview:'<span>Acme Finance</span><span>Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Acme Finance · Accounts Payable</div>'+
-            '<div style="text-align:right;">Page {{page}} of {{total}}</div>'+
+            '<div style="text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></div>'+
           '</div>',
           align:"left"
         },
@@ -2013,10 +2063,10 @@
         {
           id:"delivery",
           label:"🚚 Delivery Order",
-          preview:'<span>Logistics Hotline</span><span>{{page}}/{{total}}</span>',
+          preview:'<span>Logistics Hotline</span><span><span class="weditor_footer_page_num">{{page}}</span>/<span class="weditor_footer_page_num_total">{{total}}</span></span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Logistics Hotline · +65 6100 1234</div>'+
-            '<div style="text-align:center;">Page {{page}} / {{total}}</div>'+
+            '<div style="text-align:center;">Page <span class="weditor_footer_page_num">{{page}}</span> / <span class="weditor_footer_page_num_total">{{total}}</span></div>'+
             '<div style="text-align:right;">www.acme-shipping.com</div>'+
           '</div>',
           align:"left"
@@ -2027,7 +2077,7 @@
           preview:'<span>Prepared for Client</span><span>{{date}}</span>',
           html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
             '<div>Prepared by Legal Team</div>'+
-            '<div style="text-align:right;">Version {{page}} · {{date}}</div>'+
+            '<div style="text-align:right;">Version <span class="weditor_footer_page_num">{{page}}</span> · {{date}}</div>'+
           '</div>',
           align:"left"
         },
@@ -2449,6 +2499,7 @@
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
           unwrapTokenChips(clone);
+          wrapPageTokens(clone, kind);
           return clone.innerHTML;
         },
         getPreviewHTML:function(){
@@ -2458,6 +2509,7 @@
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
           unwrapTokenChips(clone);
+          wrapPageTokens(clone, kind);
           return Sanitizer.clean(clone.innerHTML);
         },
         getAlign:function(){ return alignValue; },
