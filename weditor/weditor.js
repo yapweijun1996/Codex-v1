@@ -1834,6 +1834,54 @@
     function renderFooterLogoHTML(inst){
       return renderBannerHTML(resolveFooterLogo(inst), "Footer banner");
     }
+    function renderFooterLogoWithPagePreview(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+        '</div>'+""+
+        '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderFooterLogoWithPageHTML(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="width:100%;display:flex;flex-direction:column;align-items:stretch;gap:10px;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;border-radius:6px;">'+
+        '</div>'+""+
+        '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderFooterLogoWithMetaPreview(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+        '</div>'+""+
+        '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;font-size:11px;color:#605e5c;">'+
+          '<span style="text-align:left;opacity:.72;">Left label</span>'+
+          '<span style="text-align:center;opacity:.72;">Center message</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page {{page}} of {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderFooterLogoWithMetaHTML(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="width:100%;display:flex;flex-direction:column;align-items:stretch;gap:10px;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;border-radius:6px;">'+
+        '</div>'+""+
+        '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;font-size:12px;color:#605e5c;">'+
+          '<span style="text-align:left;opacity:.78;">Left label</span>'+
+          '<span style="text-align:center;opacity:.78;">Center message</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page {{page}} of {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
     function decorateTokens(root){
       if(!root) return;
       const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -1989,6 +2037,20 @@
           preview:function(ctx){ return renderFooterLogoPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderFooterLogoHTML(ctx && ctx.inst); },
           align:"center"
+        },
+        {
+          id:"footer_logo_page",
+          label:"🖼️ Footer Logo Banner with Page No.",
+          preview:function(ctx){ return renderFooterLogoWithPagePreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoWithPageHTML(ctx && ctx.inst); },
+          align:"right"
+        },
+        {
+          id:"footer_logo_page_meta",
+          label:"🖼️ Footer Logo Banner · 3 Column Meta",
+          preview:function(ctx){ return renderFooterLogoWithMetaPreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoWithMetaHTML(ctx && ctx.inst); },
+          align:"right"
         }
       ]
     };
@@ -2151,8 +2213,31 @@
         templateBox.appendChild(templateGrid);
         wrap.appendChild(templateBox);
       }
+      function syncTemplateAlignments(){
+        const rows=editor.querySelectorAll ? editor.querySelectorAll('[data-weditor-page-line]') : [];
+        for(let i=0;i<rows.length;i++){
+          const row=rows[i];
+          if(!row) continue;
+          const mode=(row.getAttribute('data-weditor-page-line')||'').toLowerCase();
+          const number=row.querySelector ? row.querySelector('[data-weditor-page-number]') : null;
+          if(mode==='three'){
+            if(number){
+              const justify=alignValue==='left'?'start':alignValue==='right'?'end':'center';
+              number.style.justifySelf=justify;
+              number.style.textAlign=alignValue;
+            }
+          }else{
+            const justify=alignValue==='left'?'flex-start':alignValue==='right'?'flex-end':'center';
+            row.style.justifyContent=justify;
+            if(!row.style.alignItems) row.style.alignItems='center';
+            row.style.textAlign=alignValue;
+            if(number){ number.style.textAlign=alignValue; }
+          }
+        }
+      }
       function updateAlignUI(){
         HFAlign.applyEditor(editor, alignValue);
+        syncTemplateAlignments();
         for(let i=0;i<alignButtons.length;i++){
           const item=alignButtons[i];
           const active=item.value===alignValue;
