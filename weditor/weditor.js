@@ -3724,6 +3724,17 @@
       if(/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw)){ return normalizeShadingColor("#"+raw); }
       return null;
     }
+    function normalizeShadingColor(input){
+      if(input==null){ return null; }
+      const raw=String(input).trim();
+      if(!raw){ return null; }
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw)){ return raw.length===4 ? (function(){
+        const r=raw.charAt(1), g=raw.charAt(2), b=raw.charAt(3);
+        return ("#"+r+r+g+g+b+b).toLowerCase();
+      })() : raw.toLowerCase(); }
+      if(/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw)){ return normalizeShadingColor("#"+raw); }
+      return null;
+    }
     function applyHighlight(inst, ctx, color){
       if(!color){ return clearHighlight(inst, ctx); }
       const target=resolveTarget(inst, ctx); if(!target) return false;
