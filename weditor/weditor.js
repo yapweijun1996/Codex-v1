@@ -1834,6 +1834,32 @@
     function renderFooterLogoHTML(inst){
       return renderBannerHTML(resolveFooterLogo(inst), "Footer banner");
     }
+    function renderFooterLogoWithPagePreview(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;flex-direction:column;gap:8px;width:100%;align-items:stretch;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+        '</div>'+""+
+        '<div data-weditor-page-align-group="grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:center;font-size:12px;color:#605e5c;width:100%;">'+
+          '<span style="text-align:left;">TAC</span>'+
+          '<span style="text-align:center;">E.O.E</span>'+
+          '<span data-weditor-page-align="right" style="text-align:right;">Page {{page}} / {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderFooterLogoWithPageHTML(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="width:100%;display:flex;flex-direction:column;gap:10px;align-items:stretch;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+        '</div>'+""+
+        '<div data-weditor-page-align-group="grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:center;font-size:12px;color:#605e5c;width:100%;">'+
+          '<span style="text-align:left;">Company tagline or legal text</span>'+
+          '<span style="text-align:center;">Optional middle note</span>'+
+          '<span data-weditor-page-align="right" style="text-align:right;">Page {{page}} / {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
     function decorateTokens(root){
       if(!root) return;
       const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -1989,6 +2015,13 @@
           preview:function(ctx){ return renderFooterLogoPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderFooterLogoHTML(ctx && ctx.inst); },
           align:"center"
+        },
+        {
+          id:"footer_logo_page",
+          label:"🖼️ Footer Logo Banner with Page No.",
+          preview:function(ctx){ return renderFooterLogoWithPagePreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoWithPageHTML(ctx && ctx.inst); },
+          align:"center"
         }
       ]
     };
@@ -2044,6 +2077,8 @@
       editor.innerHTML = Sanitizer.clean(html || "");
       decorateTokens(editor);
       let alignValue=HFAlign.normalize(align);
+      let pageAlignTargets=[];
+      let pageAlignValue=null;
       function enforceImageSizing(target){
         const imgs=target.querySelectorAll ? target.querySelectorAll("img") : [];
         for(let i=0;i<imgs.length;i++){
@@ -2054,12 +2089,12 @@
         }
       }
       enforceImageSizing(editor);
-      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); decorateTokens(editor); notifyChange(); }, 0); });
+      editor.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(editor); enforceImageSizing(editor); decorateTokens(editor); syncPageAlignTargets(); notifyChange(); }, 0); });
       let decorateTimer=null;
       editor.addEventListener("input", function(){
         enforceImageSizing(editor);
         if(decorateTimer){ window.clearTimeout(decorateTimer); }
-        decorateTimer=window.setTimeout(function(){ decorateTokens(editor); notifyChange(); }, 120);
+        decorateTimer=window.setTimeout(function(){ decorateTokens(editor); syncPageAlignTargets(); notifyChange(); }, 120);
       });
       const tokenRow=document.createElement("div"); applyStyles(tokenRow, WCfg.Style.hfTokenRow);
       const tokenLabel=document.createElement("span"); applyStyles(tokenLabel, WCfg.Style.hfTokenLabel); tokenLabel.textContent="🧩 Smart Tokens";
@@ -2112,6 +2147,121 @@
       alignRow.appendChild(alignLabel);
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
+      const pageAlignRow=document.createElement("div"); applyStyles(pageAlignRow, WCfg.Style.hfAlignRow);
+      pageAlignRow.style.display="none";
+      const pageAlignLabel=document.createElement("span");
+      pageAlignLabel.textContent="Page number align";
+      pageAlignLabel.style.font="12px/1.4 Segoe UI,system-ui";
+      pageAlignLabel.style.color=WCfg.UI.textDim;
+      const pageAlignGroup=document.createElement("div"); applyStyles(pageAlignGroup, WCfg.Style.hfAlignGroup);
+      pageAlignGroup.setAttribute("role","group");
+      pageAlignGroup.setAttribute("aria-label", titleText+" page number alignment controls");
+      const pageAlignButtons=[];
+      const pageAlignOptions=[
+        { value:"left", label:"Left", title:"Align page counter left" },
+        { value:"center", label:"Center", title:"Align page counter center" },
+        { value:"right", label:"Right", title:"Align page counter right" }
+      ];
+      for(let i=0;i<pageAlignOptions.length;i++){
+        const opt=pageAlignOptions[i];
+        const btn=document.createElement("button");
+        btn.type="button";
+        applyStyles(btn, WCfg.Style.hfAlignBtn);
+        btn.textContent=opt.label;
+        btn.title=opt.title;
+        btn.setAttribute("data-page-align", opt.value);
+        btn.setAttribute("aria-pressed","false");
+        if(i<pageAlignOptions.length-1) btn.style.borderRight="1px solid "+WCfg.UI.borderSubtle;
+        btn.addEventListener("click", function(){ if(!toggle.checked) return; setPageAlign(opt.value); });
+        pageAlignGroup.appendChild(btn);
+        pageAlignButtons.push({ value:opt.value, button:btn });
+      }
+      pageAlignRow.appendChild(pageAlignLabel);
+      pageAlignRow.appendChild(pageAlignGroup);
+      wrap.appendChild(pageAlignRow);
+      function pageAlignFlexJustify(norm){
+        if(norm==="center") return "center";
+        if(norm==="right") return "flex-end";
+        return "flex-start";
+      }
+      function pageAlignGridSelf(norm){
+        if(norm==="center") return "center";
+        if(norm==="right") return "end";
+        return "start";
+      }
+      function applyPageAlignStyles(){
+        if(!pageAlignTargets.length) return;
+        const norm=pageAlignValue || "right";
+        for(let i=0;i<pageAlignTargets.length;i++){
+          const target=pageAlignTargets[i];
+          if(!target) continue;
+          target.setAttribute("data-weditor-page-align", norm);
+          if(target.style){
+            target.style.textAlign=norm;
+            if(norm==="left"){ target.style.marginLeft="0"; target.style.marginRight="0"; }
+            else if(norm==="right"){ target.style.marginLeft="auto"; target.style.marginRight="0"; }
+            else { target.style.marginLeft="auto"; target.style.marginRight="auto"; }
+            if(typeof target.style.justifySelf!=="undefined"){
+              target.style.justifySelf=pageAlignGridSelf(norm);
+            }
+          }
+          const parent=target.parentNode;
+          if(parent && parent.getAttribute){
+            const mode=parent.getAttribute("data-weditor-page-align-group");
+            if(mode==="flex" && parent.style){
+              parent.style.justifyContent=pageAlignFlexJustify(norm);
+            }
+          }
+        }
+      }
+      function updatePageAlignButtons(){
+        const hasTargets=pageAlignTargets.length>0;
+        for(let i=0;i<pageAlignButtons.length;i++){
+          const item=pageAlignButtons[i];
+          const btn=item.button;
+          const active=hasTargets && item.value===pageAlignValue;
+          btn.setAttribute("aria-pressed", active?"true":"false");
+          btn.style.background=active?"#e6f2fb":"#fff";
+          btn.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
+          btn.style.fontWeight=active?"600":"400";
+          const enabled=toggle.checked && hasTargets;
+          btn.disabled=!enabled;
+          btn.style.opacity=enabled?"1":"0.55";
+          btn.style.cursor=enabled?"pointer":"not-allowed";
+        }
+      }
+      function updatePageAlignUI(){
+        applyPageAlignStyles();
+        updatePageAlignButtons();
+      }
+      function setPageAlign(next){
+        const norm=HFAlign.normalize(next);
+        pageAlignValue=norm;
+        updatePageAlignUI();
+        notifyChange();
+      }
+      function syncPageAlignTargets(){
+        if(!editor || !editor.querySelectorAll){
+          pageAlignTargets=[];
+          pageAlignValue=null;
+          pageAlignRow.style.display="none";
+          updatePageAlignUI();
+          return;
+        }
+        pageAlignTargets=Array.prototype.slice.call(editor.querySelectorAll('[data-weditor-page-align]'));
+        if(!pageAlignTargets.length){
+          pageAlignRow.style.display="none";
+          pageAlignValue=null;
+          updatePageAlignUI();
+          return;
+        }
+        pageAlignRow.style.display="flex";
+        const existing=pageAlignTargets[0];
+        const attr=(existing && existing.getAttribute) ? existing.getAttribute('data-weditor-page-align') : null;
+        pageAlignValue=HFAlign.normalize(attr || pageAlignValue || "right");
+        updatePageAlignUI();
+      }
+      syncPageAlignTargets();
       const templateButtons=[];
       const templates=resolveTemplates(kind, inst);
       if(templates.length){
@@ -2139,6 +2289,8 @@
             decorateTokens(editor);
             Normalizer.fixStructure(editor);
             enforceImageSizing(editor);
+            pageAlignValue=null;
+            syncPageAlignTargets();
             setAlign(tpl.align || "left");
             WDom.placeCaretAtEnd(editor);
             notifyChange();
@@ -2250,6 +2402,7 @@
         }
         Normalizer.fixStructure(editor);
         decorateTokens(editor);
+        syncPageAlignTargets();
         reattachImageOverlay();
         if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
         notifyChange();
@@ -2347,6 +2500,7 @@
           btn.style.opacity=on?"1":"0.55";
           btn.style.cursor=on?"pointer":"not-allowed";
         }
+        updatePageAlignButtons();
         updateAlignUI();
       }
       toggle.addEventListener("change", sync);
