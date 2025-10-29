@@ -3487,6 +3487,22 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const SHADING_STANDARD_COLORS=[
+      { label:"Black", value:"#000000" },
+      { label:"Dark Gray", value:"#7f7f7f" },
+      { label:"Gray", value:"#bfbfbf" },
+      { label:"Light Gray", value:"#d9d9d9" },
+      { label:"White", value:"#ffffff" },
+      { label:"Red", value:"#ff0000" },
+      { label:"Orange", value:"#ffa500" },
+      { label:"Yellow", value:"#ffff00" },
+      { label:"Light Green", value:"#92d050" },
+      { label:"Green", value:"#00b050" },
+      { label:"Teal", value:"#00b0f0" },
+      { label:"Blue", value:"#0070c0" },
+      { label:"Dark Blue", value:"#002060" },
+      { label:"Purple", value:"#7030a0" }
+    ];
     const BLOCK_FORMATS=[
       { label:"Normal (Paragraph)", value:"p" },
       { label:"Heading 1", value:"h1" },
@@ -3704,6 +3720,237 @@
       if(success && inst){ inst.highlightColor=color; }
       return success;
     }
+    function collectShadingBlocks(range, target){
+      if(!range || !target) return [];
+      const doc=target.ownerDocument || document;
+      const blocks=[];
+      const seen=new Set();
+      function add(node){
+        if(!node) return;
+        const block=findBlockNode(node, target);
+        if(block && !seen.has(block)){
+          seen.add(block);
+          blocks.push(block);
+        }
+      }
+      add(range.startContainer);
+      add(range.endContainer);
+      add(range.commonAncestorContainer);
+      if(doc && doc.createTreeWalker){
+        const root=range.commonAncestorContainer || target;
+        const walker=doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==range.commonAncestorContainer && intersectsRange(range, current)) add(current);
+        while((current=walker.nextNode())){
+          if(!target.contains(current)) continue;
+          if(intersectsRange(range, current)) add(current);
+        }
+      }
+      return blocks;
+    }
+    function isTableCell(node){
+      if(!node || node.nodeType!==1) return false;
+      const tag=(node.tagName||"").toUpperCase();
+      return tag==="TD" || tag==="TH";
+    }
+    function applyBlockBackground(block, color){
+      if(!block || block.nodeType!==1) return false;
+      let changed=false;
+      if(color){
+        if(block.style){
+          const before=block.style.backgroundColor;
+          block.style.backgroundColor=color;
+          if(before!==color) changed=true;
+        } else {
+          const before=block.getAttribute && block.getAttribute("bgcolor");
+          block.setAttribute("bgcolor", color);
+          if(before!==color) changed=true;
+        }
+      } else {
+        if(block.style && block.style.backgroundColor){
+          block.style.backgroundColor="";
+          if(block.style.removeProperty){ block.style.removeProperty("background-color"); }
+          if(block.getAttribute && block.getAttribute("style")!==null && block.style.cssText.trim()===""){
+            block.removeAttribute("style");
+          }
+          changed=true;
+        }
+        if(block.hasAttribute && block.hasAttribute("bgcolor")){
+          block.removeAttribute("bgcolor");
+          changed=true;
+        }
+      }
+      return changed;
+    }
+    function applyInlineShading(target, color){
+      if(!target) return false;
+      const info=ensureSelectionInfo(target); if(!info) return false;
+      const doc=target.ownerDocument || document;
+      try{
+        const span=doc.createElement("span");
+        span.style.backgroundColor=color;
+        span.setAttribute("data-weditor-shading-inline","1");
+        const contents=info.range.extractContents();
+        span.appendChild(contents);
+        info.range.insertNode(span);
+        info.sel.removeAllRanges();
+        const newRange=doc.createRange();
+        newRange.selectNodeContents(span);
+        info.sel.addRange(newRange);
+        Normalizer.fixStructure(target);
+        return true;
+      } catch(err){
+        return false;
+      }
+    }
+    function clearInlineShadingInRange(target, range){
+      if(!target || !range) return false;
+      const doc=target.ownerDocument || document;
+      const nodes=[];
+      const root=range.commonAncestorContainer || target;
+      if(doc && doc.createTreeWalker){
+        const walker=doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+        let current=walker.currentNode;
+        if(current && current!==range.commonAncestorContainer && intersectsRange(range, current)) nodes.push(current);
+        while((current=walker.nextNode())){
+          if(!target.contains(current)) continue;
+          if(intersectsRange(range, current)) nodes.push(current);
+        }
+      }
+      let changed=false;
+      const unwrap=[];
+      for(let i=0;i<nodes.length;i++){
+        const node=nodes[i];
+        if(!node || node.nodeType!==1) continue;
+        if(node.getAttribute && node.getAttribute("data-weditor-shading-inline")==="1"){
+          if(node.style && node.style.backgroundColor){
+            node.style.backgroundColor="";
+            if(node.style.removeProperty){ node.style.removeProperty("background-color"); }
+            if(node.getAttribute("style")!==null && node.style.cssText.trim()===""){ node.removeAttribute("style"); }
+          }
+          node.removeAttribute("data-weditor-shading-inline");
+          changed=true;
+          if(node.tagName && node.tagName.toUpperCase()==="SPAN" && (!node.attributes || node.attributes.length===0)){
+            unwrap.push(node);
+          }
+        }
+      }
+      for(let j=0;j<unwrap.length;j++){
+        const span=unwrap[j];
+        const parent=span.parentNode;
+        if(!parent) continue;
+        while(span.firstChild){ parent.insertBefore(span.firstChild, span); }
+        parent.removeChild(span);
+      }
+      if(changed){ Normalizer.fixStructure(target); }
+      return changed;
+    }
+    function clearInlineShadingAround(target, node){
+      if(!target || !node) return false;
+      let current=node;
+      while(current && current!==target){
+        if(current.nodeType===1 && current.getAttribute && current.getAttribute("data-weditor-shading-inline")==="1"){
+          const range=target.ownerDocument && target.ownerDocument.createRange ? target.ownerDocument.createRange() : null;
+          if(range){
+            try{
+              range.selectNodeContents(current);
+              return clearInlineShadingInRange(target, range);
+            } catch(err){ return false; }
+          }
+          break;
+        }
+        current=current.parentNode;
+      }
+      return false;
+    }
+    function applyShading(inst, ctx, color){
+      if(!color){ return clearShading(inst, ctx); }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const selection=getSelectionWithin(target);
+      let changed=false;
+      if(selection && selection.range && !selection.range.collapsed){
+        const { range }=selection;
+        const blocks=collectShadingBlocks(range, target);
+        let needInline=!blocks.length;
+        for(let i=0;i<blocks.length;i++){
+          const block=blocks[i];
+          if(!block || !target.contains(block)) continue;
+          if(isTableCell(block) || rangeCoversNode(range, block)){
+            if(applyBlockBackground(block, color)) changed=true;
+          } else {
+            needInline=true;
+          }
+        }
+        if(needInline){
+          if(applyInlineShading(target, color)) changed=true;
+        }
+      } else {
+        const caretRange = selection && selection.range ? selection.range : null;
+        let block=null;
+        if(caretRange){
+          block=findBlockNode(caretRange.startContainer, target);
+        } else {
+          const doc=target.ownerDocument || document;
+          const win=doc.defaultView || window;
+          const sel=win.getSelection ? win.getSelection() : window.getSelection();
+          if(sel && sel.rangeCount){
+            try{
+              const caret=sel.getRangeAt(0);
+              block=findBlockNode(caret.startContainer, target);
+            } catch(err){ block=null; }
+          }
+        }
+        if(!block) block=target;
+        if(block && applyBlockBackground(block, color)) changed=true;
+      }
+      if(changed && inst){ inst.shadingColor=color; }
+      return changed;
+    }
+    function clearShading(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const selection=getSelectionWithin(target);
+      let changed=false;
+      if(selection && selection.range && !selection.range.collapsed){
+        const blocks=collectShadingBlocks(selection.range, target);
+        for(let i=0;i<blocks.length;i++){
+          if(applyBlockBackground(blocks[i], null)) changed=true;
+        }
+        if(clearInlineShadingInRange(target, selection.range)) changed=true;
+      } else {
+        const caretRange = selection && selection.range ? selection.range : null;
+        let block=null;
+        if(caretRange){
+          block=findBlockNode(caretRange.startContainer, target);
+        } else {
+          const doc=target.ownerDocument || document;
+          const win=doc.defaultView || window;
+          const sel=win.getSelection ? win.getSelection() : window.getSelection();
+          if(sel && sel.rangeCount){
+            try{
+              const caret=sel.getRangeAt(0);
+              block=findBlockNode(caret.startContainer, target);
+              if(clearInlineShadingAround(target, caret.startContainer)) changed=true;
+            } catch(err){ block=null; }
+          }
+        }
+        if(block && applyBlockBackground(block, null)) changed=true;
+        else {
+          const doc=target.ownerDocument || document;
+          const win=doc.defaultView || window;
+          const sel=win.getSelection ? win.getSelection() : window.getSelection();
+          if(sel && sel.rangeCount){
+            try{
+              const caret=sel.getRangeAt(0);
+              if(clearInlineShadingAround(target, caret.startContainer)) changed=true;
+            } catch(err){ }
+          }
+        }
+      }
+      if(changed && inst){ inst.shadingColor=null; }
+      return changed;
+    }
     function clearHighlight(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       focusTarget(target);
@@ -3758,6 +4005,9 @@
       if(fallbackClearHighlight(target)) changed=true;
       if(fallbackClearFontColor(target)) changed=true;
       const selectionInfo=ensureSelectionInfo(target);
+      if(selectionInfo && selectionInfo.range){
+        if(clearInlineShadingInRange(target, selectionInfo.range)) changed=true;
+      }
       const nodes=[];
       const seen=new Set();
       function addNode(node){
@@ -4403,7 +4653,10 @@
       outdentList,
       applyBlockFormat,
       getBlockFormat,
-      BLOCK_FORMATS
+      BLOCK_FORMATS,
+      SHADING_STANDARD_COLORS,
+      applyShading,
+      clearShading
     };
   })();
   const HistoryManager=(function(){
@@ -4455,6 +4708,13 @@
         }
         return Formatting.clearFontColor(inst, makeCtx(inst, target));
       },
+      shading:function(inst, target, args){
+        if(args && Object.prototype.hasOwnProperty.call(args, "color")){
+          if(args.color){ return Formatting.applyShading(inst, makeCtx(inst, target), args.color); }
+          return Formatting.clearShading(inst, makeCtx(inst, target));
+        }
+        return Formatting.clearShading(inst, makeCtx(inst, target));
+      },
       underlineStyle:function(inst, target, args){ if(!args || !args.style) return false; Formatting.applyDecorationStyle(inst, makeCtx(inst, target), args.style); return true; },
       fontFamily:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontFamily(inst, makeCtx(inst, target), args.value); return true; },
       fontSize:function(inst, target, args){ if(!args || !args.value) return false; Formatting.applyFontSize(inst, makeCtx(inst, target), args.value); return true; }
@@ -4471,7 +4731,8 @@
         footerAlign: inst.footerAlign,
         underlineStyle: inst.underlineStyle,
         highlightColor: inst.highlightColor,
-        fontColor: inst.fontColor
+        fontColor: inst.fontColor,
+        shadingColor: inst.shadingColor
       };
     }
     function applyInstState(inst, state){
@@ -4485,6 +4746,7 @@
       inst.underlineStyle = state.underlineStyle;
       inst.highlightColor = state.highlightColor;
       inst.fontColor = state.fontColor;
+      inst.shadingColor = state.shadingColor;
     }
     function instStateEqual(a, b){
       if(!a && !b) return true;
@@ -4497,7 +4759,8 @@
         a.footerAlign===b.footerAlign &&
         a.underlineStyle===b.underlineStyle &&
         a.highlightColor===b.highlightColor &&
-        a.fontColor===b.fontColor;
+        a.fontColor===b.fontColor &&
+        a.shadingColor===b.shadingColor;
     }
     function sameSnapshot(a, b){
       if(!a || !b) return false;
@@ -8269,6 +8532,235 @@
     }
     return { create };
   })();
+  const ShadingUI=(function(){
+    const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Shading");
+      button.setAttribute("title","Shading");
+      button.setAttribute("data-command","format.shading");
+      button.setAttribute("aria-label","Shading");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="44px";
+      button.style.padding="6px 12px";
+      const label=document.createElement("span");
+      label.textContent="Shading";
+      label.style.fontWeight="600";
+      label.setAttribute("aria-hidden","true");
+      const preview=document.createElement("span");
+      preview.style.width="18px";
+      preview.style.height="18px";
+      preview.style.borderRadius="4px";
+      preview.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+      preview.setAttribute("aria-hidden","true");
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(label);
+      button.appendChild(preview);
+      button.appendChild(arrow);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.display="none";
+      palette.style.flexDirection="column";
+      palette.style.gap="12px";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      palette.style.padding="12px";
+      palette.style.zIndex="25";
+      palette.style.minWidth="220px";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const standard=Formatting.SHADING_STANDARD_COLORS || [];
+      let currentColor = inst && typeof inst.shadingColor!=="undefined" ? inst.shadingColor : null;
+      const colorButtons=[];
+      function registerColor(value, el){ colorButtons.push({ value, el }); }
+      function updateSelectionUI(selected){
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const active=selected===entry.value;
+          entry.el.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+      }
+      function updatePreview(color){
+        if(color){
+          preview.style.background=color;
+          preview.style.boxShadow="0 0 0 1px rgba(0,0,0,.08)";
+        } else {
+          preview.style.background=NO_COLOR_PATTERN;
+          preview.style.boxShadow="0 0 0 1px "+WCfg.UI.borderSubtle;
+        }
+      }
+      function updateNoColorState(selected){
+        const active=selected===null || typeof selected==="undefined";
+        noColorBtn.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        noColorBtn.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      function pickColor(value){
+        setOpen(false);
+        let changed=false;
+        if(value){
+          changed=!!Formatting.applyShading(inst, ctx, value);
+          if(changed) currentColor=value;
+        } else {
+          changed=!!Formatting.clearShading(inst, ctx);
+          if(changed) currentColor=null;
+        }
+        if(changed){
+          updatePreview(currentColor);
+          updateSelectionUI(currentColor);
+          updateNoColorState(currentColor);
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, {
+            label:value ? "Shading" : "Clear Shading",
+            repeatable:true,
+            repeatId:"shading",
+            repeatArgs:{ color:value || null },
+            repeatLabel:value ? "Shading" : "Clear Shading"
+          });
+          if(inst) OutputBinding.syncDebounced(inst);
+        }
+      }
+      function createSwatch(color){
+        const swatch=doc.createElement("button");
+        swatch.type="button";
+        swatch.setAttribute("role","menuitem");
+        swatch.setAttribute("data-color", color.value);
+        swatch.setAttribute("aria-label", color.label+" shading");
+        swatch.title=color.label;
+        swatch.style.width="28px";
+        swatch.style.height="28px";
+        swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+        swatch.style.borderRadius="4px";
+        swatch.style.background=color.value;
+        swatch.style.cursor="pointer";
+        swatch.style.padding="0";
+        swatch.style.display="inline-flex";
+        swatch.style.alignItems="center";
+        swatch.style.justifyContent="center";
+        swatch.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(color.value); });
+        swatch.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+        registerColor(color.value, swatch);
+        return swatch;
+      }
+      if(standard && standard.length){
+        const section=document.createElement("div");
+        section.style.display="flex";
+        section.style.flexDirection="column";
+        section.style.gap="6px";
+        const heading=document.createElement("div");
+        heading.textContent="Standard Colors";
+        heading.style.font="12px/1.4 Segoe UI,system-ui";
+        heading.style.color=WCfg.UI.textDim;
+        heading.setAttribute("aria-hidden","true");
+        const grid=document.createElement("div");
+        grid.style.display="grid";
+        grid.style.gridTemplateColumns="repeat(7, 28px)";
+        grid.style.gap="8px";
+        for(let i=0;i<standard.length;i++){
+          grid.appendChild(createSwatch(standard[i]));
+        }
+        section.appendChild(heading);
+        section.appendChild(grid);
+        palette.appendChild(section);
+      }
+      const noColorBtn=doc.createElement("button");
+      noColorBtn.type="button";
+      noColorBtn.setAttribute("role","menuitem");
+      noColorBtn.textContent="No Color";
+      noColorBtn.setAttribute("aria-label","Remove shading");
+      noColorBtn.style.marginTop="4px";
+      noColorBtn.style.padding="6px 8px";
+      noColorBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      noColorBtn.style.background="#fff";
+      noColorBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      noColorBtn.style.borderRadius="4px";
+      noColorBtn.style.cursor="pointer";
+      noColorBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(null); });
+      noColorBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(noColorBtn);
+      const moreColorBtn=doc.createElement("button");
+      moreColorBtn.type="button";
+      moreColorBtn.setAttribute("role","menuitem");
+      moreColorBtn.textContent="More Color…";
+      moreColorBtn.style.marginTop="4px";
+      moreColorBtn.style.padding="6px 8px";
+      moreColorBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      moreColorBtn.style.background="#fff";
+      moreColorBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      moreColorBtn.style.borderRadius="4px";
+      moreColorBtn.style.cursor="pointer";
+      moreColorBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        let initial=currentColor || "#dddddd";
+        if(typeof initial!=="string" || !initial){ initial="#dddddd"; }
+        const input=window.prompt("Enter a hex color (e.g. #dddddd)", initial);
+        if(input===null) return;
+        const value=(input||"").trim();
+        if(!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)){
+          window.alert("Please enter a valid hex color like #dddddd.");
+          return;
+        }
+        pickColor(value);
+      });
+      moreColorBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(moreColorBtn);
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        button.setAttribute("aria-expanded", state?"true":"false");
+        if(state){
+          palette.style.display="flex";
+          palette.setAttribute("aria-hidden","false");
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+          window.setTimeout(function(){
+            if(doc.activeElement===button){
+              const first=palette.querySelector("button");
+              if(first) first.focus();
+            }
+          },0);
+        } else {
+          palette.style.display="none";
+          palette.setAttribute("aria-hidden","true");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      let open=false;
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      palette.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      updatePreview(currentColor);
+      updateSelectionUI(currentColor);
+      updateNoColorState(currentColor);
+      container.appendChild(button);
+      container.appendChild(palette);
+      return container;
+    }
+    return { create };
+  })();
   const HighlightUI=(function(){
     const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#d13438 45%,#d13438 55%,#ffffff 55%)";
     function create(inst, ctx){
@@ -8683,6 +9175,11 @@
       ariaLabel:"Font Color",
       render:function(inst, ctx){ return FontColorUI.create(inst, ctx); }
     },
+    "format.shading":{
+      kind:"custom",
+      ariaLabel:"Shading",
+      render:function(inst, ctx){ return ShadingUI.create(inst, ctx); }
+    },
     "format.highlight":{
       kind:"custom",
       ariaLabel:"Text Highlight Color",
@@ -8968,7 +9465,7 @@
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
-        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.shading","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
@@ -8985,7 +9482,7 @@
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
-        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.shading","format.highlight","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
@@ -9030,6 +9527,7 @@
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
+    this.shadingColor = null;
     const initialState = initialStateAttr || OutputBinding.consumeInitialState(this);
     if(initialState){
       StateBinding.apply(this, initialState);
