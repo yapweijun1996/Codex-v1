@@ -1834,6 +1834,24 @@
     function renderFooterLogoHTML(inst){
       return renderBannerHTML(resolveFooterLogo(inst), "Footer banner");
     }
+    function renderFooterLogoWithPagePreview(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+        '</div>'+""+
+        '<div style="width:100%;text-align:center;font-size:12px;color:#605e5c;">Page {{page}} / {{total}}</div>'+
+      '</div>';
+    }
+    function renderFooterLogoWithPageHTML(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+        '</div>'+""+
+        '<div style="width:100%;text-align:center;font-size:12px;color:#605e5c;">Page {{page}} / {{total}}</div>'+
+      '</div>';
+    }
     function decorateTokens(root){
       if(!root) return;
       const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -1988,6 +2006,13 @@
           label:"🖼️ Footer Logo Banner",
           preview:function(ctx){ return renderFooterLogoPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderFooterLogoHTML(ctx && ctx.inst); },
+          align:"center"
+        },
+        {
+          id:"footer_logo_page",
+          label:"🖼️ Footer Logo Banner with Page No.",
+          preview:function(ctx){ return renderFooterLogoWithPagePreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoWithPageHTML(ctx && ctx.inst); },
           align:"center"
         }
       ]
