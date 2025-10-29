@@ -1834,6 +1834,32 @@
     function renderFooterLogoHTML(inst){
       return renderBannerHTML(resolveFooterLogo(inst), "Footer banner");
     }
+    function renderFooterLogoWithPagePreview(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;flex-direction:column;gap:8px;width:100%;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+        '</div>'+""+
+        '<div style="width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:12px;color:#605e5c;">'+
+          '<span style="flex:1 1 120px;display:block;text-align:left;">TAC</span>'+
+          '<span style="flex:1 1 120px;display:block;text-align:center;">E.O.E</span>'+
+          '<span data-weditor-footer-page="preview" style="flex:1 1 120px;display:block;text-align:right;">Page {{page}} of {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderFooterLogoWithPageHTML(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="width:100%;display:flex;flex-direction:column;gap:10px;">'+
+        '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+          '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+        '</div>'+""+
+        '<div data-weditor-footer-banner-meta="" style="width:100%;display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:12px;color:#605e5c;">'+
+          '<span data-weditor-footer-banner-left="" style="flex:1 1 120px;display:block;text-align:left;">TAC</span>'+
+          '<span data-weditor-footer-banner-middle="" style="flex:1 1 120px;display:block;text-align:center;">E.O.E</span>'+
+          '<span data-weditor-footer-page data-weditor-footer-page-align="right" style="flex:1 1 120px;display:block;text-align:right;">Page {{page}} of {{total}}</span>'+
+        '</div>'+
+      '</div>';
+    }
     function decorateTokens(root){
       if(!root) return;
       const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -1989,6 +2015,13 @@
           preview:function(ctx){ return renderFooterLogoPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderFooterLogoHTML(ctx && ctx.inst); },
           align:"center"
+        },
+        {
+          id:"footer_logo_page",
+          label:"🖼️ Footer Logo Banner with Page No.",
+          preview:function(ctx){ return renderFooterLogoWithPagePreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoWithPageHTML(ctx && ctx.inst); },
+          align:"center"
         }
       ]
     };
@@ -2059,7 +2092,7 @@
       editor.addEventListener("input", function(){
         enforceImageSizing(editor);
         if(decorateTimer){ window.clearTimeout(decorateTimer); }
-        decorateTimer=window.setTimeout(function(){ decorateTokens(editor); notifyChange(); }, 120);
+        decorateTimer=window.setTimeout(function(){ decorateTokens(editor); updatePageAlignUI(); notifyChange(); }, 120);
       });
       const tokenRow=document.createElement("div"); applyStyles(tokenRow, WCfg.Style.hfTokenRow);
       const tokenLabel=document.createElement("span"); applyStyles(tokenLabel, WCfg.Style.hfTokenLabel); tokenLabel.textContent="🧩 Smart Tokens";
@@ -2090,6 +2123,8 @@
       alignGroup.setAttribute("role","group");
       alignGroup.setAttribute("aria-label", titleText+" alignment controls");
       const alignButtons=[];
+      const pageAlignButtons=[];
+      let pageAlignRow=null;
       const alignOptions=[
         { value:"left", label:"Left", title:"Align left" },
         { value:"center", label:"Center", title:"Align center" },
@@ -2112,6 +2147,41 @@
       alignRow.appendChild(alignLabel);
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
+      if(kind==="footer"){
+        pageAlignRow=document.createElement("div");
+        applyStyles(pageAlignRow, WCfg.Style.hfAlignRow);
+        pageAlignRow.style.display="none";
+        const pageAlignLabel=document.createElement("span");
+        pageAlignLabel.textContent="Page number";
+        pageAlignLabel.style.font="12px/1.4 Segoe UI,system-ui";
+        pageAlignLabel.style.color=WCfg.UI.textDim;
+        const pageAlignGroup=document.createElement("div");
+        applyStyles(pageAlignGroup, WCfg.Style.hfAlignGroup);
+        pageAlignGroup.setAttribute("role","group");
+        pageAlignGroup.setAttribute("aria-label", "Page number alignment controls");
+        const pageAlignOptions=[
+          { value:"left", label:"Left", title:"Align page number left" },
+          { value:"center", label:"Center", title:"Align page number center" },
+          { value:"right", label:"Right", title:"Align page number right" }
+        ];
+        for(let i=0;i<pageAlignOptions.length;i++){
+          const opt=pageAlignOptions[i];
+          const btn=document.createElement("button");
+          btn.type="button";
+          applyStyles(btn, WCfg.Style.hfAlignBtn);
+          btn.textContent=opt.label;
+          btn.title=opt.title;
+          btn.setAttribute("data-align", opt.value);
+          btn.setAttribute("aria-pressed","false");
+          if(i<pageAlignOptions.length-1) btn.style.borderRight="1px solid "+WCfg.UI.borderSubtle;
+          btn.addEventListener("click", function(){ if(!toggle.checked) return; setPageNumberAlign(opt.value); });
+          pageAlignGroup.appendChild(btn);
+          pageAlignButtons.push({ value:opt.value, button:btn });
+        }
+        pageAlignRow.appendChild(pageAlignLabel);
+        pageAlignRow.appendChild(pageAlignGroup);
+        wrap.appendChild(pageAlignRow);
+      }
       const templateButtons=[];
       const templates=resolveTemplates(kind, inst);
       if(templates.length){
@@ -2139,6 +2209,7 @@
             decorateTokens(editor);
             Normalizer.fixStructure(editor);
             enforceImageSizing(editor);
+            updatePageAlignUI();
             setAlign(tpl.align || "left");
             WDom.placeCaretAtEnd(editor);
             notifyChange();
@@ -2163,12 +2234,59 @@
         }
         notifyChange();
       }
+      function normalizePageAlign(value){
+        const key=(value==null?"":String(value)).toLowerCase();
+        if(key==="center" || key==="right") return key;
+        return "left";
+      }
+      function getPageNumberElement(){
+        return editor.querySelector ? editor.querySelector('[data-weditor-footer-page]') : null;
+      }
+      function readPageNumberAlign(){
+        const el=getPageNumberElement();
+        if(!el) return "left";
+        const attr=(el.getAttribute('data-weditor-footer-page-align')||"").toLowerCase();
+        if(attr==="center" || attr==="right" || attr==="left") return attr;
+        const styleAlign=(el.style && el.style.textAlign) ? el.style.textAlign.toLowerCase() : "";
+        if(styleAlign==="center" || styleAlign==="right") return styleAlign;
+        return "left";
+      }
+      function updatePageAlignUI(){
+        if(!pageAlignRow) return;
+        const el=getPageNumberElement();
+        if(!el){
+          pageAlignRow.style.display="none";
+          return;
+        }
+        pageAlignRow.style.display="flex";
+        const current=normalizePageAlign(readPageNumberAlign());
+        if(!el.style.display) el.style.display="block";
+        for(let i=0;i<pageAlignButtons.length;i++){
+          const item=pageAlignButtons[i];
+          const active=item.value===current;
+          item.button.setAttribute("aria-pressed", active?"true":"false");
+          item.button.style.background=active?"#e6f2fb":"#fff";
+          item.button.style.color=active?WCfg.UI.brand:WCfg.UI.textDim;
+          item.button.style.fontWeight=active?"600":"400";
+        }
+      }
+      function setPageNumberAlign(value){
+        const el=getPageNumberElement();
+        if(!el) return;
+        const norm=normalizePageAlign(value);
+        el.setAttribute('data-weditor-footer-page-align', norm);
+        el.style.textAlign=norm;
+        if(!el.style.display) el.style.display="block";
+        updatePageAlignUI();
+        notifyChange();
+      }
       function setAlign(next){
         const norm=HFAlign.normalize(next);
         alignValue=norm;
         updateAlignUI();
       }
       updateAlignUI();
+      updatePageAlignUI();
       const canvas=document.createElement("div"); applyStyles(canvas, WCfg.Style.hfCanvas);
       const guide=document.createElement("div"); applyStyles(guide, WCfg.Style.hfCanvasGuide);
       guide.textContent="EDITABLE AREA · Approximate width "+(WCfg.A4W-36)+"px";
@@ -2252,6 +2370,7 @@
         decorateTokens(editor);
         reattachImageOverlay();
         if(editor.__weditorHideOverlay) editor.__weditorHideOverlay();
+        updatePageAlignUI();
         notifyChange();
       }
       function toAltText(name){
@@ -2347,7 +2466,14 @@
           btn.style.opacity=on?"1":"0.55";
           btn.style.cursor=on?"pointer":"not-allowed";
         }
+        for(let p=0;p<pageAlignButtons.length;p++){
+          const btn=pageAlignButtons[p].button;
+          btn.disabled=!on;
+          btn.style.opacity=on?"1":"0.55";
+          btn.style.cursor=on?"pointer":"not-allowed";
+        }
         updateAlignUI();
+        updatePageAlignUI();
       }
       toggle.addEventListener("change", sync);
       sync();
