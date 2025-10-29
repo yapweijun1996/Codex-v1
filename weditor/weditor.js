@@ -3677,9 +3677,14 @@
       return result;
     }
     function applyFontFamily(inst, ctx, family){
-      if(!family){ return; }
-      const target=resolveTarget(inst, ctx); if(!target) return;
-      execCommand(target, "fontName", family, true);
+      if(!family){ return false; }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const multi=applyAcrossTableSelection(inst, ctx, target, function(){
+        return execCommand(target, "fontName", family, true);
+      });
+      if(multi.handled){ return multi.changed; }
+      return execCommand(target, "fontName", family, true);
     }
     function convertFontTags(target, execValue, px){
       if(!target){ return; }
@@ -3694,10 +3699,30 @@
       }
     }
     function applyFontSize(inst, ctx, sizeLabel){
-      const target=resolveTarget(inst, ctx); if(!target) return;
-      const meta=FONT_SIZES.find(function(item){ return item.label===sizeLabel; }); if(!meta) return;
-      execCommand(target, "fontSize", meta.exec, true);
-      convertFontTags(target, meta.exec, meta.px);
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const meta=FONT_SIZES.find(function(item){ return item.label===sizeLabel; }); if(!meta) return false;
+      focusTarget(target);
+      const applySize=function(){ return execCommand(target, "fontSize", meta.exec, true); };
+      const multi=applyAcrossTableSelection(inst, ctx, target, applySize);
+      let success=false;
+      if(multi.handled){
+        success=multi.changed;
+      } else {
+        success=applySize();
+      }
+      if(success){ convertFontTags(target, meta.exec, meta.px); }
+      return success;
+    }
+    function normalizeShadingColor(input){
+      if(input==null){ return null; }
+      const raw=String(input).trim();
+      if(!raw){ return null; }
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw)){ return raw.length===4 ? (function(){
+        const r=raw.charAt(1), g=raw.charAt(2), b=raw.charAt(3);
+        return ("#"+r+r+g+g+b+b).toLowerCase();
+      })() : raw.toLowerCase(); }
+      if(/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw)){ return normalizeShadingColor("#"+raw); }
+      return null;
     }
     function normalizeShadingColor(input){
       if(input==null){ return null; }
@@ -3780,6 +3805,48 @@
       }
       return blocks;
     }
+    function applyAcrossTableSelection(inst, ctx, target, callback){
+      if(!target) return { handled:false, changed:false };
+      if(typeof TableSelection==='undefined' || !TableSelection || typeof TableSelection.getSelection!=="function"){
+        return { handled:false, changed:false };
+      }
+      const selection=TableSelection.getSelection(inst, ctx);
+      if(!selection || !selection.cells || !selection.cells.length){ return { handled:false, changed:false }; }
+      const doc=target.ownerDocument || document;
+      const win=doc.defaultView || window;
+      const sel=win.getSelection ? win.getSelection() : window.getSelection();
+      if(!sel || typeof doc.createRange!=="function"){ return { handled:false, changed:false }; }
+      const cells=selection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+      if(!cells.length){ return { handled:true, changed:false }; }
+      const stored=[];
+      for(let i=0;i<sel.rangeCount;i++){
+        try{
+          stored.push(sel.getRangeAt(i).cloneRange());
+        } catch(err){}
+      }
+      let changed=false;
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        const range=doc.createRange();
+        range.selectNodeContents(cell);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        const result=callback({ cell, range, index:i });
+        if(result){ changed=true; }
+      }
+      sel.removeAllRanges();
+      if(stored.length){
+        for(let i=0;i<stored.length;i++){ sel.addRange(stored[i]); }
+      } else if(selection.anchor && selection.anchor.isConnected && target.contains(selection.anchor)){
+        try{
+          const anchorRange=doc.createRange();
+          anchorRange.selectNodeContents(selection.anchor);
+          anchorRange.collapse(true);
+          sel.addRange(anchorRange);
+        } catch(err){}
+      }
+      return { handled:true, changed };
+    }
     function applyShading(inst, ctx, color){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       const normalized=color?normalizeShadingColor(color):null;
@@ -3810,20 +3877,41 @@
     function applyFontColor(inst, ctx, color){
       if(!color){ return clearFontColor(inst, ctx); }
       const target=resolveTarget(inst, ctx); if(!target) return false;
-      let success=execCommand(target, "foreColor", color, true);
-      if(!success){ success=fallbackApplyFontColor(target, color); }
+      focusTarget(target);
+      const applyColor=function(){
+        let ok=execCommand(target, "foreColor", color, true);
+        if(!ok){ ok=fallbackApplyFontColor(target, color); }
+        return ok;
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, applyColor);
+      let success=false;
+      if(multi.handled){
+        success=multi.changed;
+      } else {
+        success=applyColor();
+      }
       if(success && inst){ inst.fontColor=color; }
       return success;
     }
     function clearFontColor(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       focusTarget(target);
+      const removeColor=function(){
+        let ok=false;
+        try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+        try{ ok=document.execCommand("foreColor", false, WCfg.UI.text); }
+        catch(err){ ok=false; }
+        try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+        if(fallbackClearFontColor(target)) ok=true;
+        return ok;
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, removeColor);
       let success=false;
-      try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
-      try{ success=document.execCommand("foreColor", false, WCfg.UI.text); }
-      catch(err){ success=false; }
-      try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
-      if(fallbackClearFontColor(target)) success=true;
+      if(multi.handled){
+        success=multi.changed;
+      } else {
+        success=removeColor();
+      }
       if(success && inst){ inst.fontColor=null; }
       return success;
     }
@@ -4049,50 +4137,69 @@
       return false;
     }
     function applyUnderline(inst, ctx){
-      const target=resolveTarget(inst, ctx); if(!target) return;
-      execCommand(target, "underline", null, true);
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
       const style = inst && inst.underlineStyle ? inst.underlineStyle : null;
-      if(style && selectionHasUnderline(target)){ applyDecorationStyle(inst, ctx, style); }
+      const applyUnderlineForSelection=function(){
+        const ok=execCommand(target, "underline", null, true);
+        if(style && ok && selectionHasUnderline(target)){ applyDecorationStyle(inst, ctx, style); }
+        return ok;
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, applyUnderlineForSelection);
+      if(multi.handled){ return multi.changed; }
+      return applyUnderlineForSelection();
     }
     function applyDecorationStyle(inst, ctx, style){
-      if(!style){ return; }
-      const target=resolveTarget(inst, ctx); if(!target) return;
+      if(!style){ return false; }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
       focusTarget(target);
-      const sel=window.getSelection();
-      if(!sel || sel.rangeCount===0){ return; }
-      const range=sel.getRangeAt(0);
-      if(!target.contains(range.commonAncestorContainer)){ return; }
-      if(range.collapsed){ return; }
-      const doc=target.ownerDocument || document;
-      try{
-        const span=doc.createElement("span");
-        span.style.textDecorationLine="underline";
-        span.style.textDecorationStyle=style;
-        range.surroundContents(span);
-        sel.removeAllRanges();
-        const newRange=doc.createRange();
-        newRange.selectNodeContents(span);
-        sel.addRange(newRange);
-        return;
-      } catch(err){}
-      const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
-        acceptNode:function(node){ return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
-      });
-      const updates=[]; let node;
-      while((node=walker.nextNode())){ updates.push(node); }
-      for(let i=0;i<updates.length;i++){
-        const el=updates[i];
-        const computed=window.getComputedStyle(el);
-        const hasUnderline=(computed && computed.textDecorationLine && computed.textDecorationLine.indexOf("underline")>-1);
-        if(hasUnderline){
-          el.style.textDecorationLine="underline";
-          el.style.textDecorationStyle=style;
+      const applyStyleForSelection=function(){
+        const sel=window.getSelection();
+        if(!sel || sel.rangeCount===0){ return false; }
+        const range=sel.getRangeAt(0);
+        if(!target.contains(range.commonAncestorContainer)){ return false; }
+        if(range.collapsed){ return false; }
+        const doc=target.ownerDocument || document;
+        try{
+          const span=doc.createElement("span");
+          span.style.textDecorationLine="underline";
+          span.style.textDecorationStyle=style;
+          range.surroundContents(span);
+          sel.removeAllRanges();
+          const newRange=doc.createRange();
+          newRange.selectNodeContents(span);
+          sel.addRange(newRange);
+          return true;
+        } catch(err){}
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(node){ return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
+        });
+        const updates=[]; let node;
+        while((node=walker.nextNode())){ updates.push(node); }
+        let changed=false;
+        for(let i=0;i<updates.length;i++){
+          const el=updates[i];
+          const computed=window.getComputedStyle(el);
+          const hasUnderline=(computed && computed.textDecorationLine && computed.textDecorationLine.indexOf("underline")>-1);
+          if(hasUnderline){
+            el.style.textDecorationLine="underline";
+            el.style.textDecorationStyle=style;
+            changed=true;
+          }
         }
-      }
+        return changed;
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, applyStyleForSelection);
+      if(multi.handled){ return multi.changed; }
+      return applyStyleForSelection();
     }
     function applySimple(inst, ctx, command){
-      const target=resolveTarget(inst, ctx); if(!target) return;
-      execCommand(target, command, null, true);
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const runCommand=function(){ return execCommand(target, command, null, true); };
+      const multi=applyAcrossTableSelection(inst, ctx, target, runCommand);
+      if(multi.handled){ return multi.changed; }
+      return runCommand();
     }
     function applyAlign(inst, ctx, align){
       const target=resolveTarget(inst, ctx); if(!target) return false;
@@ -4100,11 +4207,16 @@
       const normalized=(align||"").toLowerCase();
       const command=map[normalized] || map.left;
       focusTarget(target);
-      let success=false;
-      try{ success=document.execCommand(command, false, null); }
-      catch(err){ success=false; }
-      if(!success){ success=fallbackApplyAlign(target, normalized); }
-      return success;
+      const runAlign=function(){
+        let ok=false;
+        try{ ok=document.execCommand(command, false, null); }
+        catch(err){ ok=false; }
+        if(!ok){ ok=fallbackApplyAlign(target, normalized); }
+        return ok;
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, runAlign);
+      if(multi.handled){ return multi.changed; }
+      return runAlign();
     }
     const BLOCK_TAGS={
       P:1,
@@ -4295,18 +4407,8 @@
       }
       return blocks;
     }
-    function applyLineSpacing(inst, ctx, spacing){
-      const target=resolveTarget(inst, ctx); if(!target) return false;
-      focusTarget(target);
-      const doc=target.ownerDocument || document;
-      const win=doc.defaultView || window;
-      const sel=win.getSelection ? win.getSelection() : window.getSelection();
-      if(!sel || sel.rangeCount===0) return false;
-      const range=sel.getRangeAt(0);
-      if(range && range.commonAncestorContainer && !target.contains(range.commonAncestorContainer) && range.commonAncestorContainer!==target){
-        return false;
-      }
-      const normalized=normalizeLineSpacingValue(spacing);
+    function applyLineSpacingForRange(target, range, normalized){
+      if(!target || !range) return false;
       const blocks=collectLineSpacingBlocks(target, range);
       if(!blocks.length){
         const fallback=findLineSpacingBlock(range ? range.startContainer : null, target);
@@ -4328,6 +4430,30 @@
             changed=true;
           }
         }
+      }
+      return changed;
+    }
+    function applyLineSpacing(inst, ctx, spacing){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const normalized=normalizeLineSpacingValue(spacing);
+      const runSpacing=function(){
+        const doc=target.ownerDocument || document;
+        const win=doc.defaultView || window;
+        const sel=win.getSelection ? win.getSelection() : window.getSelection();
+        if(!sel || sel.rangeCount===0) return false;
+        const range=sel.getRangeAt(0);
+        if(range && range.commonAncestorContainer && !target.contains(range.commonAncestorContainer) && range.commonAncestorContainer!==target){
+          return false;
+        }
+        return applyLineSpacingForRange(target, range, normalized);
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, runSpacing);
+      let changed=false;
+      if(multi.handled){
+        changed=multi.changed;
+      } else {
+        changed=runSpacing();
       }
       if(changed){ Normalizer.fixStructure(target); }
       return changed;
@@ -6137,19 +6263,44 @@
     function setCellVerticalAlign(inst, ctx, align){
       const target=resolveTarget(inst, ctx);
       if(!target) return { changed:false };
-      const cell=currentSelectionCell(target);
-      if(!cell) return { changed:false };
       const normalized=normalizeCellVerticalAlign(align);
-      let changed=false;
-      if(normalized){
-        if(cell.style.verticalAlign!==normalized){ cell.style.verticalAlign=normalized; changed=true; }
-      } else {
-        if(cell.style.verticalAlign){
-          cell.style.verticalAlign="";
-          if(cell.style.removeProperty) cell.style.removeProperty("vertical-align");
-          changed=true;
+      function applyToCell(cell){
+        if(!cell) return false;
+        let changed=false;
+        if(normalized){
+          if(cell.style.verticalAlign!==normalized){ cell.style.verticalAlign=normalized; changed=true; }
+        } else {
+          if(cell.style.verticalAlign){
+            cell.style.verticalAlign="";
+            if(cell.style.removeProperty) cell.style.removeProperty("vertical-align");
+            changed=true;
+          }
+        }
+        return changed;
+      }
+      const tableSelection=(typeof TableSelection!=='undefined' && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(tableSelection && tableSelection.cells && tableSelection.cells.length){
+        const cells=tableSelection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+        if(cells.length){
+          let changed=false;
+          let primary=null;
+          const tables=new Set();
+          for(let i=0;i<cells.length;i++){
+            const cell=cells[i];
+            if(!primary) primary=cell;
+            const table=cell.closest ? cell.closest("table") : null;
+            if(table) tables.add(table);
+            if(applyToCell(cell)){ changed=true; }
+          }
+          tables.forEach(function(table){ if(table){ TableResizer.ensureTable(table); } });
+          const first=primary || cells[0] || null;
+          const table=first && first.closest ? first.closest("table") : null;
+          return { changed, cell:first, table, align:normalized };
         }
       }
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const changed=applyToCell(cell);
       const table=cell.closest ? cell.closest("table") : null;
       if(table){ TableResizer.ensureTable(table); }
       return { changed, cell, table, align:normalized };
@@ -6157,6 +6308,26 @@
     function getCellAlignment(inst, ctx){
       const target=resolveTarget(inst, ctx);
       if(!target) return null;
+      const tableSelection=(typeof TableSelection!=='undefined' && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(tableSelection && tableSelection.cells && tableSelection.cells.length){
+        const cells=tableSelection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+        if(cells.length){
+          let primary=null;
+          let align=null;
+          let mixed=false;
+          for(let i=0;i<cells.length;i++){
+            const cell=cells[i];
+            if(!primary) primary=cell;
+            const value=readCellAlignment(cell);
+            if(i===0){
+              align=value;
+            } else {
+              if(value!==align){ mixed=true; }
+            }
+          }
+          return { cell:primary, align:mixed?null:align };
+        }
+      }
       const cell=currentSelectionCell(target);
       if(!cell) return null;
       return { cell, align:readCellAlignment(cell) };
