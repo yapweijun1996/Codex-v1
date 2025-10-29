@@ -1834,6 +1834,18 @@
     function renderFooterLogoHTML(inst){
       return renderBannerHTML(resolveFooterLogo(inst), "Footer banner");
     }
+    function renderFooterLogoWithPagePreview(inst){
+      return '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;">'+
+        renderFooterLogoPreview(inst)+
+        '<div style="font-size:12px;color:#666;text-align:center;">Page {{page}} / {{total}}</div>'+
+      '</div>';
+    }
+    function renderFooterLogoWithPageHTML(inst){
+      return '<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:12px;color:#4a4a4a;">'+
+        renderFooterLogoHTML(inst)+
+        '<div style="text-align:center;width:100%;">Page {{page}} / {{total}}</div>'+
+      '</div>';
+    }
     function decorateTokens(root){
       if(!root) return;
       const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -1988,6 +2000,13 @@
           label:"🖼️ Footer Logo Banner",
           preview:function(ctx){ return renderFooterLogoPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderFooterLogoHTML(ctx && ctx.inst); },
+          align:"center"
+        },
+        {
+          id:"footer_logo_page",
+          label:"🖼️ Footer Logo Banner with Page No.",
+          preview:function(ctx){ return renderFooterLogoWithPagePreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoWithPageHTML(ctx && ctx.inst); },
           align:"center"
         }
       ]
