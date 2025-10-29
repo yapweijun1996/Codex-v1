@@ -1780,16 +1780,17 @@
         chip.parentNode.replaceChild(text, chip);
       }
     }
+    const LETTERHEAD_DEFAULT_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
     const TEMPLATE_LIBRARY={
       header:[
         {
           id:"letterhead_image",
           label:"🖼️ Letterhead Banner",
           preview:'<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+            '<img src="'+LETTERHEAD_DEFAULT_URL+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
           '</div>',
           html:'<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+            '<img src="'+LETTERHEAD_DEFAULT_URL+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
           '</div>',
           align:"center"
         },
@@ -1891,6 +1892,31 @@
         }
       ]
     };
+    function resolveTemplates(kind, inst){
+      const templates=TEMPLATE_LIBRARY[kind]||[];
+      const resolved=[];
+      const editorEl=inst && inst.el ? inst.el : null;
+      let customLogo=editorEl && editorEl.getAttribute ? editorEl.getAttribute("data-custom-letterhead-logo-url") : "";
+      customLogo=customLogo ? customLogo.trim() : "";
+      const logoUrl=customLogo || LETTERHEAD_DEFAULT_URL;
+      const defaultPattern=new RegExp(escapeRegExp(LETTERHEAD_DEFAULT_URL),"g");
+      for(let i=0;i<templates.length;i++){
+        const tpl=templates[i];
+        const copy={
+          id:tpl.id,
+          label:tpl.label,
+          preview:tpl.preview,
+          html:tpl.html,
+          align:tpl.align
+        };
+        if(tpl.id==="letterhead_image"){
+          copy.preview=(copy.preview||"").replace(defaultPattern, logoUrl);
+          copy.html=(copy.html||"").replace(defaultPattern, logoUrl);
+        }
+        resolved.push(copy);
+      }
+      return resolved;
+    }
     const PREVIEW_TOKEN_VALUES={ "{{date}}":"Aug 18, 2024", "{{page}}":"3", "{{total}}":"12" };
     function replacePreviewTokens(html){
       let out=html||"";
@@ -1902,7 +1928,7 @@
       }
       return out;
     }
-    function section(kind, titleText, description, enabled, html, align){
+    function section(kind, titleText, description, enabled, html, align, inst){
       const changeHandlers=[];
       function notifyChange(){ for(let i=0;i<changeHandlers.length;i++){ changeHandlers[i](); } }
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
@@ -1992,7 +2018,7 @@
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
       const templateButtons=[];
-      const templates=TEMPLATE_LIBRARY[kind]||[];
+      const templates=resolveTemplates(kind, inst);
       if(templates.length){
         const templateBox=document.createElement("div"); applyStyles(templateBox, WCfg.Style.hfTemplateSection);
         const templateTitle=document.createElement("div"); applyStyles(templateTitle, WCfg.Style.hfTemplateHeader); templateTitle.textContent="Template Library";
@@ -2280,8 +2306,8 @@
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
       const tokenHint="Smart tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
-      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
-      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
+      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign, inst);
+      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign, inst);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
