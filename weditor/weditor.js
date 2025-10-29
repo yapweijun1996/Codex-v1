@@ -36,6 +36,7 @@
   }
   const WCfg=(function(){
     const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
+    const PREVIEW_FRAME_PADDING=20;
     const HDR_MIN=24, FTR_MIN=20;
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
     const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=1;
@@ -73,7 +74,7 @@
       breakMarker:{ display:"flex", alignItems:"center", justifyContent:"center", gap:"12px", margin:"18px 0", padding:"10px 12px", border:"1px dashed "+UI.borderSubtle, borderRadius:"6px", background:"#f8fbff", color:UI.brand, font:"12px/1.3 Segoe UI,system-ui", letterSpacing:".08em", textTransform:"uppercase", userSelect:"none", cursor:"default" },
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
-      pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0px",
+      pageFrame:"background:#fff;border:1px solid "+UI.border+";position:relative;overflow:hidden;margin:0px",
       hfModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
       hfHead:{ padding:"18px 22px", borderBottom:"1px solid "+UI.border, display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
@@ -111,7 +112,7 @@
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
-    return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
+    return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,PREVIEW_FRAME_PADDING,Style };
   })();
   function applyStyles(el, styles){ for(const k in styles){ el.style[k]=styles[k]; } }
   const StyleMirror=(function(){
@@ -3343,12 +3344,23 @@
         const paddingLeft=parseFloat(computed.paddingLeft||"0")||0;
         const paddingRight=parseFloat(computed.paddingRight||"0")||0;
         const available=Math.max(0, left.clientWidth - paddingLeft - paddingRight);
-        const fitScale=available>0 ? Math.min(1, available / WCfg.A4W) : 1;
+        const previewPadding=WCfg.PREVIEW_FRAME_PADDING||0;
+        let fitScale=1;
+        if(available>0){
+          const usableWidth=available - previewPadding*2;
+          if(usableWidth>0){
+            fitScale=Math.min(1, usableWidth / WCfg.A4W);
+          } else {
+            fitScale=Math.min(1, available / WCfg.A4W);
+          }
+        }
         let scale=fitScale;
         if(WCfg.PREVIEW_MAX_SCALE && scale>WCfg.PREVIEW_MAX_SCALE){ scale=WCfg.PREVIEW_MAX_SCALE; }
         if(!isFinite(scale) || scale<=0){ scale=1; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
+        const totalFrameWidth=scaledWidth + previewPadding*2;
+        const totalFrameHeight=scaledHeight + previewPadding*2;
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
         for(let i=0;i<out.pages.length;i++){
@@ -3364,13 +3376,16 @@
           wrap.style.maxWidth="100%";
           wrap.style.overflow="visible";
           const outer=document.createElement("div");
-          outer.style.width=scaledWidth+"px";
-          outer.style.height=scaledHeight+"px";
+          outer.style.width=totalFrameWidth+"px";
+          outer.style.height=totalFrameHeight+"px";
           outer.style.display="block";
           outer.style.position="relative";
           outer.style.maxWidth="100%";
           outer.style.margin="0px";
           outer.style.overflow="visible";
+          outer.style.padding=previewPadding+"px";
+          outer.style.background="#ffffff";
+          outer.style.boxSizing="border-box";
           page.style.transformOrigin="top left";
           page.style.transform="scale("+scale+")";
           page.style.position="absolute";
@@ -3385,7 +3400,7 @@
             const br=document.createElement("div");
             br.textContent="Page Break";
             applyStyles(br, WCfg.Style.pageDivider);
-            br.style.maxWidth=scaledWidth+"px";
+            br.style.maxWidth=totalFrameWidth+"px";
             stage.appendChild(br);
           }
         }
