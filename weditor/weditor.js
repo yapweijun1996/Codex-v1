@@ -2896,6 +2896,29 @@
       if(inst.outputEl) return [inst.outputEl];
       return [];
     }
+    function hasMeaningfulHTML(html){
+      if(!html) return false;
+      const raw=String(html);
+      if(!raw.trim()) return false;
+      const container=document.createElement("div");
+      container.innerHTML=raw;
+      if(container.querySelectorAll){
+        const removable=container.querySelectorAll("style,script,template");
+        for(let i=0;i<removable.length;i++){
+          const node=removable[i];
+          if(node && node.parentNode){ node.parentNode.removeChild(node); }
+        }
+      }
+      if(container.textContent){
+        const text=container.textContent.replace(/\u00a0/g, " ").trim();
+        if(text) return true;
+      }
+      if(container.querySelector){
+        const selector="img,svg,table,video,iframe,object,embed,canvas,math,figure,hr,audio,source,track,ul,ol,li,blockquote,pre,code";
+        if(container.querySelector(selector)) return true;
+      }
+      return false;
+    }
     function sync(inst){
       const outputs=getOutputs(inst);
       if(!outputs.length) return;
@@ -2918,25 +2941,31 @@
           if(cachedPaged===null){
             if(cachedRaw===null){
               cachedRaw=Breaks.serialize(inst.el);
+              if(!hasMeaningfulHTML(cachedRaw)) cachedRaw="";
             }
-            pagedResult=Paginator.paginate(cachedRaw, inst);
-            const initialPaged = pagedResult ? pagedResult.pagesHTML : "";
-            cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+initialPaged;
-            if(pagedResult && pagedResult.ready && typeof pagedResult.ready.then==="function"){
-              pagedResult.ready.then(function(finalHTML){
-                const finalValue="<style>"+PAGED_PRINT_STYLES+"</style>\n"+finalHTML;
-                cachedPaged=finalValue;
-                for(let j=0;j<pagedTargets.length;j++){
-                  const target=pagedTargets[j];
-                  if(target && target.value!==finalValue){ target.value=finalValue; }
-                }
-              }).catch(function(){});
+            if(!cachedRaw){
+              cachedPaged="";
+            }else{
+              pagedResult=Paginator.paginate(cachedRaw, inst);
+              const initialPaged = pagedResult ? pagedResult.pagesHTML : "";
+              cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+initialPaged;
+              if(pagedResult && pagedResult.ready && typeof pagedResult.ready.then==="function"){
+                pagedResult.ready.then(function(finalHTML){
+                  const finalValue="<style>"+PAGED_PRINT_STYLES+"</style>\n"+finalHTML;
+                  cachedPaged=finalValue;
+                  for(let j=0;j<pagedTargets.length;j++){
+                    const target=pagedTargets[j];
+                    if(target && target.value!==finalValue){ target.value=finalValue; }
+                  }
+                }).catch(function(){});
+              }
             }
           }
           out.value = cachedPaged || "";
         } else {
           if(cachedRaw===null){
             cachedRaw=Breaks.serialize(inst.el);
+            if(!hasMeaningfulHTML(cachedRaw)) cachedRaw="";
           }
           out.value = cachedRaw;
         }
