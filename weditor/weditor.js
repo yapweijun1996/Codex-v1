@@ -1829,10 +1829,24 @@
       return DEFAULT_FOOTER_LOGO_URL;
     }
     function renderFooterLogoPreview(inst){
-      return renderBannerPreview(resolveFooterLogo(inst), "Footer banner");
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;padding:4px 0;font-size:11px;color:#605e5c;">'+
+        '<div style="text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:#444;">Footer Logo Banner with Page No.</div>'+
+        '<div style="width:100%;height:1px;background:#d2d0ce;"></div>'+
+        '<img src="'+src+'" alt="Footer banner" style="width:100%;max-height:70px;object-fit:contain;display:block;">'+
+        '<div style="width:100%;height:1px;background:#d2d0ce;"></div>'+
+        '<div style="font-size:11px;color:#444;">Page {{page}} / {{total}}</div>'+
+      '</div>';
     }
     function renderFooterLogoHTML(inst){
-      return renderBannerHTML(resolveFooterLogo(inst), "Footer banner");
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:8px;font-size:11px;color:#605e5c;">'+
+        '<div style="text-transform:uppercase;letter-spacing:.08em;font-weight:600;color:#444;">Footer Logo Banner with Page No.</div>'+
+        '<div style="width:100%;height:1px;background:#d2d0ce;"></div>'+
+        '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;max-height:80px;object-fit:contain;display:block;">'+
+        '<div style="width:100%;height:1px;background:#d2d0ce;"></div>'+
+        '<div style="font-size:12px;color:#444;">Page {{page}} / {{total}}</div>'+
+      '</div>';
     }
     function decorateTokens(root){
       if(!root) return;
