@@ -40,6 +40,7 @@
     const UI={ brand:"#0f6cbd", brandHover:"#0b5aa1", border:"#e1dfdd", borderSubtle:"#c8c6c4", text:"#323130", textDim:"#605e5c", surface:"#ffffff", canvas:"#f3f2f1" };
     const DEBOUNCE_PREVIEW=280, MOBILE_BP=900, PREVIEW_MAX_SCALE=1;
     const innerHFWidth = A4W - 36;
+    const PREVIEW_OUTER_PADDING = 20;
     const Style={
       shell:{ margin:"16px 0", padding:"0", background:"#fff", border:"1px solid "+UI.border, borderRadius:"8px", boxShadow:"0 6px 18px rgba(0,0,0,.06)" },
       toolbarWrap:{ position:"sticky", top:"0", zIndex:"3", background:"#fff" },
@@ -74,6 +75,7 @@
       rightWrap:{ width:"min(46vw, 720px)", minWidth:"360px", maxWidth:"720px", height:"100%", display:"flex", flexDirection:"column", background:"#fff" },
       area:{ flex:"1", minHeight:"0", overflow:"auto", padding:"18px", outline:"none", font:"15px/1.6 Segoe UI,system-ui", background:"#fff" },
       pageFrame:"background:#fff;border:1px solid "+UI.border+";border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.08);position:relative;overflow:hidden;margin:0px",
+      pagePreviewOuter:{ display:"block", position:"relative", background:"#fff", padding:PREVIEW_OUTER_PADDING+"px", borderRadius:"14px", boxSizing:"border-box", boxShadow:"0 10px 28px rgba(0,0,0,.06)", overflow:"visible", maxWidth:"100%", margin:"0px" },
       hfModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
       hfHead:{ padding:"18px 22px", borderBottom:"1px solid "+UI.border, display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px", flexWrap:"wrap" },
       hfTitle:{ font:"18px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
@@ -111,7 +113,7 @@
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
-    return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style };
+    return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,Style,PREVIEW_OUTER_PADDING };
   })();
   function applyStyles(el, styles){ for(const k in styles){ el.style[k]=styles[k]; } }
   const StyleMirror=(function(){
@@ -3351,6 +3353,7 @@
         const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
+        const previewPad = WCfg.PREVIEW_OUTER_PADDING || 0;
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
           page.style.margin="0";
@@ -3364,12 +3367,9 @@
           wrap.style.maxWidth="100%";
           wrap.style.overflow="visible";
           const outer=document.createElement("div");
-          outer.style.width=scaledWidth+"px";
-          outer.style.height=scaledHeight+"px";
-          outer.style.display="block";
-          outer.style.position="relative";
-          outer.style.maxWidth="100%";
-          outer.style.margin="0px";
+          applyStyles(outer, WCfg.Style.pagePreviewOuter || {});
+          outer.style.width=scaledWidth + previewPad*2 + "px";
+          outer.style.height=scaledHeight + previewPad*2 + "px";
           outer.style.overflow="visible";
           page.style.transformOrigin="top left";
           page.style.transform="scale("+scale+")";
@@ -3385,7 +3385,7 @@
             const br=document.createElement("div");
             br.textContent="Page Break";
             applyStyles(br, WCfg.Style.pageDivider);
-            br.style.maxWidth=scaledWidth+"px";
+            br.style.maxWidth=scaledWidth + previewPad*2 + "px";
             stage.appendChild(br);
           }
         }
