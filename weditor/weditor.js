@@ -3487,6 +3487,18 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const SHADING_STANDARD_COLORS=[
+      { label:"Yellow", value:"#fff2cc" },
+      { label:"Orange", value:"#fce5cd" },
+      { label:"Red", value:"#f8d7da" },
+      { label:"Magenta", value:"#f4c2f0" },
+      { label:"Blue", value:"#d6eaff" },
+      { label:"Teal", value:"#d0f0f0" },
+      { label:"Green", value:"#d9ead3" },
+      { label:"Lime", value:"#e2f0d9" },
+      { label:"Gray", value:"#eaeaea" },
+      { label:"Dark Gray", value:"#d0d0d0" }
+    ];
     const BLOCK_FORMATS=[
       { label:"Normal (Paragraph)", value:"p" },
       { label:"Heading 1", value:"h1" },
@@ -3719,6 +3731,128 @@
       if(fallbackClearHighlight(target)) success=true;
       if(success && inst){ inst.highlightColor=null; }
       return success;
+    }
+    function isTableCell(node){
+      if(!node || node.nodeType!==1) return false;
+      const tag=(node.tagName||"").toUpperCase();
+      return tag==="TD" || tag==="TH";
+    }
+    function collectShadingBlocks(target, selection){
+      const set=new Set();
+      if(!target) return [];
+      const range=selection && selection.range;
+      if(range){
+        const doc=target.ownerDocument || document;
+        let root=range.commonAncestorContainer;
+        if(root && root.nodeType===3){ root=root.parentNode; }
+        if(!root || !target.contains(root)){ root=target; }
+        const walker=doc && doc.createTreeWalker ? doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null) : null;
+        const consider=function(node){
+          if(!node) return;
+          const block=findBlockNode(node, target);
+          if(!block) return;
+          if(!target.contains(block)) return;
+          if(range && !range.collapsed && !intersectsRange(range, block)) return;
+          set.add(block);
+        };
+        consider(root);
+        consider(range.startContainer);
+        consider(range.endContainer);
+        if(walker){
+          let current=walker.currentNode;
+          if(current) consider(current);
+          while((current=walker.nextNode())){
+            consider(current);
+          }
+        }
+      }
+      if(!set.size){
+        const sel=selection || getSelectionWithin(target);
+        const range2=sel && sel.range;
+        if(range2){
+          const block=findBlockNode(range2.startContainer, target);
+          if(block) set.add(block);
+        }
+      }
+      return Array.from(set);
+    }
+    function setBlockShading(block, color){
+      if(!block || block.nodeType!==1 || !block.style) return false;
+      let changed=false;
+      if(color){
+        if(block.style.backgroundColor!==color){ block.style.backgroundColor=color; changed=true; }
+      } else {
+        if(block.style.backgroundColor){
+          if(typeof block.style.removeProperty==="function"){ block.style.removeProperty("background-color"); }
+          block.style.backgroundColor="";
+          changed=true;
+        }
+      }
+      if(changed && block.getAttribute){
+        const styleAttr=block.getAttribute("style");
+        if(styleAttr && styleAttr.trim()===""){ block.removeAttribute("style"); }
+      }
+      return changed;
+    }
+    function applyHighlightForShading(inst, ctx, color){
+      const prev=inst ? inst.highlightColor : null;
+      const changed=applyHighlight(inst, ctx, color);
+      if(inst) inst.highlightColor=prev;
+      return changed;
+    }
+    function clearHighlightForShading(inst, ctx){
+      const prev=inst ? inst.highlightColor : null;
+      const changed=clearHighlight(inst, ctx);
+      if(inst) inst.highlightColor=prev;
+      return changed;
+    }
+    function applyShading(inst, ctx, color){
+      if(!color){ return clearShading(inst, ctx); }
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const selection=getSelectionWithin(target);
+      const range=selection && selection.range;
+      let changed=false;
+      if(range && !range.collapsed){
+        const blocks=collectShadingBlocks(target, selection);
+        let blockApplied=false;
+        for(let i=0;i<blocks.length;i++){
+          const block=blocks[i];
+          if(!block) continue;
+          if(isTableCell(block) || rangeCoversNode(range, block)){
+            if(setBlockShading(block, color)) changed=true;
+            blockApplied=true;
+          }
+        }
+        if(!blockApplied){
+          if(applyHighlightForShading(inst, ctx, color)) changed=true;
+        }
+      } else {
+        const blocks=collectShadingBlocks(target, selection);
+        if(blocks.length){
+          for(let i=0;i<blocks.length;i++){
+            if(setBlockShading(blocks[i], color)) changed=true;
+          }
+        } else if(applyHighlightForShading(inst, ctx, color)){
+          changed=true;
+        }
+      }
+      if(changed && inst){ inst.shadingColor=color; }
+      return changed;
+    }
+    function clearShading(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const selection=getSelectionWithin(target);
+      const range=selection && selection.range;
+      let changed=false;
+      const blocks=collectShadingBlocks(target, selection);
+      for(let i=0;i<blocks.length;i++){
+        if(setBlockShading(blocks[i], null)) changed=true;
+      }
+      if(range && !range.collapsed){
+        if(clearHighlightForShading(inst, ctx)) changed=true;
+      }
+      if(changed && inst){ inst.shadingColor=null; }
+      return changed;
     }
     function applyFontColor(inst, ctx, color){
       if(!color){ return clearFontColor(inst, ctx); }
@@ -4378,6 +4512,7 @@
       FONT_FAMILIES,
       FONT_SIZES,
       HIGHLIGHT_COLORS,
+      SHADING_STANDARD_COLORS,
       LINE_SPACING_OPTIONS,
       FONT_THEME_COLORS,
       FONT_STANDARD_COLORS,
@@ -4386,6 +4521,8 @@
       applyFontSize,
       applyHighlight,
       clearHighlight,
+      applyShading,
+      clearShading,
       applyFontColor,
       clearFontColor,
       clearAllFormatting,
@@ -4439,6 +4576,13 @@
         }
         return Formatting.clearHighlight(inst, makeCtx(inst, target));
       },
+      shading:function(inst, target, args){
+        if(args && Object.prototype.hasOwnProperty.call(args, "color")){
+          if(args.color){ return Formatting.applyShading(inst, makeCtx(inst, target), args.color); }
+          return Formatting.clearShading(inst, makeCtx(inst, target));
+        }
+        return Formatting.clearShading(inst, makeCtx(inst, target));
+      },
       lineSpacing:function(inst, target, args){
         const ctx=makeCtx(inst, target);
         if(args && Object.prototype.hasOwnProperty.call(args, "value")){
@@ -4471,6 +4615,7 @@
         footerAlign: inst.footerAlign,
         underlineStyle: inst.underlineStyle,
         highlightColor: inst.highlightColor,
+        shadingColor: inst.shadingColor,
         fontColor: inst.fontColor
       };
     }
@@ -4484,6 +4629,7 @@
       inst.footerAlign = state.footerAlign;
       inst.underlineStyle = state.underlineStyle;
       inst.highlightColor = state.highlightColor;
+      inst.shadingColor = state.shadingColor;
       inst.fontColor = state.fontColor;
     }
     function instStateEqual(a, b){
@@ -4497,6 +4643,7 @@
         a.footerAlign===b.footerAlign &&
         a.underlineStyle===b.underlineStyle &&
         a.highlightColor===b.highlightColor &&
+        a.shadingColor===b.shadingColor &&
         a.fontColor===b.fontColor;
     }
     function sameSnapshot(a, b){
@@ -8460,6 +8607,260 @@
     }
     return { create };
   })();
+  const ShadingUI=(function(){
+    const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,"+WCfg.UI.borderSubtle+" 45%,"+WCfg.UI.borderSubtle+" 55%,#ffffff 55%)";
+    function normalizeCustomColor(input){
+      if(!input) return null;
+      let value=input.trim();
+      if(!value){ return null; }
+      if(/^rgb\s*\(/i.test(value)){
+        value=value.replace(/^rgb\s*\(/i,"").replace(/\)$/,"");
+      }
+      const rgb=value.match(/^(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/);
+      if(rgb){
+        const r=Math.min(255, parseInt(rgb[1],10));
+        const g=Math.min(255, parseInt(rgb[2],10));
+        const b=Math.min(255, parseInt(rgb[3],10));
+        const toHex=function(num){ const h=num.toString(16); return h.length===1?"0"+h:h; };
+        return "#"+toHex(r)+toHex(g)+toHex(b);
+      }
+      const hex=value.charAt(0)==="#" ? value : "#"+value;
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)){
+        if(hex.length===4){
+          return "#"+hex.charAt(1)+hex.charAt(1)+hex.charAt(2)+hex.charAt(2)+hex.charAt(3)+hex.charAt(3);
+        }
+        return hex.toLowerCase();
+      }
+      return null;
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("", false, "Shading");
+      button.setAttribute("title","Shading");
+      button.setAttribute("data-command","format.shading");
+      button.setAttribute("aria-label","Shading");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.minWidth="48px";
+      button.style.padding="3px 12px";
+      const iconWrap=document.createElement("span");
+      iconWrap.style.display="inline-flex";
+      iconWrap.style.alignItems="center";
+      iconWrap.style.gap="6px";
+      const bucket=document.createElement("span");
+      bucket.textContent="🪣";
+      bucket.setAttribute("aria-hidden","true");
+      bucket.style.fontSize="18px";
+      const preview=document.createElement("span");
+      preview.style.display="inline-block";
+      preview.style.width="18px";
+      preview.style.height="12px";
+      preview.style.borderRadius="3px";
+      preview.style.border="1px solid "+WCfg.UI.borderSubtle;
+      preview.style.background=NO_COLOR_PATTERN;
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      iconWrap.appendChild(bucket);
+      iconWrap.appendChild(preview);
+      button.textContent="";
+      button.appendChild(iconWrap);
+      button.appendChild(arrow);
+      const palette=document.createElement("div");
+      palette.style.position="absolute";
+      palette.style.top="calc(100% + 6px)";
+      palette.style.left="0";
+      palette.style.display="none";
+      palette.style.flexDirection="column";
+      palette.style.background="#fff";
+      palette.style.border="1px solid "+WCfg.UI.borderSubtle;
+      palette.style.borderRadius="8px";
+      palette.style.boxShadow="0 8px 20px rgba(0,0,0,.12)";
+      palette.style.padding="12px";
+      palette.style.zIndex="20";
+      palette.style.gap="10px";
+      palette.setAttribute("role","menu");
+      palette.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const colors=Formatting.SHADING_STANDARD_COLORS || [];
+      const colorButtons=[];
+      let currentColor=null;
+      if(inst && Object.prototype.hasOwnProperty.call(inst, "shadingColor")){
+        currentColor=inst.shadingColor;
+      }
+      function updatePreview(value){
+        if(value){
+          preview.style.background=value;
+          preview.style.borderColor=WCfg.UI.borderSubtle;
+        } else {
+          preview.style.background=NO_COLOR_PATTERN;
+          preview.style.borderColor=WCfg.UI.borderSubtle;
+        }
+      }
+      function updateSelectionUI(selected){
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const isActive=selected===entry.value;
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+        }
+      }
+      const noColorBtn=doc.createElement("button");
+      function updateNoColorState(selected){
+        const active=!selected;
+        noColorBtn.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+        noColorBtn.style.boxShadow = active ? "0 0 0 2px "+WCfg.UI.brand : "none";
+      }
+      function pickColor(value){
+        setOpen(false);
+        let changed=false;
+        if(value){
+          changed=!!Formatting.applyShading(inst, ctx, value);
+          if(changed) currentColor=value;
+        } else {
+          changed=!!Formatting.clearShading(inst, ctx);
+          if(changed) currentColor=null;
+        }
+        if(changed){
+          updatePreview(currentColor);
+          updateSelectionUI(currentColor);
+          updateNoColorState(currentColor);
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, {
+            label:value ? "Shading" : "Clear Shading",
+            repeatable:true,
+            repeatId:"shading",
+            repeatArgs:{ color:value || null },
+            repeatLabel:value ? "Shading" : "Clear Shading"
+          });
+          if(inst) OutputBinding.syncDebounced(inst);
+        }
+      }
+      if(colors.length){
+        const section=document.createElement("div");
+        section.style.display="flex";
+        section.style.flexDirection="column";
+        section.style.gap="6px";
+        const heading=document.createElement("div");
+        heading.textContent="Standard Colors";
+        heading.style.font="12px/1.4 Segoe UI,system-ui";
+        heading.style.color=WCfg.UI.textDim;
+        const grid=document.createElement("div");
+        grid.style.display="grid";
+        grid.style.gridTemplateColumns="repeat(auto-fill, minmax(24px, 1fr))";
+        grid.style.gap="6px";
+        for(let i=0;i<colors.length;i++){
+          const swatch=doc.createElement("button");
+          swatch.type="button";
+          swatch.setAttribute("role","menuitem");
+          swatch.setAttribute("data-color", colors[i].value);
+          swatch.setAttribute("aria-label", colors[i].label+" shading");
+          swatch.title=colors[i].label;
+          swatch.style.width="24px";
+          swatch.style.height="24px";
+          swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+          swatch.style.borderRadius="4px";
+          swatch.style.background=colors[i].value;
+          swatch.style.cursor="pointer";
+          swatch.style.padding="0";
+          swatch.style.display="inline-flex";
+          swatch.style.alignItems="center";
+          swatch.style.justifyContent="center";
+          swatch.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(colors[i].value); });
+          swatch.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+          grid.appendChild(swatch);
+          colorButtons.push({ value:colors[i].value, el:swatch });
+        }
+        section.appendChild(heading);
+        section.appendChild(grid);
+        palette.appendChild(section);
+      }
+      noColorBtn.type="button";
+      noColorBtn.setAttribute("role","menuitem");
+      noColorBtn.textContent="No Color";
+      noColorBtn.setAttribute("aria-label","Remove shading");
+      noColorBtn.style.padding="6px 8px";
+      noColorBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      noColorBtn.style.background="#fff";
+      noColorBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      noColorBtn.style.borderRadius="4px";
+      noColorBtn.style.cursor="pointer";
+      noColorBtn.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); pickColor(null); });
+      noColorBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(noColorBtn);
+      const moreColorsBtn=doc.createElement("button");
+      moreColorsBtn.type="button";
+      moreColorsBtn.setAttribute("role","menuitem");
+      moreColorsBtn.textContent="More Color…";
+      moreColorsBtn.setAttribute("aria-label","Choose a custom shading color");
+      moreColorsBtn.style.padding="6px 8px";
+      moreColorsBtn.style.font="12px/1.4 Segoe UI,system-ui";
+      moreColorsBtn.style.background="#fff";
+      moreColorsBtn.style.border="1px solid "+WCfg.UI.borderSubtle;
+      moreColorsBtn.style.borderRadius="4px";
+      moreColorsBtn.style.cursor="pointer";
+      moreColorsBtn.addEventListener("click", function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        const input=window.prompt("Enter a hex value (e.g. #dddddd) or RGB value (e.g. 221,221,221)", currentColor || "#");
+        if(input===null) return;
+        const normalized=normalizeCustomColor(input);
+        if(!normalized){
+          window.alert("Please enter a valid hex or RGB color value.");
+          return;
+        }
+        pickColor(normalized);
+      });
+      moreColorsBtn.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      palette.appendChild(moreColorsBtn);
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        if(state){
+          palette.style.display="flex";
+          palette.setAttribute("aria-hidden","false");
+          button.setAttribute("aria-expanded","true");
+          window.setTimeout(function(){
+            doc.addEventListener("mousedown", onDocPointer, true);
+            doc.addEventListener("keydown", onDocKey);
+            if(doc.activeElement===button){
+              const first=palette.querySelector("button");
+              if(first) first.focus();
+            }
+          }, 0);
+        } else {
+          palette.style.display="none";
+          palette.setAttribute("aria-hidden","true");
+          button.setAttribute("aria-expanded","false");
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(e){ if(!container.contains(e.target)){ setOpen(false); } }
+      function onDocKey(e){ if(e.key==="Escape"){ setOpen(false); button.focus(); } }
+      button.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); setOpen(!open); });
+      button.addEventListener("keydown", function(e){ if(e.key==="ArrowDown" || e.key==="Enter" || e.key===" "){ e.preventDefault(); setOpen(true); } });
+      palette.addEventListener("click", function(e){ e.stopPropagation(); });
+      palette.addEventListener("keydown", function(e){ if(e.key==="Escape"){ e.preventDefault(); setOpen(false); button.focus(); } });
+      updatePreview(currentColor);
+      updateSelectionUI(currentColor);
+      updateNoColorState(currentColor);
+      container.appendChild(button);
+      container.appendChild(palette);
+      return container;
+    }
+    return { create };
+  })();
   function decorateAlignButton(btn, align){
     if(!btn) return;
     const mode=(align||"").toLowerCase();
@@ -8687,6 +9088,11 @@
       kind:"custom",
       ariaLabel:"Text Highlight Color",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
+    },
+    "format.shading":{
+      kind:"custom",
+      ariaLabel:"Shading",
+      render:function(inst, ctx){ return ShadingUI.create(inst, ctx); }
     },
     "format.alignLeft":{
       label:"Left",
@@ -8968,7 +9374,7 @@
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
-        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
@@ -8985,7 +9391,7 @@
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
-        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
@@ -9029,6 +9435,7 @@
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
+    this.shadingColor = null;
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
     const initialState = initialStateAttr || OutputBinding.consumeInitialState(this);
     if(initialState){
