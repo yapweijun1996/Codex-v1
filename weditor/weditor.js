@@ -1919,6 +1919,84 @@
         chip.parentNode.replaceChild(text, chip);
       }
     }
+    const PAGE_TOKEN_CLASSES={
+      header:{
+        page:"weditor_header_page_num",
+        total:"weditor_header_page_num_total"
+      },
+      footer:{
+        page:"weditor_footer_page_num",
+        total:"weditor_footer_page_num_total"
+      }
+    };
+    function hasPageTokenClass(el, classNames){
+      if(!el || el.nodeType!==1) return false;
+      if(el.classList){
+        for(let i=0;i<classNames.length;i++){
+          if(classNames[i] && el.classList.contains(classNames[i])) return true;
+        }
+      } else if(el.getAttribute){
+        const cls=(el.getAttribute("class")||"").trim();
+        if(cls){
+          const parts=cls.split(/\s+/);
+          for(let j=0;j<parts.length;j++){
+            if(classNames.indexOf(parts[j])>=0) return true;
+          }
+        }
+      }
+      return false;
+    }
+    function wrapPageTokens(node, classes){
+      if(!node || !node.nodeValue || node.nodeValue.indexOf("{{")===-1) return;
+      const text=node.nodeValue;
+      const regex=/{{\s*(page|total)\s*}}/gi;
+      let lastIndex=0; let match=null; let changed=false;
+      const frag=node.ownerDocument.createDocumentFragment();
+      while((match=regex.exec(text))){
+        const before=text.slice(lastIndex, match.index);
+        if(before) frag.appendChild(node.ownerDocument.createTextNode(before));
+        const raw=match[0];
+        const key=(match[1]||"").toLowerCase();
+        const cls=classes[key];
+        if(cls){
+          const span=node.ownerDocument.createElement("span");
+          span.className=cls;
+          span.textContent=raw;
+          frag.appendChild(span);
+        } else {
+          frag.appendChild(node.ownerDocument.createTextNode(raw));
+        }
+        lastIndex=match.index+raw.length;
+        changed=true;
+      }
+      if(!changed) return;
+      if(lastIndex<text.length){
+        frag.appendChild(node.ownerDocument.createTextNode(text.slice(lastIndex)));
+      }
+      if(node.parentNode){ node.parentNode.replaceChild(frag, node); }
+    }
+    function ensurePageTokenHooks(root, kind){
+      if(!root) return;
+      const classes=PAGE_TOKEN_CLASSES[kind] || PAGE_TOKEN_CLASSES.footer;
+      const skipList=[classes.page, classes.total].filter(Boolean);
+      if(!skipList.length) return;
+      const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+      const targets=[]; let node;
+      while((node=walker.nextNode())){
+        if(!node.nodeValue || node.nodeValue.indexOf("{{")===-1) continue;
+        let ancestor=node.parentNode;
+        let skip=false;
+        while(ancestor){
+          if(ancestor.nodeType===1 && hasPageTokenClass(ancestor, skipList)){ skip=true; break; }
+          ancestor=ancestor.parentNode;
+        }
+        if(skip) continue;
+        targets.push(node);
+      }
+      for(let i=0;i<targets.length;i++){
+        wrapPageTokens(targets[i], classes);
+      }
+    }
     const TEMPLATE_LIBRARY={
       header:[
         {
@@ -2449,6 +2527,7 @@
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
           unwrapTokenChips(clone);
+          ensurePageTokenHooks(clone, kind);
           return clone.innerHTML;
         },
         getPreviewHTML:function(){
@@ -2458,6 +2537,7 @@
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
           unwrapTokenChips(clone);
+          ensurePageTokenHooks(clone, kind);
           return Sanitizer.clean(clone.innerHTML);
         },
         getAlign:function(){ return alignValue; },
