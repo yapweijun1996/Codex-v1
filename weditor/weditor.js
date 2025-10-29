@@ -1780,16 +1780,36 @@
         chip.parentNode.replaceChild(text, chip);
       }
     }
-    const TEMPLATE_LIBRARY={
-      header:[
+    const LETTERHEAD_DEFAULT_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
+    function escapeHtmlAttribute(value){
+      if(typeof value!=="string") return "";
+      return value.replace(/[&<>"']/g, function(ch){
+        switch(ch){
+          case "&": return "&amp;";
+          case "<": return "&lt;";
+          case ">": return "&gt;";
+          case '"': return "&quot;";
+          case "'": return "&#39;";
+          default: return ch;
+        }
+      });
+    }
+    function resolveLetterheadLogoUrl(inst){
+      const raw=inst && typeof inst.customLetterheadLogoUrl==="string" ? inst.customLetterheadLogoUrl.trim() : "";
+      if(raw && /^https?:\/\//i.test(raw)) return escapeHtmlAttribute(raw);
+      return escapeHtmlAttribute(LETTERHEAD_DEFAULT_LOGO_URL);
+    }
+    function buildHeaderTemplates(inst){
+      const logoUrl=resolveLetterheadLogoUrl(inst);
+      return [
         {
           id:"letterhead_image",
           label:"🖼️ Letterhead Banner",
           preview:'<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+            '<img src="'+logoUrl+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
           '</div>',
           html:'<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+            '<img src="'+logoUrl+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
           '</div>',
           align:"center"
         },
@@ -1849,8 +1869,11 @@
           '</div>',
           align:"left"
         }
-      ],
-      footer:[
+      ];
+    }
+    const TEMPLATE_LIBRARY={
+      header:function(inst){ return buildHeaderTemplates(inst); },
+      footer:function(){ return [
         {
           id:"invoice",
           label:"🧾 Invoice / Quotation",
@@ -1889,7 +1912,7 @@
           '</div>',
           align:"left"
         }
-      ]
+      ]; }
     };
     const PREVIEW_TOKEN_VALUES={ "{{date}}":"Aug 18, 2024", "{{page}}":"3", "{{total}}":"12" };
     function replacePreviewTokens(html){
@@ -1902,7 +1925,13 @@
       }
       return out;
     }
-    function section(kind, titleText, description, enabled, html, align){
+    function getTemplates(kind, inst){
+      const entry=TEMPLATE_LIBRARY[kind];
+      if(typeof entry==="function") return entry(inst);
+      if(Array.isArray(entry)) return entry;
+      return [];
+    }
+    function section(kind, titleText, description, enabled, html, align, inst){
       const changeHandlers=[];
       function notifyChange(){ for(let i=0;i<changeHandlers.length;i++){ changeHandlers[i](); } }
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
@@ -1992,7 +2021,7 @@
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
       const templateButtons=[];
-      const templates=TEMPLATE_LIBRARY[kind]||[];
+      const templates=getTemplates(kind, inst);
       if(templates.length){
         const templateBox=document.createElement("div"); applyStyles(templateBox, WCfg.Style.hfTemplateSection);
         const templateTitle=document.createElement("div"); applyStyles(templateTitle, WCfg.Style.hfTemplateHeader); templateTitle.textContent="Template Library";
@@ -2280,8 +2309,8 @@
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
       const tokenHint="Smart tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
-      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
-      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
+      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign, inst);
+      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign, inst);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
@@ -8669,6 +8698,15 @@
     return true;
   }
   let INSTANCE_SEQ=0;
+  function readCustomLetterheadLogoUrl(editorEl){
+    if(!editorEl || !editorEl.getAttribute) return null;
+    const raw=editorEl.getAttribute("data-custom-letterhead-logo-url");
+    if(typeof raw!=="string") return null;
+    const trimmed=raw.trim();
+    if(!trimmed) return null;
+    if(!/^https?:\/\//i.test(trimmed)) return null;
+    return trimmed;
+  }
   function WEditorInstance(editorEl){
     this.uid = ++INSTANCE_SEQ;
     this.el = editorEl;
@@ -8682,6 +8720,7 @@
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
     this.footerEnabled = footerAttr!=null ? footerAttr : false;
+    this.customLetterheadLogoUrl = readCustomLetterheadLogoUrl(editorEl);
     if(editorEl.classList.contains("weditor--no-header")) this.headerEnabled=false;
     if(editorEl.classList.contains("weditor--no-footer")) this.footerEnabled=false;
     this.outputEls = OutputBinding.resolveAll(editorEl);
