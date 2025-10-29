@@ -1840,8 +1840,8 @@
         '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
         '</div>'+""+
-        '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:center;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;">Page {{page}} / {{total}}</span>'+
+        '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
         '</div>'+
       '</div>';
     }
@@ -1851,8 +1851,8 @@
         '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
           '<img src="'+src+'" alt="Footer banner" style="width:100%;height:auto;object-fit:contain;display:block;border-radius:6px;">'+
         '</div>'+""+
-        '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:center;">'+
-          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;">Page {{page}} / {{total}}</span>'+
+        '<div data-weditor-page-line="simple" style="width:100%;display:flex;justify-content:flex-end;align-items:center;text-align:right;">'+
+          '<span data-weditor-page-number style="font-size:12px;color:#605e5c;text-align:right;">Page {{page}} of {{total}}</span>'+
         '</div>'+
       '</div>';
     }
@@ -1865,7 +1865,7 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;font-size:11px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.72;">Left label</span>'+
           '<span style="text-align:center;opacity:.72;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;font-weight:600;color:#444;">Page {{page}} / {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#444;">Page {{page}} of {{total}}</span>'+
         '</div>'+
       '</div>';
     }
@@ -1878,7 +1878,7 @@
         '<div data-weditor-page-line="three" style="width:100%;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;font-size:12px;color:#605e5c;">'+
           '<span style="text-align:left;opacity:.78;">Left label</span>'+
           '<span style="text-align:center;opacity:.78;">Center message</span>'+
-          '<span data-weditor-page-number style="text-align:right;font-weight:600;color:#404040;">Page {{page}} / {{total}}</span>'+
+          '<span data-weditor-page-number style="text-align:right;justify-self:end;font-weight:600;color:#404040;">Page {{page}} of {{total}}</span>'+
         '</div>'+
       '</div>';
     }
@@ -2043,14 +2043,14 @@
           label:"🖼️ Footer Logo Banner with Page No.",
           preview:function(ctx){ return renderFooterLogoWithPagePreview(ctx && ctx.inst); },
           html:function(ctx){ return renderFooterLogoWithPageHTML(ctx && ctx.inst); },
-          align:"center"
+          align:"right"
         },
         {
           id:"footer_logo_page_meta",
           label:"🖼️ Footer Logo Banner · 3 Column Meta",
           preview:function(ctx){ return renderFooterLogoWithMetaPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderFooterLogoWithMetaHTML(ctx && ctx.inst); },
-          align:"center"
+          align:"right"
         }
       ]
     };
