@@ -6,6 +6,33 @@
   const LIST_STYLE_ATTR="data-weditor-list-style";
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
+  const DEFAULT_LETTERHEAD_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
+  function sanitizeImageURL(value){
+    if(typeof value!=="string") return "";
+    const trimmed=value.trim();
+    if(!trimmed) return "";
+    if(/^javascript:/i.test(trimmed)) return "";
+    if(/^https?:\/\//i.test(trimmed)) return trimmed;
+    const schemeMatch=trimmed.match(/^([a-z0-9+.-]+):/i);
+    if(schemeMatch){
+      const scheme=schemeMatch[1].toLowerCase();
+      if(scheme!=="http" && scheme!=="https") return "";
+      return /^https?:\/\//i.test(trimmed) ? trimmed : "";
+    }
+    if(trimmed.startsWith("//")) return trimmed;
+    if(trimmed.startsWith("/")) return trimmed;
+    if(trimmed.startsWith("./")) return trimmed;
+    if(trimmed.startsWith("../")) return trimmed;
+    return trimmed;
+  }
+  function escapeAttribute(value){
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/'/g, "&#39;");
+  }
   const WCfg=(function(){
     const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
     const HDR_MIN=24, FTR_MIN=20;
@@ -1743,6 +1770,24 @@
       chip.style.whiteSpace="nowrap";
       return chip;
     }
+    function resolveLetterheadLogo(inst){
+      if(inst && inst.customLetterheadLogoURL){
+        return inst.customLetterheadLogoURL;
+      }
+      return DEFAULT_LETTERHEAD_LOGO_URL;
+    }
+    function renderLetterheadPreview(inst){
+      const src=escapeAttribute(resolveLetterheadLogo(inst));
+      return '<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
+        '<img src="'+src+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+      '</div>';
+    }
+    function renderLetterheadHTML(inst){
+      const src=escapeAttribute(resolveLetterheadLogo(inst));
+      return '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
+        '<img src="'+src+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+      '</div>';
+    }
     function decorateTokens(root){
       if(!root) return;
       const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -1785,12 +1830,8 @@
         {
           id:"letterhead_image",
           label:"🖼️ Letterhead Banner",
-          preview:'<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
-          '</div>',
-          html:'<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
-            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
-          '</div>',
+          preview:function(ctx){ return renderLetterheadPreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderLetterheadHTML(ctx && ctx.inst); },
           align:"center"
         },
         {
@@ -1902,7 +1943,27 @@
       }
       return out;
     }
-    function section(kind, titleText, description, enabled, html, align){
+    function resolveTemplateValue(value, context){
+      if(typeof value==="function") return value(context)||"";
+      return value;
+    }
+    function resolveTemplates(kind, inst){
+      const defs=TEMPLATE_LIBRARY[kind]||[];
+      const context={ kind, inst };
+      const result=[];
+      for(let i=0;i<defs.length;i++){
+        const tpl=defs[i];
+        result.push({
+          id:tpl.id,
+          label:tpl.label,
+          preview:resolveTemplateValue(tpl.preview, context),
+          html:resolveTemplateValue(tpl.html, context),
+          align:resolveTemplateValue(tpl.align, context)
+        });
+      }
+      return result;
+    }
+    function section(kind, titleText, description, enabled, html, align, inst){
       const changeHandlers=[];
       function notifyChange(){ for(let i=0;i<changeHandlers.length;i++){ changeHandlers[i](); } }
       const wrap=document.createElement("section"); applyStyles(wrap, WCfg.Style.hfSection);
@@ -1992,7 +2053,7 @@
       alignRow.appendChild(alignGroup);
       wrap.appendChild(alignRow);
       const templateButtons=[];
-      const templates=TEMPLATE_LIBRARY[kind]||[];
+      const templates=resolveTemplates(kind, inst);
       if(templates.length){
         const templateBox=document.createElement("div"); applyStyles(templateBox, WCfg.Style.hfTemplateSection);
         const templateTitle=document.createElement("div"); applyStyles(templateTitle, WCfg.Style.hfTemplateHeader); templateTitle.textContent="Template Library";
@@ -2280,8 +2341,8 @@
       panel.setAttribute("aria-labelledby", title.id);
       const body=document.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
       const tokenHint="Smart tokens: <code>{{page}}</code> <code>{{total}}</code> <code>{{date}}</code>";
-      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign);
-      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign);
+      const headerSection=section("header","Header", tokenHint, inst.headerEnabled, inst.headerHTML, inst.headerAlign, inst);
+      const footerSection=section("footer","Footer", tokenHint+" · Use tokens to add page counter manually", inst.footerEnabled, inst.footerHTML, inst.footerAlign, inst);
       body.appendChild(headerSection.el);
       body.appendChild(footerSection.el);
       const previewSection=document.createElement("section"); applyStyles(previewSection, WCfg.Style.hfPreviewSection);
@@ -8678,6 +8739,8 @@
     this.footerHTML = "";
     this.headerAlign = HFAlign.normalize(editorEl.getAttribute("data-header-align"));
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
+    const customLetterheadAttr=sanitizeImageURL(editorEl.getAttribute("data-custom-letterhead-logo-url"));
+    this.customLetterheadLogoURL = customLetterheadAttr || null;
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
