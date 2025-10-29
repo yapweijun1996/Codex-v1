@@ -395,6 +395,10 @@
       const norm=normalize(align);
       node.style.justifyContent=flexJustify(norm);
       node.style.textAlign=norm;
+      if(typeof node.querySelector==="function"){
+        const inner=node.querySelector(".weditor_page-header-inner");
+        if(inner && inner.style) inner.style.textAlign=norm;
+      }
     }
     function applyEditor(node, align){
       if(!node || !node.style) return;
@@ -907,7 +911,12 @@
         header.className="weditor_page-header";
         const minHeaderHeight=Math.max(WCfg.HDR_MIN, headerHeight);
         header.style.cssText="position:relative;left:0;right:0;top:0;"+HEADER_BASE_STYLE+"min-height:"+minHeaderHeight+"px;";
-        header.innerHTML=headerHTML;
+        const hl=document.createElement("div");
+        hl.className="weditor_page-header-inner";
+        hl.style.cssText="flex:1 1 auto;min-width:160px";
+        hl.innerHTML=headerHTML;
+        enforceHFImageSizing(hl);
+        header.appendChild(hl);
         HFAlign.applyHeader(header, headerAlign);
         page.appendChild(header);
       }
@@ -969,8 +978,13 @@
         HFAlign.applyFooter(left, align);
         box.appendChild(left);
       }else{
-        box.innerHTML=html;
-        enforceHFImageSizing(box);
+        box.style.display="flex";
+        const inner=document.createElement("div");
+        inner.style.cssText="flex:1 1 auto;min-width:160px";
+        inner.className="weditor_page-header-inner";
+        inner.innerHTML=html;
+        enforceHFImageSizing(inner);
+        box.appendChild(inner);
         HFAlign.applyHeader(box, align);
       }
       host.appendChild(box);
