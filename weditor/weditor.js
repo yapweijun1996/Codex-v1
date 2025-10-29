@@ -7,6 +7,7 @@
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
   const DEFAULT_LETTERHEAD_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
+  const DEFAULT_FOOTER_LOGO_URL=DEFAULT_LETTERHEAD_LOGO_URL;
   function sanitizeImageURL(value){
     if(typeof value!=="string") return "";
     const trimmed=value.trim();
@@ -1776,17 +1777,62 @@
       }
       return DEFAULT_LETTERHEAD_LOGO_URL;
     }
-    function renderLetterheadPreview(inst){
-      const src=escapeAttribute(resolveLetterheadLogo(inst));
+    function renderBannerPreview(src, alt){
+      const safeSrc=escapeAttribute(src);
+      const safeAlt=escapeAttribute(alt);
       return '<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
-        '<img src="'+src+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
+        '<img src="'+safeSrc+'" alt="'+safeAlt+'" style="width:100%;height:auto;object-fit:contain;border-radius:6px;">'+
       '</div>';
     }
-    function renderLetterheadHTML(inst){
-      const src=escapeAttribute(resolveLetterheadLogo(inst));
+    function renderBannerHTML(src, alt){
+      const safeSrc=escapeAttribute(src);
+      const safeAlt=escapeAttribute(alt);
       return '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
-        '<img src="'+src+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+        '<img src="'+safeSrc+'" alt="'+safeAlt+'" style="width:100%;height:auto;object-fit:contain;display:block;">'+
       '</div>';
+    }
+    function renderLetterheadPreview(inst){
+      return renderBannerPreview(resolveLetterheadLogo(inst), "Letterhead banner");
+    }
+    function renderLetterheadHTML(inst){
+      return renderBannerHTML(resolveLetterheadLogo(inst), "Letterhead banner");
+    }
+    function renderLetterheadLogoPreview(inst){
+      const src=escapeAttribute(resolveLetterheadLogo(inst));
+      return '<div style="display:flex;align-items:center;gap:12px;width:100%;">'+
+        '<img src="'+src+'" alt="Letterhead logo" style="width:60px;height:60px;object-fit:contain;border-radius:12px;box-shadow:0 2px 6px rgba(0,0,0,.12);">'+
+        '<div style="display:flex;flex-direction:column;gap:2px;font-size:12px;color:#444;">'+
+          '<strong style="font-size:16px;color:#222;">Acme Industries</strong>'+
+          '<span>Professional Services Division</span>'+
+          '<span>{{date}}</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderLetterheadLogoHTML(inst){
+      const src=escapeAttribute(resolveLetterheadLogo(inst));
+      return '<div style="width:100%;display:flex;align-items:center;gap:18px;">'+
+        '<img src="'+src+'" alt="Letterhead logo" style="width:72px;height:72px;object-fit:contain;border-radius:16px;display:block;">'+
+        '<div style="display:flex;flex-direction:column;gap:4px;">'+
+          '<div style="font-size:18px;font-weight:600;color:#1a1a1a;">Acme Industries</div>'+
+          '<div style="font-size:13px;color:#605e5c;">Professional Services Division</div>'+
+          '<div style="font-size:12px;color:#605e5c;">{{date}}</div>'+
+        '</div>'+
+      '</div>';
+    }
+    function resolveFooterLogo(inst){
+      if(inst && inst.customFooterLogoURL){
+        return inst.customFooterLogoURL;
+      }
+      if(inst && inst.customLetterheadLogoURL){
+        return inst.customLetterheadLogoURL;
+      }
+      return DEFAULT_FOOTER_LOGO_URL;
+    }
+    function renderFooterLogoPreview(inst){
+      return renderBannerPreview(resolveFooterLogo(inst), "Footer banner");
+    }
+    function renderFooterLogoHTML(inst){
+      return renderBannerHTML(resolveFooterLogo(inst), "Footer banner");
     }
     function decorateTokens(root){
       if(!root) return;
@@ -1833,6 +1879,13 @@
           preview:function(ctx){ return renderLetterheadPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderLetterheadHTML(ctx && ctx.inst); },
           align:"center"
+        },
+        {
+          id:"letterhead_logo",
+          label:"🏷️ Letterhead Logo",
+          preview:function(ctx){ return renderLetterheadLogoPreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderLetterheadLogoHTML(ctx && ctx.inst); },
+          align:"left"
         },
         {
           id:"letterhead",
@@ -1929,6 +1982,13 @@
             '<div style="text-align:right;">Version {{page}} · {{date}}</div>'+
           '</div>',
           align:"left"
+        },
+        {
+          id:"footer_logo",
+          label:"🖼️ Footer Logo Banner",
+          preview:function(ctx){ return renderFooterLogoPreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoHTML(ctx && ctx.inst); },
+          align:"center"
         }
       ]
     };
@@ -8741,6 +8801,8 @@
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
     const customLetterheadAttr=sanitizeImageURL(editorEl.getAttribute("data-custom-letterhead-logo-url"));
     this.customLetterheadLogoURL = customLetterheadAttr || null;
+    const customFooterAttr=sanitizeImageURL(editorEl.getAttribute("data-custom-footer-logo-url"));
+    this.customFooterLogoURL = customFooterAttr || null;
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
