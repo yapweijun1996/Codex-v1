@@ -1882,6 +1882,56 @@
         '</div>'+
       '</div>';
     }
+    const PAGE_TOTAL_REGEX=/\{\{\s*(page|total)\s*\}\}/i;
+    function wrapPageTokens(root, kind){
+      if(!root) return;
+      const classes=kind==="header"?
+        { page:"weditor_header_page_num", total:"weditor_header_page_num_total" }:
+        { page:"weditor_footer_page_num", total:"weditor_footer_page_num_total" };
+      function isWrapped(node){
+        if(!node || node.nodeType!==1) return false;
+        if(node.getAttribute && node.getAttribute("data-weditor-token-wrap")) return true;
+        if(node.classList && (node.classList.contains(classes.page) || node.classList.contains(classes.total))) return true;
+        return false;
+      }
+      const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+      const targets=[]; let node;
+      while((node=walker.nextNode())){
+        if(!node.nodeValue || !PAGE_TOTAL_REGEX.test(node.nodeValue)) continue;
+        const parent=node.parentNode;
+        let current=parent; let skip=false;
+        while(current && current!==root){
+          if(isWrapped(current)){ skip=true; break; }
+          current=current.parentNode;
+        }
+        if(skip) continue;
+        if(parent && parent.nodeType===1 && parent.hasAttribute && parent.hasAttribute("data-weditor-token")) continue;
+        targets.push(node);
+      }
+      for(let i=0;i<targets.length;i++){
+        const textNode=targets[i];
+        const value=textNode.nodeValue||"";
+        if(!PAGE_TOTAL_REGEX.test(value)) continue;
+        const frag=document.createDocumentFragment();
+        const regex=/\{\{\s*(page|total)\s*\}\}/gi;
+        let lastIndex=0; let match;
+        while((match=regex.exec(value))){
+          const before=value.slice(lastIndex, match.index);
+          if(before) frag.appendChild(document.createTextNode(before));
+          const token=(match[1]||"").toLowerCase();
+          const span=document.createElement("span");
+          span.className=token==="total"?classes.total:classes.page;
+          span.setAttribute("data-weditor-token-wrap", kind);
+          span.textContent="{{"+token+"}}";
+          frag.appendChild(span);
+          lastIndex=regex.lastIndex;
+        }
+        if(lastIndex<value.length) frag.appendChild(document.createTextNode(value.slice(lastIndex)));
+        if(frag.childNodes.length && textNode.parentNode){
+          textNode.parentNode.replaceChild(frag, textNode);
+        }
+      }
+    }
     function decorateTokens(root){
       if(!root) return;
       const walker=document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -2449,6 +2499,7 @@
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
           unwrapTokenChips(clone);
+          wrapPageTokens(clone, kind);
           return clone.innerHTML;
         },
         getPreviewHTML:function(){
@@ -2458,6 +2509,7 @@
           const actives=clone.querySelectorAll('.weditor-hf-img-active');
           for(let j=0;j<actives.length;j++){ actives[j].classList.remove('weditor-hf-img-active'); }
           unwrapTokenChips(clone);
+          wrapPageTokens(clone, kind);
           return Sanitizer.clean(clone.innerHTML);
         },
         getAlign:function(){ return alignValue; },
