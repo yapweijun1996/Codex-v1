@@ -3487,6 +3487,18 @@
       { label:"Gray", value:"#808080" },
       { label:"Black", value:"#000000" }
     ];
+    const SHADING_STANDARD_COLORS=[
+      { label:"Dark Red", value:"#800000" },
+      { label:"Red", value:"#ff0000" },
+      { label:"Orange", value:"#ffa500" },
+      { label:"Yellow", value:"#ffff00" },
+      { label:"Light Green", value:"#92d050" },
+      { label:"Green", value:"#00b050" },
+      { label:"Teal", value:"#00b0f0" },
+      { label:"Blue", value:"#0070c0" },
+      { label:"Purple", value:"#7030a0" },
+      { label:"Black", value:"#000000" }
+    ];
     const BLOCK_FORMATS=[
       { label:"Normal (Paragraph)", value:"p" },
       { label:"Heading 1", value:"h1" },
@@ -3687,6 +3699,17 @@
       execCommand(target, "fontSize", meta.exec, true);
       convertFontTags(target, meta.exec, meta.px);
     }
+    function normalizeShadingColor(input){
+      if(input==null){ return null; }
+      const raw=String(input).trim();
+      if(!raw){ return null; }
+      if(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw)){ return raw.length===4 ? (function(){
+        const r=raw.charAt(1), g=raw.charAt(2), b=raw.charAt(3);
+        return ("#"+r+r+g+g+b+b).toLowerCase();
+      })() : raw.toLowerCase(); }
+      if(/^([0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw)){ return normalizeShadingColor("#"+raw); }
+      return null;
+    }
     function applyHighlight(inst, ctx, color){
       if(!color){ return clearHighlight(inst, ctx); }
       const target=resolveTarget(inst, ctx); if(!target) return false;
@@ -3719,6 +3742,70 @@
       if(fallbackClearHighlight(target)) success=true;
       if(success && inst){ inst.highlightColor=null; }
       return success;
+    }
+    function applyShadingToElements(elements, color){
+      const normalized=color?normalizeShadingColor(color):null;
+      let changed=false;
+      for(let i=0;i<elements.length;i++){
+        const el=elements[i];
+        if(!el || el.nodeType!==1 || !el.style) continue;
+        if(normalized){
+          if(el.style.backgroundColor!==normalized){
+            el.style.backgroundColor=normalized;
+            changed=true;
+          }
+        } else if(el.style.backgroundColor){
+          el.style.removeProperty("background-color");
+          if(el.getAttribute && el.getAttribute("style")===""){ el.removeAttribute("style"); }
+          changed=true;
+        }
+      }
+      return changed;
+    }
+    function collectShadingBlocks(target, range){
+      const blocks=[];
+      if(!target) return blocks;
+      if(range){
+        const collected=collectLineSpacingBlocks(target, range);
+        for(let i=0;i<collected.length;i++){ if(blocks.indexOf(collected[i])===-1) blocks.push(collected[i]); }
+        const extraCandidates=[
+          range.startContainer,
+          range.endContainer,
+          range.commonAncestorContainer
+        ];
+        for(let i=0;i<extraCandidates.length;i++){
+          const candidate=findLineSpacingBlock(extraCandidates[i], target);
+          if(candidate && blocks.indexOf(candidate)===-1){ blocks.push(candidate); }
+        }
+      }
+      return blocks;
+    }
+    function applyShading(inst, ctx, color){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const normalized=color?normalizeShadingColor(color):null;
+      let changed=false;
+      const tableSelection=(typeof TableSelection!=='undefined' && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(tableSelection && tableSelection.cells && tableSelection.cells.length){
+        changed=applyShadingToElements(tableSelection.cells, normalized);
+      }
+      if(!changed){
+        const selection=getSelectionWithin(target);
+        if(selection && selection.range){
+          const blocks=collectShadingBlocks(target, selection.range);
+          if(blocks.length){
+            changed=applyShadingToElements(blocks, normalized);
+          }
+        }
+      }
+      if(changed){
+        if(inst){ inst.shadingColor=normalized||null; }
+        Normalizer.fixStructure(target);
+        Breaks.ensurePlaceholders(target);
+      }
+      return changed;
+    }
+    function clearShading(inst, ctx){
+      return applyShading(inst, ctx, null);
     }
     function applyFontColor(inst, ctx, color){
       if(!color){ return clearFontColor(inst, ctx); }
@@ -4378,6 +4465,7 @@
       FONT_FAMILIES,
       FONT_SIZES,
       HIGHLIGHT_COLORS,
+      SHADING_STANDARD_COLORS,
       LINE_SPACING_OPTIONS,
       FONT_THEME_COLORS,
       FONT_STANDARD_COLORS,
@@ -4386,6 +4474,9 @@
       applyFontSize,
       applyHighlight,
       clearHighlight,
+      applyShading,
+      clearShading,
+      normalizeShadingColor,
       applyFontColor,
       clearFontColor,
       clearAllFormatting,
@@ -4439,6 +4530,15 @@
         }
         return Formatting.clearHighlight(inst, makeCtx(inst, target));
       },
+      shading:function(inst, target, args){
+        const ctx=makeCtx(inst, target);
+        if(args && Object.prototype.hasOwnProperty.call(args, "color")){
+          const color=args.color;
+          if(color){ return Formatting.applyShading(inst, ctx, color); }
+          return Formatting.clearShading(inst, ctx);
+        }
+        return Formatting.clearShading(inst, ctx);
+      },
       lineSpacing:function(inst, target, args){
         const ctx=makeCtx(inst, target);
         if(args && Object.prototype.hasOwnProperty.call(args, "value")){
@@ -4471,6 +4571,7 @@
         footerAlign: inst.footerAlign,
         underlineStyle: inst.underlineStyle,
         highlightColor: inst.highlightColor,
+        shadingColor: inst.shadingColor,
         fontColor: inst.fontColor
       };
     }
@@ -4484,6 +4585,9 @@
       inst.footerAlign = state.footerAlign;
       inst.underlineStyle = state.underlineStyle;
       inst.highlightColor = state.highlightColor;
+      if(Object.prototype.hasOwnProperty.call(state, "shadingColor")){
+        inst.shadingColor = state.shadingColor;
+      }
       inst.fontColor = state.fontColor;
     }
     function instStateEqual(a, b){
@@ -4497,6 +4601,7 @@
         a.footerAlign===b.footerAlign &&
         a.underlineStyle===b.underlineStyle &&
         a.highlightColor===b.highlightColor &&
+        a.shadingColor===b.shadingColor &&
         a.fontColor===b.fontColor;
     }
     function sameSnapshot(a, b){
@@ -6092,11 +6197,12 @@
       if(doc.getElementById(STYLE_ID)) return;
       const style=doc.createElement("style");
       style.id=STYLE_ID;
-      style.textContent=
-        "."+CELL_CLASS+"{"+
-          "position:relative;"+
-          "background-color:rgba(15,108,189,0.12);"+
-        "}";
+      style.textContent=[
+        "."+CELL_CLASS+"{",
+          "position:relative;",
+          "box-shadow:inset 0 0 0 9999px rgba(15,108,189,0.12),inset 0 0 0 2px rgba(15,108,189,0.65);",
+        "}"
+      ].join("");
       doc.head.appendChild(style);
     }
     function closestCell(root, node){
@@ -8460,6 +8566,248 @@
     }
     return { create };
   })();
+  const ShadingUI=(function(){
+    const NO_COLOR_PATTERN="linear-gradient(135deg,#ffffff 45%,#c8c6c4 45%,#c8c6c4 55%,#ffffff 55%)";
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.position="relative";
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      const button=WDom.btn("Shading", false, "Shading background color");
+      button.setAttribute("data-command","format.shading");
+      button.setAttribute("aria-haspopup","true");
+      button.setAttribute("aria-expanded","false");
+      button.setAttribute("aria-label","Shading");
+      button.style.display="inline-flex";
+      button.style.alignItems="center";
+      button.style.justifyContent="center";
+      button.style.gap="8px";
+      button.style.padding="6px 14px";
+      button.style.minWidth="0";
+      const preview=document.createElement("span");
+      preview.style.width="18px";
+      preview.style.height="18px";
+      preview.style.borderRadius="4px";
+      preview.style.border="1px solid "+WCfg.UI.borderSubtle;
+      preview.style.boxShadow="inset 0 0 0 1px rgba(0,0,0,.04)";
+      preview.setAttribute("aria-hidden","true");
+      const label=document.createElement("span");
+      label.textContent="Shading";
+      label.style.fontSize="13px";
+      label.style.lineHeight="1";
+      const arrow=document.createElement("span");
+      arrow.textContent="▼";
+      arrow.setAttribute("aria-hidden","true");
+      arrow.style.fontSize="11px";
+      arrow.style.color=WCfg.UI.textDim;
+      button.textContent="";
+      button.appendChild(preview);
+      button.appendChild(label);
+      button.appendChild(arrow);
+      const menu=document.createElement("div");
+      menu.style.position="absolute";
+      menu.style.top="calc(100% + 6px)";
+      menu.style.left="0";
+      menu.style.display="none";
+      menu.style.flexDirection="column";
+      menu.style.background="#fff";
+      menu.style.border="1px solid "+WCfg.UI.borderSubtle;
+      menu.style.borderRadius="8px";
+      menu.style.boxShadow="0 8px 24px rgba(0,0,0,.12)";
+      menu.style.padding="12px";
+      menu.style.gap="10px";
+      menu.style.minWidth="220px";
+      menu.style.zIndex="30";
+      menu.setAttribute("role","menu");
+      menu.setAttribute("aria-hidden","true");
+      const doc=button.ownerDocument || document;
+      const colors=Formatting.SHADING_STANDARD_COLORS || [];
+      let currentColor=null;
+      if(inst){
+        if(typeof inst.shadingColor!=="undefined"){
+          currentColor=inst.shadingColor;
+        }
+      } else if(colors.length){
+        currentColor=colors[0].value;
+      }
+      function updatePreview(color){
+        if(color){
+          preview.style.background=color;
+          preview.style.borderColor=WCfg.UI.borderSubtle;
+        } else {
+          preview.style.background=NO_COLOR_PATTERN;
+          preview.style.borderColor=WCfg.UI.borderSubtle;
+        }
+      }
+      const colorButtons=[];
+      function updateColorSelection(active){
+        for(let i=0;i<colorButtons.length;i++){
+          const entry=colorButtons[i];
+          const isActive=active && active.toLowerCase()===entry.value.toLowerCase();
+          entry.el.style.borderColor = isActive ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+          entry.el.style.boxShadow = isActive ? "0 0 0 2px "+WCfg.UI.brand : "none";
+          entry.el.setAttribute("aria-checked", isActive?"true":"false");
+        }
+      }
+      let open=false;
+      function setOpen(state){
+        if(open===state) return;
+        open=state;
+        menu.style.display=open?"flex":"none";
+        menu.setAttribute("aria-hidden", open?"false":"true");
+        button.setAttribute("aria-expanded", open?"true":"false");
+        if(open){
+          doc.addEventListener("mousedown", onDocPointer, true);
+          doc.addEventListener("keydown", onDocKey);
+        } else {
+          doc.removeEventListener("mousedown", onDocPointer, true);
+          doc.removeEventListener("keydown", onDocKey);
+        }
+      }
+      function onDocPointer(ev){
+        if(!open) return;
+        if(container.contains(ev.target)){ return; }
+        setOpen(false);
+      }
+      function onDocKey(ev){
+        if(ev.key==="Escape"){ setOpen(false); button.focus(); }
+      }
+      function recordChange(labelText, repeatArgs){
+        const target=HistoryManager.resolveTarget(inst, ctx);
+        HistoryManager.record(inst, target, {
+          label:labelText,
+          repeatable:true,
+          repeatId:"shading",
+          repeatArgs:repeatArgs,
+          repeatLabel:labelText
+        });
+        if(inst){ OutputBinding.syncDebounced(inst); }
+      }
+      function applyColor(value){
+        const changed=Formatting.applyShading(inst, ctx, value);
+        if(changed){
+          currentColor=value;
+          updatePreview(currentColor);
+          updateColorSelection(currentColor);
+          updateNoColorState();
+          recordChange("Shading", { color:value });
+        }
+      }
+      function clearColor(){
+        const changed=Formatting.clearShading(inst, ctx);
+        if(changed){
+          currentColor=null;
+          updatePreview(currentColor);
+          updateColorSelection("");
+          updateNoColorState();
+          recordChange("Remove Shading", { color:null });
+        }
+      }
+      function updateNoColorState(){
+        if(!noColorBtn) return;
+        const active=!currentColor;
+        noColorBtn.setAttribute("aria-pressed", active?"true":"false");
+        noColorBtn.style.background = active?"#f3f2f1":"#fff";
+        noColorBtn.style.borderColor = active?WCfg.UI.brand:WCfg.UI.borderSubtle;
+      }
+      const heading=document.createElement("div");
+      heading.textContent="Standard Colors";
+      heading.style.font="12px/1.4 Segoe UI,system-ui";
+      heading.style.color=WCfg.UI.textDim;
+      const grid=document.createElement("div");
+      grid.style.display="grid";
+      grid.style.gridTemplateColumns="repeat(5, 28px)";
+      grid.style.gap="6px";
+      grid.setAttribute("role","none");
+      for(let i=0;i<colors.length;i++){
+        const entry=colors[i];
+        const swatch=doc.createElement("button");
+        swatch.type="button";
+        swatch.setAttribute("role","menuitemradio");
+        swatch.setAttribute("aria-checked","false");
+        swatch.setAttribute("aria-label", entry.label+" shading");
+        swatch.title=entry.label;
+        swatch.style.width="28px";
+        swatch.style.height="28px";
+        swatch.style.border="1px solid "+WCfg.UI.borderSubtle;
+        swatch.style.borderRadius="4px";
+        swatch.style.background=entry.value;
+        swatch.style.cursor="pointer";
+        swatch.style.padding="0";
+        swatch.addEventListener("click", function(ev){
+          ev.preventDefault();
+          ev.stopPropagation();
+          setOpen(false);
+          applyColor(entry.value);
+        });
+        swatch.addEventListener("keydown", function(ev){ if(ev.key==="Escape"){ ev.preventDefault(); setOpen(false); button.focus(); } });
+        colorButtons.push({ value:entry.value, el:swatch });
+        grid.appendChild(swatch);
+      }
+      const actions=document.createElement("div");
+      actions.style.display="flex";
+      actions.style.flexDirection="column";
+      actions.style.gap="6px";
+      function createActionButton(text){
+        const btn=WDom.btn(text, false, text);
+        btn.style.width="100%";
+        btn.style.justifyContent="center";
+        btn.style.fontSize="13px";
+        btn.style.padding="8px 10px";
+        return btn;
+      }
+      const noColorBtn=createActionButton("No Color");
+      noColorBtn.setAttribute("role","menuitem");
+      noColorBtn.setAttribute("aria-pressed","false");
+      noColorBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        setOpen(false);
+        clearColor();
+      });
+      const moreColorBtn=createActionButton("More Color");
+      moreColorBtn.setAttribute("role","menuitem");
+      moreColorBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        setOpen(false);
+        const initial=currentColor || "#";
+        const input=window.prompt("Enter a hex color (e.g. #dddddd)", initial);
+        if(!input){ return; }
+        const normalized=Formatting.normalizeShadingColor(input);
+        if(!normalized){
+          window.alert("Please enter a valid hex color like #dddddd.");
+          return;
+        }
+        applyColor(normalized);
+      });
+      actions.appendChild(noColorBtn);
+      actions.appendChild(moreColorBtn);
+      menu.appendChild(heading);
+      menu.appendChild(grid);
+      menu.appendChild(actions);
+      button.addEventListener("click", function(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        setOpen(!open);
+      });
+      button.addEventListener("keydown", function(ev){
+        if(ev.key==="ArrowDown" || ev.key==="Enter" || ev.key===" "){
+          ev.preventDefault();
+          setOpen(true);
+        }
+      });
+      menu.addEventListener("mousedown", function(ev){ ev.stopPropagation(); });
+      menu.addEventListener("click", function(ev){ ev.stopPropagation(); });
+      updatePreview(currentColor);
+      updateColorSelection(currentColor);
+      updateNoColorState();
+      container.appendChild(button);
+      container.appendChild(menu);
+      return container;
+    }
+    return { create };
+  })();
   function decorateAlignButton(btn, align){
     if(!btn) return;
     const mode=(align||"").toLowerCase();
@@ -8687,6 +9035,11 @@
       kind:"custom",
       ariaLabel:"Text Highlight Color",
       render:function(inst, ctx){ return HighlightUI.create(inst, ctx); }
+    },
+    "format.shading":{
+      kind:"custom",
+      ariaLabel:"Shading",
+      render:function(inst, ctx){ return ShadingUI.create(inst, ctx); }
     },
     "format.alignLeft":{
       label:"Left",
@@ -8968,12 +9321,12 @@
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
-        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
-      { id:"editing", label:"Editing", items:["history.undo","history.redo","break.insert","break.remove","hf.edit"] },
+      { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
@@ -8985,7 +9338,7 @@
     tabs:[
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
-        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.subscript","format.superscript"] },
+        { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
       ] },
@@ -9028,6 +9381,7 @@
     this.outputEl = this.outputEls.length ? this.outputEls[0] : null;
     this.outputMode = editorEl.classList.contains("weditor--paged") ? "paged" : "raw";
     this.underlineStyle = "solid";
+    this.shadingColor = null;
     this.highlightColor = (Formatting && Formatting.HIGHLIGHT_COLORS && Formatting.HIGHLIGHT_COLORS.length ? Formatting.HIGHLIGHT_COLORS[0].value : null);
     this.fontColor = (Formatting && typeof Formatting.FONT_COLOR_DEFAULT!=="undefined") ? Formatting.FONT_COLOR_DEFAULT : "#d13438";
     const initialState = initialStateAttr || OutputBinding.consumeInitialState(this);
