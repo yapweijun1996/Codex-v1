@@ -7,6 +7,7 @@
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
   const DEFAULT_LETTERHEAD_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
+  const DEFAULT_FOOTER_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_footer_logo.png";
   function sanitizeImageURL(value){
     if(typeof value!=="string") return "";
     const trimmed=value.trim();
@@ -1776,6 +1777,12 @@
       }
       return DEFAULT_LETTERHEAD_LOGO_URL;
     }
+    function resolveFooterLogo(inst){
+      if(inst && inst.customFooterLogoURL){
+        return inst.customFooterLogoURL;
+      }
+      return DEFAULT_FOOTER_LOGO_URL;
+    }
     function renderLetterheadPreview(inst){
       const src=escapeAttribute(resolveLetterheadLogo(inst));
       return '<div style="display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;">'+
@@ -1786,6 +1793,55 @@
       const src=escapeAttribute(resolveLetterheadLogo(inst));
       return '<div style="width:100%;display:flex;justify-content:center;align-items:center;">'+
         '<img src="'+src+'" alt="Letterhead banner" style="width:100%;height:auto;object-fit:contain;display:block;">'+
+      '</div>';
+    }
+    function renderLetterheadLogoPreview(inst){
+      const src=escapeAttribute(resolveLetterheadLogo(inst));
+      return '<div style="display:flex;align-items:center;gap:10px;width:100%;">'+
+        '<img src="'+src+'" alt="Company logo" style="width:56px;height:56px;border-radius:12px;object-fit:cover;">'+
+        '<div style="display:flex;flex-direction:column;gap:4px;">'+
+          '<span style="font-size:15px;font-weight:600;">Acme Corporation</span>'+
+          '<span style="font-size:12px;color:#666;">Corporate Communications</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderLetterheadLogoHTML(inst){
+      const src=escapeAttribute(resolveLetterheadLogo(inst));
+      return '<div style="display:flex;align-items:center;gap:16px;width:100%;">'+
+        '<img src="'+src+'" alt="Company logo" style="width:64px;height:64px;border-radius:14px;object-fit:cover;display:block;">'+
+        '<div style="display:flex;flex-direction:column;gap:6px;">'+
+          '<div style="font-size:18px;font-weight:600;">Acme Corporation</div>'+
+          '<div style="font-size:12px;color:#666;">123 Market Street · San Francisco, CA</div>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderFooterLogoPreview(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;font-size:12px;">'+
+        '<div style="display:flex;align-items:center;gap:10px;">'+
+          '<img src="'+src+'" alt="Footer logo" style="width:40px;height:40px;border-radius:10px;object-fit:cover;">'+
+          '<span>Acme Corp</span>'+
+        '</div>'+
+        '<div style="display:flex;flex-direction:column;text-align:right;gap:2px;color:#666;">'+
+          '<span>Page {{page}} of {{total}}</span>'+
+          '<span>{{date}}</span>'+
+        '</div>'+
+      '</div>';
+    }
+    function renderFooterLogoHTML(inst){
+      const src=escapeAttribute(resolveFooterLogo(inst));
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:12px;">'+
+        '<div style="display:flex;align-items:center;gap:12px;">'+
+          '<img src="'+src+'" alt="Footer logo" style="width:48px;height:48px;border-radius:12px;object-fit:cover;display:block;">'+
+          '<div style="display:flex;flex-direction:column;gap:2px;">'+
+            '<div style="font-weight:600;">Acme Corporation</div>'+
+            '<div style="color:#666;">hello@acme.com · +1 (555) 010-2000</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="text-align:right;line-height:1.4;color:#666;">'+
+          '<div>Page {{page}} of {{total}}</div>'+
+          '<div>{{date}}</div>'+
+        '</div>'+
       '</div>';
     }
     function decorateTokens(root){
@@ -1833,6 +1889,13 @@
           preview:function(ctx){ return renderLetterheadPreview(ctx && ctx.inst); },
           html:function(ctx){ return renderLetterheadHTML(ctx && ctx.inst); },
           align:"center"
+        },
+        {
+          id:"letterhead_logo",
+          label:"🏙️ Letterhead Logo",
+          preview:function(ctx){ return renderLetterheadLogoPreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderLetterheadLogoHTML(ctx && ctx.inst); },
+          align:"left"
         },
         {
           id:"letterhead",
@@ -1928,6 +1991,13 @@
             '<div>Prepared by Legal Team</div>'+
             '<div style="text-align:right;">Version {{page}} · {{date}}</div>'+
           '</div>',
+          align:"left"
+        },
+        {
+          id:"footer_logo",
+          label:"🖼️ Branded Footer",
+          preview:function(ctx){ return renderFooterLogoPreview(ctx && ctx.inst); },
+          html:function(ctx){ return renderFooterLogoHTML(ctx && ctx.inst); },
           align:"left"
         }
       ]
@@ -8741,6 +8811,8 @@
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
     const customLetterheadAttr=sanitizeImageURL(editorEl.getAttribute("data-custom-letterhead-logo-url"));
     this.customLetterheadLogoURL = customLetterheadAttr || null;
+    const customFooterAttr=sanitizeImageURL(editorEl.getAttribute("data-custom-footer-logo-url"));
+    this.customFooterLogoURL = customFooterAttr || null;
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
