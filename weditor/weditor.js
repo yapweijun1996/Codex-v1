@@ -2805,6 +2805,45 @@
     }
     return { parse, apply, capture, stringify, consumeInitial };
   })();
+  const ContentInspector=(function(){
+    const IGNORED_TAGS={ br:1, style:1, script:1, meta:1, link:1, title:1, base:1, head:1 };
+    const SELF_CONTAINED_TAGS={ img:1, svg:1, canvas:1, video:1, audio:1, iframe:1, object:1, embed:1, hr:1, input:1, textarea:1, select:1, button:1, picture:1 };
+    const INVISIBLE_TEXT=/[\u00a0\u200b\u200c\u200d\ufeff]/g;
+    function textHasContent(value){
+      if(!value) return false;
+      return value.replace(INVISIBLE_TEXT, "").trim().length>0;
+    }
+    function nodeHasContent(node){
+      if(!node) return false;
+      if(node.nodeType===3){
+        return textHasContent(node.nodeValue||"");
+      }
+      if(node.nodeType!==1) return false;
+      if(node.hasAttribute && node.hasAttribute("data-weditor-break-placeholder")) return false;
+      const tag=(node.tagName||"").toLowerCase();
+      if(IGNORED_TAGS[tag]) return false;
+      if(SELF_CONTAINED_TAGS[tag]){
+        if(tag==="picture"){ return !!node.querySelector("img,source"); }
+        return true;
+      }
+      const children=node.childNodes||[];
+      for(let i=0;i<children.length;i++){
+        if(nodeHasContent(children[i])) return true;
+      }
+      return false;
+    }
+    function hasEditorContent(inst){
+      if(!inst || !inst.el) return false;
+      if(inst.headerEnabled && inst.headerHTML && inst.headerHTML.trim()) return true;
+      if(inst.footerEnabled && inst.footerHTML && inst.footerHTML.trim()) return true;
+      const nodes=inst.el.childNodes||[];
+      for(let i=0;i<nodes.length;i++){
+        if(nodeHasContent(nodes[i])) return true;
+      }
+      return false;
+    }
+    return { hasEditorContent };
+  })();
   const OutputBinding=(function(){
     function isOut(el){
       if(!el || el.tagName !== "TEXTAREA") return false;
@@ -2899,6 +2938,7 @@
     function sync(inst){
       const outputs=getOutputs(inst);
       if(!outputs.length) return;
+      const hasContent=ContentInspector.hasEditorContent(inst);
       let cachedRaw=null;
       let cachedPaged=null;
       let cachedState=null;
@@ -2910,10 +2950,15 @@
         if(format==="state"){
           if(cachedState===null){
             const state=StateBinding.capture(inst);
+            if(state && !hasContent){ state.html=""; }
             cachedState=StateBinding.stringify(state);
           }
           out.value = cachedState || "";
         } else if(format==="paged"){
+          if(!hasContent){
+            out.value="";
+            continue;
+          }
           pagedTargets.push(out);
           if(cachedPaged===null){
             if(cachedRaw===null){
@@ -2935,6 +2980,10 @@
           }
           out.value = cachedPaged || "";
         } else {
+          if(!hasContent){
+            out.value="";
+            continue;
+          }
           if(cachedRaw===null){
             cachedRaw=Breaks.serialize(inst.el);
           }
