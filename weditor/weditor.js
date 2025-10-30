@@ -4379,14 +4379,14 @@
       Breaks.ensurePlaceholders(target);
       return true;
     }
-    function applyBlockFormat(inst, ctx, tag){
-      const target=resolveTarget(inst, ctx); if(!target) return false;
-      const selection=getSelectionWithin(target); if(!selection) return false;
+    function applyBlockFormatForSelection(target, selection, tag){
+      if(!target || !selection) return false;
       const normalized=(tag||"p").toString().trim().toLowerCase();
       const desired=normalized ? normalized : "p";
       const upper=desired.toUpperCase();
       const attempts=[];
       const { range }=selection;
+      if(!range) return false;
       const startBlock=findBlockNode(range.startContainer, target);
       const endBlock=findBlockNode(range.endContainer, target);
       if(startBlock && endBlock && startBlock===endBlock){
@@ -4409,6 +4409,20 @@
         Breaks.ensurePlaceholders(target);
       }
       return success;
+    }
+    function applyBlockFormat(inst, ctx, tag){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      const run=function(){
+        const selection=getSelectionWithin(target); if(!selection) return false;
+        return applyBlockFormatForSelection(target, selection, tag);
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, function(){
+        return run();
+      });
+      if(multi.handled){
+        return multi.changed;
+      }
+      return run();
     }
     function getBlockFormat(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return "p";
