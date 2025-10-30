@@ -903,9 +903,12 @@
       const footerHeight=opts.footerHeight!=null ? opts.footerHeight : (footerEnabled?WCfg.FTR_H:0);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
       const textStyle=StyleMirror.merge(null, opts.textStyle);
+      const allowAdaptiveContent=!!opts.allowAdaptiveContent;
       const page=document.createElement("div");
       page.setAttribute("data-page", String(pageNo));
       page.style.cssText="width:"+A4W+"px;height:"+A4H+"px;"+Style.pageFrame+";";
+      page.__weditorNaturalHeight=A4H;
+      page.__weditorAdaptiveHeight=false;
       let header=null, footer=null;
       if(headerEnabled){
         header=document.createElement("div");
@@ -923,13 +926,19 @@
       }
       const content=document.createElement("div");
       content.className="weditor_page-content";
-      content.style.position="absolute";
-      content.style.left="0";
-      content.style.right="0";
-      content.style.top=(headerEnabled?headerHeight:0)+"px";
-      content.style.bottom=(footerEnabled?footerHeight:0)+"px";
+      if(allowAdaptiveContent){
+        content.style.position="relative";
+        content.style.top="0";
+        content.style.bottom="auto";
+      } else {
+        content.style.position="absolute";
+        content.style.left="0";
+        content.style.right="0";
+        content.style.top=(headerEnabled?headerHeight:0)+"px";
+        content.style.bottom=(footerEnabled?footerHeight:0)+"px";
+      }
       content.style.padding=PAD+"px";
-      content.style.overflow="hidden";
+      content.style.overflow=allowAdaptiveContent?"visible":"hidden";
       StyleMirror.apply(content, textStyle);
       page.appendChild(content);
       if(footerEnabled){
@@ -1006,6 +1015,7 @@
       const headerAlign=HFAlign.normalize(state.headerAlign);
       const footerAlign=HFAlign.normalize(state.footerAlign);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
+      const allowAdaptiveHeight=!!(state && state.fixPageHeight===false && !state.headerEnabled && !state.footerEnabled);
       const textStyle=StyleMirror.capture(state && state.el ? state.el : null);
       const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign);
       const headerHeight=layout.headerHeight;
@@ -1019,11 +1029,12 @@
         return p;
       }
       const linear=[];
+      let hasManualBreak=false;
       for(let i=0;i<src.childNodes.length;i++){
         const n=src.childNodes[i];
         if(n.nodeType===8){
           const t=(n.nodeValue||"").trim().toLowerCase();
-          if(t==="page:break") linear.push({t:"break"});
+          if(t==="page:break"){ hasManualBreak=true; linear.push({t:"break"}); }
         }else if(n.nodeType===3){
           const txt=n.nodeValue.trim(); if(txt) linear.push({t:"block", node:para(txt)});
         }else if(n.nodeType===1){
@@ -1035,9 +1046,9 @@
       const CONTENT_WIDTH=A4W - 2*PAD;
       const measWrap=document.createElement("div"); measWrap.style.cssText="position:absolute;left:-99999px;top:-99999px;visibility:hidden;width:"+A4W+"px";
       document.body.appendChild(measWrap);
-      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle});
+      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle, allowAdaptiveContent:allowAdaptiveHeight});
       const measContent=measPage.content; measWrap.appendChild(measPage.page);
-      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); let used=0;
+      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle, allowAdaptiveContent:allowAdaptiveHeight}); let used=0;
       function hasContent(pg){
         if(!pg || !pg.content) return false;
         const text=(pg.content.textContent||"").replace(/\u00a0/g," ").replace(/\u200b/g,"").trim();
@@ -1046,7 +1057,7 @@
         return !!pg.content.querySelector("img,table,svg,canvas,video,figure,ul,ol,li,blockquote,hr,pre,code");
       }
       function push(force){ if(force || hasContent(cur)){ pages.push(cur); } }
-      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); used=0; }
+      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle, allowAdaptiveContent:allowAdaptiveHeight}); used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
         function parseDim(value){
@@ -1167,8 +1178,33 @@
         pg.headerHeight = pg.headerNode ? topOffset : 0;
         pg.footerHeight = pg.footerNode ? bottomOffset : 0;
         if(pg.content){
-          pg.content.style.top = pg.headerNode ? topOffset+"px" : "0px";
-          pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
+          const isAdaptiveContent = pg.content.style && pg.content.style.position !== "absolute";
+          pg.content.style.top = pg.headerNode && !isAdaptiveContent ? topOffset+"px" : "0px";
+          if(isAdaptiveContent){
+            pg.content.style.bottom = "auto";
+          } else {
+            pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
+          }
+        }
+      }
+      function applyAdaptiveSizing(){
+        const adaptiveCandidate=allowAdaptiveHeight && !hasManualBreak && pages.length===1;
+        for(let i=0;i<pages.length;i++){
+          const pg=pages[i];
+          if(!pg || !pg.page) continue;
+          const pageEl=pg.page;
+          if(adaptiveCandidate && i===0){
+            pageEl.__weditorAdaptiveHeight=true;
+            pageEl.style.height="";
+            pageEl.style.minHeight="";
+            pageEl.style.maxHeight="";
+            const rect=pageEl.getBoundingClientRect();
+            const measured=Math.max(1, Math.ceil(rect.height||0));
+            pageEl.__weditorNaturalHeight = measured || A4H;
+          }else{
+            pageEl.__weditorAdaptiveHeight=false;
+            pageEl.__weditorNaturalHeight=A4H;
+          }
         }
       }
       for(let i=0;i<pages.length;i++){
@@ -1179,12 +1215,28 @@
         if(pg.headerNode){ observeMedia(pg.headerNode, function(){ adjustPageOffsets(pg); }, pendingMedia); }
         if(pg.footerNode){ observeMedia(pg.footerNode, function(){ adjustPageOffsets(pg); }, pendingMedia); }
       }
+      applyAdaptiveSizing();
       const pageBreakHTML='<div class="weditor_page-break" style="page-break-before: always;"></div>';
       function serializePages(){
         let html="";
         for(let i=0;i<pages.length;i++){
           if(i>0){ html+=pageBreakHTML; }
-          html+=pages[i].page.outerHTML;
+          const pageEl=pages[i] && pages[i].page;
+          let originalHeight="";
+          let hadHeight=false;
+          if(pageEl && pageEl.__weditorAdaptiveHeight){
+            originalHeight=pageEl.style.height;
+            hadHeight=!!(originalHeight && originalHeight.length);
+            pageEl.style.height="";
+          }
+          if(pageEl){ html+=pageEl.outerHTML; }
+          if(pageEl && pageEl.__weditorAdaptiveHeight){
+            if(hadHeight){
+              pageEl.style.height=originalHeight;
+            }else{
+              pageEl.style.removeProperty("height");
+            }
+          }
         }
         return html;
       }
@@ -1194,6 +1246,7 @@
       if(pendingMedia.length){
         const waitAll=Promise.all(pendingMedia).then(function(){
           for(let i=0;i<pages.length;i++){ adjustPageOffsets(pages[i]); }
+          applyAdaptiveSizing();
           return serializePages();
         });
         ready=waitAll.catch(function(){ return serializePages(); });
@@ -2751,6 +2804,11 @@
       if(typeof data.outputMode==="string"){
         inst.outputMode=data.outputMode.toLowerCase()==="paged"?"paged":"raw";
       }
+      if(Object.prototype.hasOwnProperty.call(data, "fixPageHeight")){
+        inst.fixPageHeight = data.fixPageHeight!==false;
+      } else if(data.page && Object.prototype.hasOwnProperty.call(data.page, "fixHeight")){
+        inst.fixPageHeight = data.page.fixHeight!==false;
+      }
       const headerEnabledExplicit=typeof header.enabled==="boolean" || typeof data.headerEnabled==="boolean";
       const footerEnabledExplicit=typeof footer.enabled==="boolean" || typeof data.footerEnabled==="boolean";
       if(typeof header.enabled==="boolean") inst.headerEnabled=header.enabled;
@@ -2777,6 +2835,7 @@
       const state={
         version:"1.0",
         outputMode:inst.outputMode,
+        fixPageHeight:inst.fixPageHeight!==false,
         html:Breaks.serialize(inst.el),
         header:{
           enabled:!!inst.headerEnabled,
@@ -3358,17 +3417,19 @@
         if(WCfg.PREVIEW_MAX_SCALE && scale>WCfg.PREVIEW_MAX_SCALE){ scale=WCfg.PREVIEW_MAX_SCALE; }
         if(!isFinite(scale) || scale<=0){ scale=1; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
-        const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const totalFrameWidth=scaledWidth + previewPadding*2;
-        const totalFrameHeight=scaledHeight + previewPadding*2;
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
+          if(!page) continue;
           page.style.margin="0";
           page.style.transform="";
           page.style.transformOrigin="";
           const wrap=document.createElement("div");
+          const naturalHeight=(page && typeof page.__weditorNaturalHeight==="number" && page.__weditorNaturalHeight>0) ? page.__weditorNaturalHeight : WCfg.A4H;
+          const scaledHeight=Math.max(1, Math.round(naturalHeight * scale));
+          const totalFrameHeight=scaledHeight + previewPadding*2;
           wrap.style.width=scaledWidth+"px";
           wrap.style.height=scaledHeight+"px";
           wrap.style.display="block";
@@ -3392,7 +3453,8 @@
           page.style.left="0";
           page.style.top="0";
           page.style.width=WCfg.A4W+"px";
-          page.style.height=WCfg.A4H+"px";
+          page.style.height=naturalHeight+"px";
+          page.style.overflow=page.__weditorAdaptiveHeight ? "visible" : "hidden";
           outer.appendChild(wrap);
           wrap.appendChild(page);
           stage.appendChild(outer);
@@ -4707,7 +4769,8 @@
         underlineStyle: inst.underlineStyle,
         highlightColor: inst.highlightColor,
         shadingColor: inst.shadingColor,
-        fontColor: inst.fontColor
+        fontColor: inst.fontColor,
+        fixPageHeight: inst.fixPageHeight!==false
       };
     }
     function applyInstState(inst, state){
@@ -4724,6 +4787,7 @@
         inst.shadingColor = state.shadingColor;
       }
       inst.fontColor = state.fontColor;
+      inst.fixPageHeight = state.fixPageHeight!==false;
     }
     function instStateEqual(a, b){
       if(!a && !b) return true;
@@ -4737,7 +4801,8 @@
         a.underlineStyle===b.underlineStyle &&
         a.highlightColor===b.highlightColor &&
         a.shadingColor===b.shadingColor &&
-        a.fontColor===b.fontColor;
+        a.fontColor===b.fontColor &&
+        (!!a.fixPageHeight)=== (!!b.fixPageHeight);
     }
     function sameSnapshot(a, b){
       if(!a || !b) return false;
@@ -9509,6 +9574,16 @@
         HistoryManager.record(inst, inst ? inst.el : null, { label:inst.footerEnabled ? "Enable Footer" : "Disable Footer", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "layout.fixPageHeight":{ label:"Fix A4 Page Height", kind:"toggle", ariaLabel:"Toggle fixed A4 page height",
+      getActive:function(inst){ return !inst || inst.fixPageHeight!==false; },
+      run:function(inst, arg){
+        if(!inst) return;
+        const current=inst.fixPageHeight!==false;
+        inst.fixPageHeight = !current;
+        HistoryManager.record(inst, inst ? inst.el : null, { label:inst.fixPageHeight ? "Enable Fixed Page Height" : "Disable Fixed Page Height", repeatable:false });
+        if(arg && arg.ctx && typeof arg.ctx.refreshPreview==="function"){ arg.ctx.refreshPreview(); }
+        OutputBinding.syncDebounced(inst);
+      } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){
       if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
@@ -9559,7 +9634,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
     quickActions:["fullscreen.open"]
@@ -9576,7 +9651,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ]
   };
@@ -9607,6 +9682,8 @@
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
     this.footerEnabled = footerAttr!=null ? footerAttr : false;
+    const fixHeightAttr=readBooleanAttribute(editorEl, "data-fix-page-height");
+    this.fixPageHeight = fixHeightAttr!=null ? !!fixHeightAttr : true;
     if(editorEl.classList.contains("weditor--no-header")) this.headerEnabled=false;
     if(editorEl.classList.contains("weditor--no-footer")) this.footerEnabled=false;
     this.outputEls = OutputBinding.resolveAll(editorEl);
