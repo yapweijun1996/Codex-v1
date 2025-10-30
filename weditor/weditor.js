@@ -5622,12 +5622,51 @@
         applyRootResizeCursor(state.cursor);
         return state;
       }
+      function parseFontSizePx(fontSize){
+        const value=(fontSize||"").trim();
+        if(!value) return null;
+        if(/px$/i.test(value)){
+          const parsed=parseFloat(value);
+          return Number.isFinite(parsed)?parsed:null;
+        }
+        return null;
+      }
+      function resolveLineHeightPx(lineHeight, fontSize){
+        const value=(lineHeight||"").trim();
+        if(!value) return null;
+        if(/px$/i.test(value)){
+          const parsed=parseFloat(value);
+          return Number.isFinite(parsed)?parsed:null;
+        }
+        const baseFontSize=parseFontSizePx(fontSize);
+        if(baseFontSize==null) return null;
+        if(/%$/i.test(value)){
+          const percent=parseFloat(value);
+          if(Number.isFinite(percent)){
+            return baseFontSize*(percent/100);
+          }
+          return null;
+        }
+        const numeric=parseFloat(value);
+        if(Number.isFinite(numeric)){
+          return baseFontSize*numeric;
+        }
+        return null;
+      }
+      function clampLineHeightPx(target, baseline){
+        const safe=Math.max(MIN_HEIGHT, Number.isFinite(target)?target:MIN_HEIGHT);
+        if(Number.isFinite(baseline) && baseline>0){
+          const limit=Math.max(MIN_HEIGHT, baseline);
+          return Math.min(safe, limit);
+        }
+        return safe;
+      }
       function ensureCellMetrics(cell){
         if(!cell) return null;
         if(cell.__weditorRowMetrics) return cell.__weditorRowMetrics;
         const doc=cell.ownerDocument || document;
         const win=doc.defaultView || window;
-        let padTop=0, padBottom=0, borderTop=0, borderBottom=0, lineHeight="", boxSizing="";
+        let padTop=0, padBottom=0, borderTop=0, borderBottom=0, lineHeight="", boxSizing="", fontSize="";
         if(win && win.getComputedStyle){
           try {
             const computed=win.getComputedStyle(cell);
@@ -5639,6 +5678,8 @@
               boxSizing=computed.boxSizing||"";
               const lh=(computed.lineHeight||"").trim();
               if(lh && lh!=="normal" && lh!=="inherit" && lh!=="initial") lineHeight=lh;
+              const fs=(computed.fontSize||"").trim();
+              if(fs) fontSize=fs;
             }
           } catch(err){
             padTop=padTop||0;
@@ -5647,6 +5688,7 @@
             borderBottom=borderBottom||0;
             lineHeight=lineHeight||"";
             boxSizing=boxSizing||"";
+            fontSize=fontSize||"";
           }
         }
         const childrenMetrics=[];
@@ -5656,7 +5698,7 @@
           for(let i=0;i<children.length;i++){
             const child=children[i];
             if(!child || child.nodeType!==1) continue;
-            let marginTop=0, marginBottom=0, childLineHeight="";
+            let marginTop=0, marginBottom=0, childLineHeight="", childFontSize="";
             try {
               const childComputed=win.getComputedStyle(child);
               if(childComputed){
@@ -5664,14 +5706,17 @@
                 marginBottom=parseFloat(childComputed.marginBottom)||0;
                 const clh=(childComputed.lineHeight||"").trim();
                 if(clh && clh!=="normal" && clh!=="inherit" && clh!=="initial") childLineHeight=clh;
+                const cfs=(childComputed.fontSize||"").trim();
+                if(cfs) childFontSize=cfs;
               }
             } catch(err){
               marginTop=marginTop||0;
               marginBottom=marginBottom||0;
               childLineHeight=childLineHeight||"";
+              childFontSize=childFontSize||"";
             }
             marginTotal+=Math.max(0, marginTop||0)+Math.max(0, marginBottom||0);
-            childrenMetrics.push({ el:child, marginTop, marginBottom, lineHeight:childLineHeight });
+            childrenMetrics.push({ el:child, marginTop, marginBottom, lineHeight:childLineHeight, fontSize:childFontSize });
           }
         }
         let baseHeight=0;
@@ -5693,7 +5738,7 @@
             contentHeight=contentHeight||MIN_HEIGHT;
           }
         }
-        const metrics={ padTop, padBottom, borderTop, borderBottom, lineHeight, boxSizing, children:childrenMetrics, marginTotal, innerHeight, contentHeight };
+        const metrics={ padTop, padBottom, borderTop, borderBottom, lineHeight, fontSize, boxSizing, children:childrenMetrics, marginTotal, innerHeight, contentHeight };
         cell.__weditorRowMetrics=metrics;
         return metrics;
       }
@@ -5741,14 +5786,14 @@
       }
       function applyChildLineHeight(cell, metrics, value){
         if(!cell || !metrics || !metrics.children || metrics.children.length===0) return;
-        const safe=Math.max(MIN_HEIGHT, Number.isFinite(value)?value:MIN_HEIGHT);
-        const px=formatPixels(safe);
         const list=metrics.children;
         for(let i=0;i<list.length;i++){
           const info=list[i];
           const el=info && info.el;
           if(!el || !el.style) continue;
-          el.style.lineHeight=px;
+          const base=resolveLineHeightPx(info.lineHeight, info.fontSize || metrics.fontSize);
+          const finalPx=clampLineHeightPx(value, base);
+          el.style.lineHeight=formatPixels(finalPx);
         }
       }
       function adjustChildMargins(cell, metrics, allowance){
@@ -5824,6 +5869,8 @@
           const referenceInner=metrics && Number.isFinite(metrics.innerHeight) && metrics.innerHeight>0 ? metrics.innerHeight : (basePadMarginTotal + (metrics && Number.isFinite(metrics.contentHeight)?metrics.contentHeight:MIN_HEIGHT));
           const spaceForContent=Math.max(0, finalValue - borderTotal);
           const lineHeightValue=(metrics && metrics.lineHeight)?metrics.lineHeight:"";
+          const fontSizeValue=(metrics && metrics.fontSize)?metrics.fontSize:"";
+          const baseLineHeightPx=resolveLineHeightPx(lineHeightValue, fontSizeValue) || parseFontSizePx(fontSizeValue);
           cell.style.boxSizing="border-box";
           cell.style.overflow="hidden";
           if(spaceForContent < referenceInner - 0.5){
@@ -5844,17 +5891,17 @@
               const marginAllowance=Math.max(0, targetForExtras - padUsed);
               const marginUsed=adjustChildMargins(cell, metrics, marginAllowance);
               const remaining=Math.max(MIN_HEIGHT, spaceForContent - padUsed - marginUsed);
-              const remainingPx=formatPixels(remaining);
-              cell.style.lineHeight=remainingPx;
-              applyChildLineHeight(cell, metrics, remaining);
+              const lineHeightPx=clampLineHeightPx(remaining, baseLineHeightPx);
+              cell.style.lineHeight=formatPixels(lineHeightPx);
+              applyChildLineHeight(cell, metrics, lineHeightPx);
               applyCellPadding(cell, padTop, padBottom);
             } else {
               const marginAllowance=Math.max(0, targetForExtras);
               const marginUsed=adjustChildMargins(cell, metrics, marginAllowance);
               const remaining=Math.max(MIN_HEIGHT, spaceForContent - marginUsed);
-              const remainingPx=formatPixels(remaining);
-              cell.style.lineHeight=remainingPx;
-              applyChildLineHeight(cell, metrics, remaining);
+              const lineHeightPx=clampLineHeightPx(remaining, baseLineHeightPx);
+              cell.style.lineHeight=formatPixels(lineHeightPx);
+              applyChildLineHeight(cell, metrics, lineHeightPx);
               applyCellPadding(cell, 0, 0);
             }
           } else {
