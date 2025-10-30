@@ -2123,13 +2123,6 @@
           align:"left"
         },
         {
-          id:"confidential",
-          label:"🔒 Confidential Notice",
-          preview:'<span>Confidential · Internal Use Only</span>',
-          html:'<div style="width:100%;text-align:center;font-size:12px;">Confidential · Internal Use Only · {{date}}</div>',
-          align:"center"
-        },
-        {
           id:"delivery",
           label:"🚚 Delivery Order",
           preview:'<span>Logistics Hotline</span><span><span class="weditor_footer_page_num">{{page}}</span>/<span class="weditor_footer_page_num_total">{{total}}</span></span>',
