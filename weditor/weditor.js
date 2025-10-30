@@ -34,6 +34,51 @@
       .replace(/>/g, "&gt;")
       .replace(/'/g, "&#39;");
   }
+  const BASE_STYLE_ID="weditor-base-style";
+  function ensureBaseStyles(doc){
+    const targetDoc=doc || document;
+    if(!targetDoc || !targetDoc.head) return;
+    if(targetDoc.getElementById(BASE_STYLE_ID)) return;
+    const style=targetDoc.createElement("style");
+    style.id=BASE_STYLE_ID;
+    style.textContent=
+      ".weditor[data-weditor-instance] p,"+
+      ".w-editor[data-weditor-instance] p,"+
+      ".weditor_page-content p,"+
+      ".weditor_fullscreen-area p{"+
+        "margin:0;"+
+        "margin-block-start:0;"+
+        "margin-block-end:0;"+
+      "}";
+    targetDoc.head.appendChild(style);
+  }
+  function applyZeroMarginToParagraph(node){
+    if(!node || !node.style) return;
+    node.style.margin="0";
+    node.style.marginBlockStart="0";
+    node.style.marginBlockEnd="0";
+  }
+  function enforceZeroMargins(root){
+    if(!root) return;
+    function traverse(node){
+      if(!node) return;
+      if(node.nodeType===1){
+        if((node.tagName||"").toLowerCase()==="p") applyZeroMarginToParagraph(node);
+        let child=node.firstChild;
+        while(child){
+          traverse(child);
+          child=child.nextSibling;
+        }
+      } else if(node.nodeType===11){
+        let child=node.firstChild;
+        while(child){
+          traverse(child);
+          child=child.nextSibling;
+        }
+      }
+    }
+    traverse(root);
+  }
   const WCfg=(function(){
     const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
     const PREVIEW_FRAME_PADDING=20;
@@ -703,8 +748,15 @@
       if(!root) return "";
       if(typeof root==="string") return root;
       const clone=root.cloneNode(true);
-      if(clone.nodeType===11){ const wrap=document.createElement("div"); wrap.appendChild(clone); stripPlaceholders(wrap); return wrap.innerHTML; }
+      if(clone.nodeType===11){
+        const wrap=document.createElement("div");
+        wrap.appendChild(clone);
+        stripPlaceholders(wrap);
+        enforceZeroMargins(wrap);
+        return wrap.innerHTML;
+      }
       stripPlaceholders(clone);
+      enforceZeroMargins(clone);
       return clone.innerHTML;
     }
     function insert(targetEl){
@@ -794,6 +846,7 @@
       let caretTarget=nextContentSibling(comment);
       if(!caretTarget){
         const placeholder=document.createElement("p");
+        applyZeroMarginToParagraph(placeholder);
         const text=document.createTextNode("");
         placeholder.appendChild(text);
         targetEl.appendChild(placeholder);
@@ -1015,9 +1068,10 @@
       const footerHeight=layout.footerHeight;
       const AVAIL=Math.max(64, A4H - headerHeight - footerHeight - 2*PAD);
       const sourceHTML=Sanitizer.clean(rawHTML);
-      const src=document.createElement("div"); src.innerHTML=sourceHTML;
+      const src=document.createElement("div"); src.innerHTML=sourceHTML; enforceZeroMargins(src);
       function para(htmlOrText){
-        const p=document.createElement("p"); p.style.cssText="margin:.6em 0";
+        const p=document.createElement("p");
+        applyZeroMarginToParagraph(p);
         if(typeof htmlOrText==="string") p.innerHTML=htmlOrText; else p.textContent=htmlOrText;
         return p;
       }
@@ -1033,7 +1087,14 @@
         }else if(n.nodeType===1){
           if(n.tagName==="DIV" && n.childNodes.length===1 && n.firstChild.nodeName==="BR"){ linear.push({t:"block", node:para("&nbsp;")}); }
           else if(n.tagName==="DIV" && n.innerHTML.trim()===""){ linear.push({t:"block", node:para("&nbsp;")}); }
-          else { const wrap=document.createElement("div"); wrap.style.cssText="margin:.6em 0"; wrap.appendChild(n.cloneNode(true)); linear.push({t:"block", node:wrap}); }
+          else {
+            const wrap=document.createElement("div");
+            wrap.style.margin="0";
+            const clone=n.cloneNode(true);
+            enforceZeroMargins(clone);
+            wrap.appendChild(clone);
+            linear.push({t:"block", node:wrap});
+          }
         }
       }
       const CONTENT_WIDTH=A4W - 2*PAD;
@@ -1119,6 +1180,7 @@
         const it=linear[i];
         if(it.t==="break"){ next(true); continue; }
         const block=it.node;
+        enforceZeroMargins(block);
         ensureMeasuredBlock(block, CONTENT_WIDTH);
         measContent.innerHTML=""; const probe=block.cloneNode(true); probe.style.margin="0"; ensureMeasuredBlock(probe, CONTENT_WIDTH);
         measContent.appendChild(probe);
@@ -1294,7 +1356,8 @@
     ".weditor_page-break{display:block;width:100%;height:0;margin:0;padding:0;border:0;font-size:0;line-height:0;page-break-before:always;}"+
     ".weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}"+
     ".weditor_page-header{border-bottom:0!important;}"+
-    ".weditor_page-footer{border-top:0!important;}";
+    ".weditor_page-footer{border-top:0!important;}"+
+    ".weditor_page-content p{margin:0;margin-block-start:0;margin-block-end:0;}";
   const PrintUI=(function(){
     function render(w, pagedHTML){
       if(!w) return;
@@ -3329,9 +3392,11 @@
       const left=document.createElement("div"); applyStyles(left, WCfg.Style.left);
       const rightWrap=document.createElement("div"); applyStyles(rightWrap, WCfg.Style.rightWrap);
       rightWrap.appendChild(WDom.title("Editor"));
+      ensureBaseStyles(document);
       const area=document.createElement("div");
       area.contentEditable="true";
       applyStyles(area, WCfg.Style.area);
+      area.classList.add("weditor_fullscreen-area");
       area.innerHTML=Breaks.serialize(inst.el);
       Breaks.ensurePlaceholders(area);
       HistoryManager.init(inst, area);
@@ -10148,6 +10213,7 @@
             td.style.verticalAlign="top";
             td.style.wordBreak="break-word";
             const block=doc.createElement("p");
+            applyZeroMarginToParagraph(block);
             block.appendChild(doc.createElement("br"));
             td.appendChild(block);
             tr.appendChild(td);
@@ -10157,6 +10223,7 @@
         const fragment=doc.createDocumentFragment();
         fragment.appendChild(table);
         const spacer=doc.createElement("p");
+        applyZeroMarginToParagraph(spacer);
         spacer.appendChild(doc.createElement("br"));
         fragment.appendChild(spacer);
         if(baseRange){
@@ -10382,6 +10449,7 @@
     OutputBinding.syncDebounced(this);
   }
   WEditorInstance.prototype._mount=function(){
+    ensureBaseStyles(document);
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
