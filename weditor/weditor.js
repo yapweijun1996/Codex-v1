@@ -6347,6 +6347,123 @@
       const table=refCell && refCell.closest ? refCell.closest("table") : null;
       return { changed:changed, cell:refCell, cells:cells, table, hidden:true };
     }
+    function readCellPadding(cell){
+      if(!cell) return null;
+      const doc=cell.ownerDocument || document;
+      const win=doc.defaultView || window;
+      let top=0, right=0, bottom=0, left=0;
+      if(win && typeof win.getComputedStyle==="function"){
+        try {
+          const computed=win.getComputedStyle(cell);
+          if(computed){
+            top=parseFloat(computed.paddingTop)||0;
+            right=parseFloat(computed.paddingRight)||0;
+            bottom=parseFloat(computed.paddingBottom)||0;
+            left=parseFloat(computed.paddingLeft)||0;
+          }
+        } catch(err){
+          top=top||0; right=right||0; bottom=bottom||0; left=left||0;
+        }
+      }
+      const values=[top,right,bottom,left];
+      let uniform=values[0];
+      for(let i=1;i<values.length;i++){
+        if(Math.abs(values[i]-uniform)>0.51){
+          uniform=null;
+          break;
+        }
+      }
+      return { top, right, bottom, left, uniform };
+    }
+    function normalizePaddingValue(value){
+      if(value===null || typeof value==="undefined") return null;
+      if(typeof value==="number"){
+        if(Number.isNaN(value)) return null;
+        return Math.max(0, Math.min(96, value));
+      }
+      const str=String(value).trim();
+      if(!str) return null;
+      const parsed=parseFloat(str);
+      if(Number.isNaN(parsed)) return null;
+      return Math.max(0, Math.min(96, parsed));
+    }
+    function formatPaddingPx(value){
+      const safe=Math.max(0, Number.isFinite(value)?value:0);
+      const rounded=Math.round(safe*100)/100;
+      return rounded+"px";
+    }
+    function setCellPadding(inst, ctx, value){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const normalized=normalizePaddingValue(value);
+      const cells=collectTargetCells(inst, ctx, target);
+      if(!cells.length){
+        const fallback=currentSelectionCell(target);
+        if(fallback) cells.push(fallback);
+      }
+      if(!cells.length) return { changed:false };
+      let changed=false;
+      let primary=null;
+      const tables=new Set();
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(!cell) continue;
+        if(!primary) primary=cell;
+        const table=cell.closest ? cell.closest("table") : null;
+        if(table) tables.add(table);
+        if(normalized===null){
+          let cellChanged=false;
+          if(cell.style.padding){ cell.style.padding=""; cellChanged=true; }
+          const sides=["Top","Right","Bottom","Left"];
+          for(let s=0;s<sides.length;s++){
+            const camel="padding"+sides[s];
+            const dash="padding-"+sides[s].toLowerCase();
+            if(cell.style[camel]){ cell.style[camel]=""; cellChanged=true; }
+            if(cell.style.removeProperty){ cell.style.removeProperty(dash); }
+          }
+          if(cell.style.removeProperty){ cell.style.removeProperty("padding"); }
+          if(cellChanged) changed=true;
+        } else {
+          const formatted=formatPaddingPx(normalized);
+          let cellChanged=false;
+          if(cell.style.padding!==formatted){ cell.style.padding=formatted; cellChanged=true; }
+          if(cell.style.paddingTop!==formatted){ cell.style.paddingTop=formatted; cellChanged=true; }
+          if(cell.style.paddingRight!==formatted){ cell.style.paddingRight=formatted; cellChanged=true; }
+          if(cell.style.paddingBottom!==formatted){ cell.style.paddingBottom=formatted; cellChanged=true; }
+          if(cell.style.paddingLeft!==formatted){ cell.style.paddingLeft=formatted; cellChanged=true; }
+          if(cellChanged) changed=true;
+        }
+      }
+      tables.forEach(function(table){ if(table){ TableResizer.ensureTable(table); } });
+      const table=primary && primary.closest ? primary.closest("table") : null;
+      return { changed, cell:primary, table, value:normalized, cells };
+    }
+    function getCellPadding(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return null;
+      const cells=collectTargetCells(inst, ctx, target);
+      if(!cells.length){
+        const fallback=currentSelectionCell(target);
+        if(fallback) cells.push(fallback);
+      }
+      if(!cells.length) return null;
+      let primary=null;
+      let sharedValue=null;
+      let mixed=false;
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(!cell) continue;
+        if(!primary) primary=cell;
+        const info=readCellPadding(cell);
+        if(!info){ mixed=true; break; }
+        const val=info.uniform;
+        if(val===null){ mixed=true; break; }
+        if(sharedValue===null){ sharedValue=val; }
+        else if(Math.abs(sharedValue-val)>0.51){ mixed=true; break; }
+      }
+      if(!primary) return null;
+      return { cell:primary, value:mixed?null:sharedValue };
+    }
     function normalizeCellVerticalAlign(value){
       const key=(value==null?"":String(value)).trim().toLowerCase();
       if(key==="center") return "middle";
@@ -6449,7 +6566,7 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellVerticalAlign, getCellAlignment };
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellPadding, getCellPadding, setCellVerticalAlign, getCellAlignment };
   })();
   const TableSelection=(function(){
     const CELL_CLASS="weditor-table-cell-selected";
@@ -8333,6 +8450,142 @@
     }
     return { create };
   })();
+  const TableCellPaddingUI=(function(){
+    function formatDisplayValue(value){
+      if(!Number.isFinite(value)) return "";
+      const rounded=Math.round(value*10)/10;
+      if(Math.abs(rounded-Math.round(rounded))<0.01) return String(Math.round(rounded));
+      return rounded.toFixed(1);
+    }
+    function parseInput(value){
+      if(value===null || typeof value==="undefined") return null;
+      const str=String(value).trim();
+      if(!str) return null;
+      const parsed=parseFloat(str);
+      if(Number.isNaN(parsed)) return null;
+      return Math.max(0, Math.min(96, parsed));
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      container.style.gap="8px";
+      const label=document.createElement("span");
+      label.textContent="Cell Padding";
+      label.style.font="12px/1.4 Segoe UI,system-ui";
+      label.style.color=WCfg.UI.textDim;
+      label.setAttribute("aria-hidden","true");
+      const inputWrap=document.createElement("div");
+      inputWrap.style.display="inline-flex";
+      inputWrap.style.alignItems="center";
+      inputWrap.style.gap="4px";
+      const input=document.createElement("input");
+      input.type="number";
+      input.min="0";
+      input.max="96";
+      input.step="1";
+      input.placeholder="px";
+      input.setAttribute("aria-label","Adjust table cell padding in pixels");
+      input.style.width="70px";
+      input.style.padding="4px 8px";
+      input.style.border="1px solid "+WCfg.UI.borderSubtle;
+      input.style.borderRadius="4px";
+      input.style.background="#fff";
+      input.style.font="12px/1.4 Segoe UI,system-ui";
+      input.style.color=WCfg.UI.text;
+      input.style.boxSizing="border-box";
+      const suffix=document.createElement("span");
+      suffix.textContent="px";
+      suffix.style.font="12px/1.4 Segoe UI,system-ui";
+      suffix.style.color=WCfg.UI.textDim;
+      suffix.setAttribute("aria-hidden","true");
+      inputWrap.appendChild(input);
+      inputWrap.appendChild(suffix);
+      const applyBtn=WDom.btn("Apply", false, "Apply padding to selected cells");
+      applyBtn.style.padding="6px 12px";
+      const resetBtn=WDom.btn("Reset", false, "Reset padding to default");
+      resetBtn.style.padding="6px 12px";
+      function refreshFromSelection(){
+        const state=TableStyler.getCellPadding(inst, ctx);
+        if(state && typeof state.value==="number"){
+          input.value=formatDisplayValue(state.value);
+          input.dataset.mixed="0";
+          input.placeholder="px";
+        } else if(state){
+          input.value="";
+          input.dataset.mixed="1";
+          input.placeholder="Mixed";
+        } else {
+          input.value="";
+          input.dataset.mixed="0";
+          input.placeholder="px";
+        }
+      }
+      function commitPadding(raw){
+        const normalized=raw===null ? null : parseInput(raw);
+        const result=TableStyler.setCellPadding(inst, ctx, normalized);
+        if(!result || !result.cell){
+          window.alert("Place the caret inside a table cell to adjust its padding.");
+          refreshFromSelection();
+          return;
+        }
+        if(result.changed){
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          const labelText=normalized===null ? "Reset Cell Padding" : "Set Cell Padding";
+          HistoryManager.record(inst, target, { label:labelText, repeatable:false });
+          if(OutputBinding && typeof OutputBinding.syncDebounced==="function"){ OutputBinding.syncDebounced(inst); }
+        }
+        refreshFromSelection();
+      }
+      applyBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        const parsed=parseInput(input.value);
+        commitPadding(parsed);
+      });
+      resetBtn.addEventListener("click", function(ev){
+        ev.preventDefault();
+        commitPadding(null);
+      });
+      input.addEventListener("keydown", function(ev){
+        if(ev.key==="Enter"){
+          ev.preventDefault();
+          const parsed=parseInput(input.value);
+          commitPadding(parsed);
+        }
+      });
+      input.addEventListener("focus", function(){
+        try{ input.select(); }catch(err){}
+      });
+      const root=(ctx && ctx.area) ? ctx.area : inst ? inst.el : null;
+      const doc=root ? root.ownerDocument || document : document;
+      let rafId=null;
+      function scheduleRefresh(){
+        if(typeof window!=="undefined" && typeof window.requestAnimationFrame==="function"){
+          if(rafId!==null) return;
+          rafId=window.requestAnimationFrame(function(){ rafId=null; refreshFromSelection(); });
+        } else {
+          if(rafId!==null) return;
+          const timeoutFn=typeof setTimeout==="function" ? setTimeout : function(fn){ fn(); return null; };
+          rafId=timeoutFn(function(){ rafId=null; refreshFromSelection(); }, 50);
+        }
+      }
+      if(root){
+        root.addEventListener("keyup", scheduleRefresh);
+        root.addEventListener("mouseup", scheduleRefresh);
+        root.addEventListener("focusin", scheduleRefresh);
+      }
+      if(doc){
+        doc.addEventListener("selectionchange", scheduleRefresh);
+      }
+      container.appendChild(label);
+      container.appendChild(inputWrap);
+      container.appendChild(applyBtn);
+      container.appendChild(resetBtn);
+      refreshFromSelection();
+      return container;
+    }
+    return { create };
+  })();
   const TableCellAlignUI=(function(){
     const OPTIONS=[
       { value:"top", label:"Top", aria:"Align selected cell content to the top", history:"Align Cell Top" },
@@ -9523,6 +9776,11 @@
       ariaLabel:"Table border color or visibility",
       render:function(inst, ctx){ return TableBorderUI.create(inst, ctx); }
     },
+    "table.cellPadding":{
+      kind:"custom",
+      ariaLabel:"Table cell padding",
+      render:function(inst, ctx){ return TableCellPaddingUI.create(inst, ctx); }
+    },
     "table.cellVerticalAlign":{
       kind:"custom",
       ariaLabel:"Table cell vertical alignment",
@@ -9606,7 +9864,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
@@ -9623,7 +9881,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
