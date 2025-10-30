@@ -5739,16 +5739,54 @@
           }
         }
       }
-      function applyChildLineHeight(cell, metrics, value){
-        if(!cell || !metrics || !metrics.children || metrics.children.length===0) return;
+      function parseLineHeightValue(value){
+        if(typeof value==="number"){
+          return Number.isFinite(value)?value:NaN;
+        }
+        if(!value) return NaN;
+        const parsed=parseFloat(value);
+        return Number.isFinite(parsed)?parsed:NaN;
+      }
+      function resolveBaselineLineHeight(cell, metrics){
+        const stored=metrics ? parseLineHeightValue(metrics.lineHeight) : NaN;
+        if(Number.isFinite(stored) && stored>0){
+          return stored;
+        }
+        if(!cell) return NaN;
+        const doc=cell.ownerDocument || document;
+        const win=doc.defaultView || window;
+        if(win && typeof win.getComputedStyle==="function"){
+          try {
+            const computed=win.getComputedStyle(cell);
+            if(computed){
+              const parsed=parseFloat(computed.lineHeight);
+              if(Number.isFinite(parsed) && parsed>0){
+                return parsed;
+              }
+            }
+          } catch(err){
+            return NaN;
+          }
+        }
+        return NaN;
+      }
+      function clampLineHeightValue(value, baseline){
         const safe=Math.max(MIN_HEIGHT, Number.isFinite(value)?value:MIN_HEIGHT);
-        const px=formatPixels(safe);
+        if(Number.isFinite(baseline) && baseline>0){
+          return Math.min(safe, baseline);
+        }
+        return safe;
+      }
+      function applyChildLineHeight(cell, metrics, value, baseline){
+        if(!cell || !metrics || !metrics.children || metrics.children.length===0) return;
         const list=metrics.children;
         for(let i=0;i<list.length;i++){
           const info=list[i];
           const el=info && info.el;
           if(!el || !el.style) continue;
-          el.style.lineHeight=px;
+          const childBaseline=info ? parseLineHeightValue(info.lineHeight) : NaN;
+          const target=clampLineHeightValue(value, Number.isFinite(childBaseline)&&childBaseline>0?childBaseline:baseline);
+          el.style.lineHeight=formatPixels(target);
         }
       }
       function adjustChildMargins(cell, metrics, allowance){
@@ -5826,6 +5864,7 @@
           const lineHeightValue=(metrics && metrics.lineHeight)?metrics.lineHeight:"";
           cell.style.boxSizing="border-box";
           cell.style.overflow="hidden";
+          const baselineLineHeight=resolveBaselineLineHeight(cell, metrics);
           if(spaceForContent < referenceInner - 0.5){
             const targetForExtras=Math.max(0, spaceForContent - MIN_HEIGHT);
             let padTop=0;
@@ -5844,21 +5883,27 @@
               const marginAllowance=Math.max(0, targetForExtras - padUsed);
               const marginUsed=adjustChildMargins(cell, metrics, marginAllowance);
               const remaining=Math.max(MIN_HEIGHT, spaceForContent - padUsed - marginUsed);
-              const remainingPx=formatPixels(remaining);
+              const clampedLineHeight=clampLineHeightValue(remaining, baselineLineHeight);
+              const remainingPx=formatPixels(clampedLineHeight);
               cell.style.lineHeight=remainingPx;
-              applyChildLineHeight(cell, metrics, remaining);
+              applyChildLineHeight(cell, metrics, clampedLineHeight, baselineLineHeight);
               applyCellPadding(cell, padTop, padBottom);
             } else {
               const marginAllowance=Math.max(0, targetForExtras);
               const marginUsed=adjustChildMargins(cell, metrics, marginAllowance);
               const remaining=Math.max(MIN_HEIGHT, spaceForContent - marginUsed);
-              const remainingPx=formatPixels(remaining);
+              const clampedLineHeight=clampLineHeightValue(remaining, baselineLineHeight);
+              const remainingPx=formatPixels(clampedLineHeight);
               cell.style.lineHeight=remainingPx;
-              applyChildLineHeight(cell, metrics, remaining);
+              applyChildLineHeight(cell, metrics, clampedLineHeight, baselineLineHeight);
               applyCellPadding(cell, 0, 0);
             }
           } else {
-            cell.style.lineHeight=lineHeightValue;
+            if(lineHeightValue){
+              cell.style.lineHeight=lineHeightValue;
+            } else {
+              cell.style.removeProperty("line-height");
+            }
             restoreCellPadding(cell, metrics);
             restoreChildMargins(cell, metrics);
           }
