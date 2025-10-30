@@ -1178,6 +1178,22 @@
         adjustPageOffsets(pg);
         if(pg.headerNode){ observeMedia(pg.headerNode, function(){ adjustPageOffsets(pg); }, pendingMedia); }
         if(pg.footerNode){ observeMedia(pg.footerNode, function(){ adjustPageOffsets(pg); }, pendingMedia); }
+        if(pg.page){
+          const headerContribution = pg.headerNode ? Math.ceil(pg.headerNode.offsetHeight || pg.headerHeight || 0) : 0;
+          const footerContribution = pg.footerNode ? Math.ceil(pg.footerNode.offsetHeight || pg.footerHeight || 0) : 0;
+          let contentContribution = 0;
+          if(pg.content){
+            const scrollHeight=Math.ceil(pg.content.scrollHeight||0);
+            const offsetHeight=Math.ceil(pg.content.offsetHeight||0);
+            contentContribution = scrollHeight>0 ? scrollHeight : offsetHeight;
+          }
+          let naturalHeight = headerContribution + footerContribution + contentContribution;
+          if(!naturalHeight || !isFinite(naturalHeight)){ naturalHeight = 1; }
+          naturalHeight=Math.max(1, naturalHeight);
+          pg.page.setAttribute("data-weditor-natural-height", String(naturalHeight));
+          pg.page.naturalHeight = naturalHeight;
+          pg.naturalHeight = naturalHeight;
+        }
       }
       const pageBreakHTML='<div class="weditor_page-break" style="page-break-before: always;"></div>';
       function serializePages(){
@@ -2751,6 +2767,9 @@
       if(typeof data.outputMode==="string"){
         inst.outputMode=data.outputMode.toLowerCase()==="paged"?"paged":"raw";
       }
+      if(Object.prototype.hasOwnProperty.call(data, "fixPageHeight")){
+        inst.fixPageHeight = !!data.fixPageHeight;
+      }
       const headerEnabledExplicit=typeof header.enabled==="boolean" || typeof data.headerEnabled==="boolean";
       const footerEnabledExplicit=typeof footer.enabled==="boolean" || typeof data.footerEnabled==="boolean";
       if(typeof header.enabled==="boolean") inst.headerEnabled=header.enabled;
@@ -2787,7 +2806,8 @@
           enabled:!!inst.footerEnabled,
           html:inst.footerHTML,
           align:inst.footerAlign
-        }
+        },
+        fixPageHeight: inst.fixPageHeight!==false
       };
       return state;
     }
@@ -3358,9 +3378,8 @@
         if(WCfg.PREVIEW_MAX_SCALE && scale>WCfg.PREVIEW_MAX_SCALE){ scale=WCfg.PREVIEW_MAX_SCALE; }
         if(!isFinite(scale) || scale<=0){ scale=1; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
-        const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const totalFrameWidth=scaledWidth + previewPadding*2;
-        const totalFrameHeight=scaledHeight + previewPadding*2;
+        const fixHeight = !(inst && inst.fixPageHeight===false);
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
         for(let i=0;i<out.pages.length;i++){
@@ -3370,6 +3389,16 @@
           page.style.transformOrigin="";
           const wrap=document.createElement("div");
           wrap.style.width=scaledWidth+"px";
+          let naturalHeight=WCfg.A4H;
+          if(!fixHeight){
+            const attr=page.getAttribute("data-weditor-natural-height");
+            const parsed=attr!=null?parseInt(attr,10):NaN;
+            if(parsed && isFinite(parsed) && parsed>0){ naturalHeight=parsed; }
+            else if(page.naturalHeight && isFinite(page.naturalHeight) && page.naturalHeight>0){ naturalHeight=page.naturalHeight; }
+          }
+          if(!naturalHeight || !isFinite(naturalHeight) || naturalHeight<=0){ naturalHeight=WCfg.A4H; }
+          const targetHeight=fixHeight?WCfg.A4H:naturalHeight;
+          const scaledHeight=Math.max(1, Math.round(targetHeight * scale));
           wrap.style.height=scaledHeight+"px";
           wrap.style.display="block";
           wrap.style.position="relative";
@@ -3377,7 +3406,7 @@
           wrap.style.overflow="visible";
           const outer=document.createElement("div");
           outer.style.width=totalFrameWidth+"px";
-          outer.style.height=totalFrameHeight+"px";
+          outer.style.height=(scaledHeight + previewPadding*2)+"px";
           outer.style.display="block";
           outer.style.position="relative";
           outer.style.maxWidth="100%";
@@ -3392,7 +3421,7 @@
           page.style.left="0";
           page.style.top="0";
           page.style.width=WCfg.A4W+"px";
-          page.style.height=WCfg.A4H+"px";
+          page.style.height=targetHeight+"px";
           outer.appendChild(wrap);
           wrap.appendChild(page);
           stage.appendChild(outer);
@@ -9509,6 +9538,32 @@
         HistoryManager.record(inst, inst ? inst.el : null, { label:inst.footerEnabled ? "Enable Footer" : "Disable Footer", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "preview.fixPageHeight":{ kind:"custom",
+      render:function(inst, ctx){
+        const wrap=document.createElement("label");
+        applyStyles(wrap, WCfg.Style.controlWrap);
+        wrap.style.cursor="pointer";
+        const checkbox=document.createElement("input");
+        checkbox.type="checkbox";
+        checkbox.checked = !(inst && inst.fixPageHeight===false);
+        checkbox.setAttribute("aria-label","Fix A4 page height in preview");
+        checkbox.style.marginRight="4px";
+        checkbox.addEventListener("change", function(){
+          const isChecked=!!checkbox.checked;
+          if(inst){
+            inst.fixPageHeight = isChecked;
+            if(ctx && ctx.refreshPreview) ctx.refreshPreview();
+            OutputBinding.syncDebounced(inst);
+          }
+        });
+        const lbl=document.createElement("span");
+        applyStyles(lbl, WCfg.Style.controlLabel);
+        lbl.textContent="Fix A4 Page Height";
+        wrap.appendChild(checkbox);
+        wrap.appendChild(lbl);
+        return wrap;
+      }
+    },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){
       if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
@@ -9559,7 +9614,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","preview.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
     quickActions:["fullscreen.open"]
@@ -9576,7 +9631,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","preview.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ]
   };
@@ -9605,8 +9660,10 @@
     this.customFooterLogoURL = customFooterAttr || null;
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
+    const fixPageHeightAttr=readBooleanAttribute(editorEl, "data-fix-page-height");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
     this.footerEnabled = footerAttr!=null ? footerAttr : false;
+    this.fixPageHeight = fixPageHeightAttr!=null ? !!fixPageHeightAttr : true;
     if(editorEl.classList.contains("weditor--no-header")) this.headerEnabled=false;
     if(editorEl.classList.contains("weditor--no-footer")) this.footerEnabled=false;
     this.outputEls = OutputBinding.resolveAll(editorEl);
