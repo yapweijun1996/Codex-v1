@@ -1358,6 +1358,7 @@
     ".weditor_page-header{border-bottom:0!important;}"+
     ".weditor_page-footer{border-top:0!important;}"+
     ".weditor_page-content p{margin:0;margin-block-start:0;margin-block-end:0;}";
+  const PAGED_PRINT_STYLE_BLOCK = "<div style=\"display:none;\"><style>"+PAGED_PRINT_STYLES+"</style></div>";
   const PrintUI=(function(){
     function render(w, pagedHTML){
       if(!w) return;
@@ -3084,10 +3085,10 @@
             }
             pagedResult=Paginator.paginate(cachedRaw, inst);
             const initialPaged = pagedResult ? pagedResult.pagesHTML : "";
-            cachedPaged="<style>"+PAGED_PRINT_STYLES+"</style>\n"+initialPaged;
+            cachedPaged=PAGED_PRINT_STYLE_BLOCK+"\n"+initialPaged;
             if(pagedResult && pagedResult.ready && typeof pagedResult.ready.then==="function"){
               pagedResult.ready.then(function(finalHTML){
-                const finalValue="<style>"+PAGED_PRINT_STYLES+"</style>\n"+finalHTML;
+                const finalValue=PAGED_PRINT_STYLE_BLOCK+"\n"+finalHTML;
                 cachedPaged=finalValue;
                 for(let j=0;j<pagedTargets.length;j++){
                   const target=pagedTargets[j];
