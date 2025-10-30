@@ -3915,9 +3915,8 @@
       if(success && inst){ inst.fontColor=null; }
       return success;
     }
-    function clearAllFormatting(inst, ctx){
-      const target=resolveTarget(inst, ctx); if(!target) return false;
-      focusTarget(target);
+    function clearFormattingForCurrentSelection(target){
+      if(!target) return false;
       const doc=target.ownerDocument || document;
       const win=doc.defaultView || window;
       const sel=win.getSelection ? win.getSelection() : window.getSelection();
@@ -4062,6 +4061,16 @@
         catch(e){}
       }
       return changed;
+    }
+    function clearAllFormatting(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const runClear=function(){ return clearFormattingForCurrentSelection(target); };
+      const multi=applyAcrossTableSelection(inst, ctx, target, runClear);
+      if(multi.handled){
+        return multi.changed;
+      }
+      return runClear();
     }
     function fallbackApplyAlign(target, align){
       const info=ensureSelectionInfo(target); if(!info) return false;
