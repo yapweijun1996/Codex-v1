@@ -3,6 +3,17 @@
   const FeatureFlags={
     exportButton:false
   };
+  const BASE_STYLE_ID="weditor-base-styles";
+  function ensureBaseStyles(){
+    if(typeof document==="undefined" || !document.head) return;
+    if(document.getElementById(BASE_STYLE_ID)) return;
+    const style=document.createElement("style");
+    style.id=BASE_STYLE_ID;
+    style.textContent=
+      ".weditor p,.w-editor p,.weditor_page-content p{margin:0;}";
+    document.head.appendChild(style);
+  }
+  ensureBaseStyles();
   const LIST_STYLE_ATTR="data-weditor-list-style";
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
