@@ -4291,17 +4291,6 @@
         if(!target.contains(range.commonAncestorContainer)){ return false; }
         if(range.collapsed){ return false; }
         const doc=target.ownerDocument || document;
-        try{
-          const span=doc.createElement("span");
-          span.style.textDecorationLine="underline";
-          span.style.textDecorationStyle=style;
-          range.surroundContents(span);
-          sel.removeAllRanges();
-          const newRange=doc.createRange();
-          newRange.selectNodeContents(span);
-          sel.addRange(newRange);
-          return true;
-        } catch(err){}
         const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
           acceptNode:function(node){ return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
         });
@@ -4310,11 +4299,28 @@
         let changed=false;
         for(let i=0;i<updates.length;i++){
           const el=updates[i];
+          if(!el || !el.style){ continue; }
           const computed=window.getComputedStyle(el);
-          const hasUnderline=(computed && computed.textDecorationLine && computed.textDecorationLine.indexOf("underline")>-1);
+          const textLine=(computed && (computed.textDecorationLine || computed.textDecoration || "")) || "";
+          const hasUnderline=textLine.indexOf("underline")>-1;
           if(hasUnderline){
-            el.style.textDecorationLine="underline";
+            if(el.style && el.style.textDecorationLine && el.style.textDecorationLine.indexOf("underline")>-1){
+              el.style.textDecorationLine="";
+              if(!el.style.textDecorationLine && el.style.removeProperty){ el.style.removeProperty("text-decoration-line"); }
+            }
             el.style.textDecorationStyle=style;
+            if(el.style.textDecorationStyle==="" && el.style.removeProperty){ el.style.removeProperty("text-decoration-style"); }
+            if(el.getAttribute && typeof el.getAttribute==="function"){
+              const styleAttr=el.getAttribute("style");
+              if(styleAttr && !styleAttr.trim()){ el.removeAttribute("style"); }
+            }
+            if(el.tagName && el.tagName.toLowerCase()==="span" && el.attributes && el.attributes.length===0){
+              const parent=el.parentNode;
+              if(parent){
+                while(el.firstChild){ parent.insertBefore(el.firstChild, el); }
+                parent.removeChild(el);
+              }
+            }
             changed=true;
           }
         }
