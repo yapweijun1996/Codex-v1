@@ -10283,7 +10283,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
       ] },
       { id:"table", label:"Table", items:[
-        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
+        { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
@@ -10303,7 +10303,7 @@
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
       ] },
       { id:"table", label:"Table", items:[
-        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
+        { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
