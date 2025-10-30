@@ -10421,9 +10421,17 @@
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     const fixHeightAttr=readBooleanAttribute(editorEl, "data-fix-page-height");
+    const fixHeightYNAttr=(function(){
+      const raw=editorEl.getAttribute("data-fix-a4-page-height-yn");
+      if(raw==null) return null;
+      const value=raw.trim().toLowerCase();
+      if(value==="y" || value==="yes") return true;
+      if(value==="n" || value==="no") return false;
+      return null;
+    })();
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
     this.footerEnabled = footerAttr!=null ? footerAttr : false;
-    this.fixPageHeight = fixHeightAttr!=null ? !!fixHeightAttr : true;
+    this.fixPageHeight = fixHeightAttr!=null ? !!fixHeightAttr : (fixHeightYNAttr!=null ? fixHeightYNAttr : true);
     if(editorEl.classList.contains("weditor--no-header")) this.headerEnabled=false;
     if(editorEl.classList.contains("weditor--no-footer")) this.footerEnabled=false;
     this.outputEls = OutputBinding.resolveAll(editorEl);
