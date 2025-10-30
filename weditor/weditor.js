@@ -6167,8 +6167,6 @@
     function applyCellBorder(inst, ctx, color, sides){
       const target=resolveTarget(inst, ctx);
       if(!target) return { changed:false };
-      const cell=currentSelectionCell(target);
-      if(!cell) return { changed:false };
       const normalized=normalizeColor(color);
       if(!normalized) return { changed:false };
       const list=[];
@@ -6186,30 +6184,60 @@
       if(!list.length){
         list.push("top","right","bottom","left");
       }
-      let changed=false;
-      for(let i=0;i<list.length;i++){
-        const side=list[i];
-        const cap=side.charAt(0).toUpperCase()+side.slice(1);
-        const colorProp="border"+cap+"Color";
-        const widthProp="border"+cap+"Width";
-        const styleProp="border"+cap+"Style";
-        if(cell.style[colorProp]!==normalized){ cell.style[colorProp]=normalized; changed=true; }
-        if(cell.style[widthProp]!=="1px"){ cell.style[widthProp]="1px"; changed=true; }
-        if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+      function applyToCell(cell){
+        if(!cell) return false;
+        let changed=false;
+        for(let i=0;i<list.length;i++){
+          const side=list[i];
+          const cap=side.charAt(0).toUpperCase()+side.slice(1);
+          const colorProp="border"+cap+"Color";
+          const widthProp="border"+cap+"Width";
+          const styleProp="border"+cap+"Style";
+          if(cell.style[colorProp]!==normalized){ cell.style[colorProp]=normalized; changed=true; }
+          if(cell.style[widthProp]!=="1px"){ cell.style[widthProp]="1px"; changed=true; }
+          if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+        }
+        return changed;
       }
+      let primary=null;
+      let changed=false;
+      const tables=new Set();
+      const selection=(typeof TableSelection!=="undefined" && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(selection && selection.cells && selection.cells.length){
+        const filtered=selection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+        for(let i=0;i<filtered.length;i++){
+          const cell=filtered[i];
+          if(!primary) primary=cell;
+          if(applyToCell(cell)){ changed=true; }
+          const table=cell.closest ? cell.closest("table") : null;
+          if(table) tables.add(table);
+        }
+        if(filtered.length){
+          tables.forEach(function(table){
+            if(!table) return;
+            if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
+            table.setAttribute("data-weditor-border-hidden","0");
+            TableResizer.ensureTable(table);
+          });
+          const mainTable=primary && primary.closest ? primary.closest("table") : null;
+          return { changed, cell:primary, table:mainTable, color:normalized };
+        }
+      }
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      primary=cell;
+      changed=applyToCell(cell);
       const table=cell.closest ? cell.closest("table") : null;
       if(table){
         if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
         table.setAttribute("data-weditor-border-hidden","0");
         TableResizer.ensureTable(table);
       }
-      return { changed:changed, cell, table, color:normalized };
+      return { changed, cell, table, color:normalized };
     }
     function clearCellBorder(inst, ctx, sides){
       const target=resolveTarget(inst, ctx);
       if(!target) return { changed:false };
-      const cell=currentSelectionCell(target);
-      if(!cell) return { changed:false };
       const list=[];
       if(Array.isArray(sides)){
         for(let i=0;i<sides.length;i++){
@@ -6225,26 +6253,55 @@
       if(!list.length){
         list.push("top","right","bottom","left");
       }
+      function clearFromCell(cell){
+        if(!cell) return false;
+        let changed=false;
+        for(let i=0;i<list.length;i++){
+          const side=list[i];
+          const cap=side.charAt(0).toUpperCase()+side.slice(1);
+          const colorProp="border"+cap+"Color";
+          const widthProp="border"+cap+"Width";
+          const styleProp="border"+cap+"Style";
+          if(cell.style[colorProp]!=="transparent"){ cell.style[colorProp]="transparent"; changed=true; }
+          if(cell.style[widthProp]!=="0px"){ cell.style[widthProp]="0px"; changed=true; }
+          if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+        }
+        if(list.length===4 && cell.style.border!=="0"){ cell.style.border="0"; changed=true; }
+        return changed;
+      }
+      let primary=null;
       let changed=false;
-      for(let i=0;i<list.length;i++){
-        const side=list[i];
-        const cap=side.charAt(0).toUpperCase()+side.slice(1);
-        const colorProp="border"+cap+"Color";
-        const widthProp="border"+cap+"Width";
-        const styleProp="border"+cap+"Style";
-        if(cell.style[colorProp]!=="transparent"){ cell.style[colorProp]="transparent"; changed=true; }
-        if(cell.style[widthProp]!=="0px"){ cell.style[widthProp]="0px"; changed=true; }
-        if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+      const tables=new Set();
+      const selection=(typeof TableSelection!=="undefined" && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(selection && selection.cells && selection.cells.length){
+        const filtered=selection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+        for(let i=0;i<filtered.length;i++){
+          const cell=filtered[i];
+          if(!primary) primary=cell;
+          if(clearFromCell(cell)){ changed=true; }
+          const table=cell.closest ? cell.closest("table") : null;
+          if(table) tables.add(table);
+        }
+        if(filtered.length){
+          tables.forEach(function(table){
+            if(!table) return;
+            if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
+            TableResizer.ensureTable(table);
+          });
+          const mainTable=primary && primary.closest ? primary.closest("table") : null;
+          return { changed, cell:primary, table:mainTable, hidden:true };
+        }
       }
-      if(list.length===4){
-        if(cell.style.border!=="0"){ cell.style.border="0"; changed=true; }
-      }
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      primary=cell;
+      changed=clearFromCell(cell);
       const table=cell.closest ? cell.closest("table") : null;
       if(table){
         if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
         TableResizer.ensureTable(table);
       }
-      return { changed:changed, cell, table, hidden:true };
+      return { changed, cell, table, hidden:true };
     }
     function normalizeCellVerticalAlign(value){
       const key=(value==null?"":String(value)).trim().toLowerCase();
