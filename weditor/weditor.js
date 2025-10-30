@@ -8601,12 +8601,12 @@
       input.max="240";
       input.step="1";
       input.placeholder="--";
-      input.style.width="64px";
-      input.style.height="28px";
-      input.style.padding="4px 6px";
+      input.style.width="56px";
+      input.style.height="26px";
+      input.style.padding="3px 6px";
       input.style.border="1px solid "+WCfg.UI.borderSubtle;
       input.style.borderRadius="6px";
-      input.style.font="12px/1.4 Segoe UI,system-ui";
+      input.style.font="11px/1.4 Segoe UI,system-ui";
       input.style.color=WCfg.UI.text;
       input.style.background="#fff";
       input.style.textAlign="center";
@@ -8632,7 +8632,7 @@
       container.style.display="flex";
       container.style.flexDirection="column";
       container.style.alignItems="flex-start";
-      container.style.gap="6px";
+      container.style.gap="4px";
       const label=document.createElement("span");
       label.textContent="Cell Padding";
       label.style.font="12px/1.4 Segoe UI,system-ui";
@@ -8641,24 +8641,31 @@
       container.appendChild(label);
       const panel=document.createElement("div");
       panel.style.display="flex";
-      panel.style.flexDirection="column";
-      panel.style.gap="10px";
-      panel.style.padding="10px 12px";
+      panel.style.flexWrap="wrap";
+      panel.style.alignItems="center";
+      panel.style.gap="12px 16px";
+      panel.style.padding="8px 10px";
       panel.style.border="1px solid "+WCfg.UI.borderSubtle;
-      panel.style.borderRadius="12px";
+      panel.style.borderRadius="10px";
       panel.style.background="#fff";
-      panel.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";
+      panel.style.boxShadow="0 1px 2px rgba(0,0,0,0.03)";
       container.appendChild(panel);
+      const controlsColumn=document.createElement("div");
+      controlsColumn.style.display="flex";
+      controlsColumn.style.flexDirection="column";
+      controlsColumn.style.gap="6px";
+      controlsColumn.style.minWidth="150px";
       const allRow=document.createElement("div");
       allRow.style.display="flex";
       allRow.style.alignItems="center";
-      allRow.style.gap="8px";
+      allRow.style.flexWrap="wrap";
+      allRow.style.gap="6px";
       const allLabel=document.createElement("span");
       allLabel.textContent="All";
       allLabel.style.font="11px/1.4 Segoe UI,system-ui";
       allLabel.style.color=WCfg.UI.textDim;
       const allInput=createNumberInput();
-      allInput.style.width="72px";
+      allInput.style.width="64px";
       allInput.setAttribute("aria-label","Set padding on all sides for selected cells");
       const allUnit=document.createElement("span");
       allUnit.textContent="px";
@@ -8667,12 +8674,13 @@
       allRow.appendChild(allLabel);
       allRow.appendChild(allInput);
       allRow.appendChild(allUnit);
-      panel.appendChild(allRow);
+      controlsColumn.appendChild(allRow);
       const presetRow=document.createElement("div");
       presetRow.style.display="flex";
       presetRow.style.flexWrap="wrap";
-      presetRow.style.gap="6px";
-      panel.appendChild(presetRow);
+      presetRow.style.gap="4px";
+      controlsColumn.appendChild(presetRow);
+      panel.appendChild(controlsColumn);
       const presetButtons=[];
       const presetDefs=[
         { label:"0", value:0, aria:"Apply 0px padding to selected cells" },
@@ -8686,12 +8694,12 @@
         btn.type="button";
         btn.textContent=def.label;
         btn.setAttribute("aria-label", def.aria);
-        btn.style.padding="4px 10px";
+        btn.style.padding="3px 9px";
         btn.style.borderRadius="999px";
         btn.style.border="1px solid transparent";
         btn.style.background="#f3f2f1";
         btn.style.color=WCfg.UI.textDim;
-        btn.style.font="11px/1.3 Segoe UI,system-ui";
+        btn.style.font="10px/1.3 Segoe UI,system-ui";
         btn.style.cursor="pointer";
         btn.style.transition="background .15s ease, color .15s ease, border-color .15s ease, opacity .15s ease";
         btn.setAttribute("data-active","0");
@@ -8709,10 +8717,10 @@
       sideGrid.style.display="grid";
       sideGrid.style.gridTemplateColumns="auto auto auto";
       sideGrid.style.gridAutoRows="auto";
-      sideGrid.style.gap="8px 16px";
+      sideGrid.style.gap="6px 12px";
       sideGrid.style.alignItems="center";
       sideGrid.style.justifyItems="center";
-      sideGrid.style.paddingTop="4px";
+      sideGrid.style.paddingTop="2px";
       const positions={ top:{ row:1, col:2 }, right:{ row:2, col:3 }, bottom:{ row:3, col:2 }, left:{ row:2, col:1 } };
       const sideInputs=[];
       for(let i=0;i<SIDES.length;i++){
@@ -8721,12 +8729,12 @@
         const wrap=document.createElement("div");
         wrap.style.display="flex";
         wrap.style.alignItems="center";
-        wrap.style.gap="6px";
+        wrap.style.gap="4px";
         wrap.style.gridColumn=String(pos.col);
         wrap.style.gridRow=String(pos.row);
         const sideLabel=document.createElement("span");
         sideLabel.textContent=side.label;
-        sideLabel.style.font="11px/1.4 Segoe UI,system-ui";
+        sideLabel.style.font="10px/1.4 Segoe UI,system-ui";
         sideLabel.style.color=WCfg.UI.textDim;
         const input=createNumberInput();
         input.setAttribute("aria-label","Set "+side.label.toLowerCase()+" padding for selected cells");
@@ -8738,15 +8746,15 @@
       const center=document.createElement("div");
       center.style.gridColumn="2";
       center.style.gridRow="2";
-      center.style.width="42px";
-      center.style.height="42px";
+      center.style.width="38px";
+      center.style.height="38px";
       center.style.border="1px dashed "+WCfg.UI.borderSubtle;
-      center.style.borderRadius="10px";
+      center.style.borderRadius="8px";
       center.style.display="flex";
       center.style.flexDirection="column";
       center.style.alignItems="center";
       center.style.justifyContent="center";
-      center.style.font="10px/1.1 Segoe UI,system-ui";
+      center.style.font="9px/1.1 Segoe UI,system-ui";
       center.style.color=WCfg.UI.textDim;
       center.style.textTransform="uppercase";
       center.style.letterSpacing=".08em";
@@ -10269,7 +10277,9 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
+      ] },
+      { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
@@ -10286,7 +10296,9 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
+      ] },
+      { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
