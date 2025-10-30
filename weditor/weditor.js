@@ -34,6 +34,24 @@
       .replace(/>/g, "&gt;")
       .replace(/'/g, "&#39;");
   }
+  const BASE_STYLE_ID="weditor-base-style";
+  function ensureBaseStyles(doc){
+    const targetDoc=doc || document;
+    if(!targetDoc || !targetDoc.head) return;
+    if(targetDoc.getElementById(BASE_STYLE_ID)) return;
+    const style=targetDoc.createElement("style");
+    style.id=BASE_STYLE_ID;
+    style.textContent=
+      ".weditor[data-weditor-instance] p,"+
+      ".w-editor[data-weditor-instance] p,"+
+      ".weditor_page-content p,"+
+      ".weditor_fullscreen-area p{"+
+        "margin:0;"+
+        "margin-block-start:0;"+
+        "margin-block-end:0;"+
+      "}";
+    targetDoc.head.appendChild(style);
+  }
   const WCfg=(function(){
     const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
     const PREVIEW_FRAME_PADDING=20;
@@ -1017,7 +1035,7 @@
       const sourceHTML=Sanitizer.clean(rawHTML);
       const src=document.createElement("div"); src.innerHTML=sourceHTML;
       function para(htmlOrText){
-        const p=document.createElement("p"); p.style.cssText="margin:.6em 0";
+        const p=document.createElement("p"); p.style.cssText="margin:0";
         if(typeof htmlOrText==="string") p.innerHTML=htmlOrText; else p.textContent=htmlOrText;
         return p;
       }
@@ -1294,7 +1312,8 @@
     ".weditor_page-break{display:block;width:100%;height:0;margin:0;padding:0;border:0;font-size:0;line-height:0;page-break-before:always;}"+
     ".weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}"+
     ".weditor_page-header{border-bottom:0!important;}"+
-    ".weditor_page-footer{border-top:0!important;}";
+    ".weditor_page-footer{border-top:0!important;}"+
+    ".weditor_page-content p{margin:0;margin-block-start:0;margin-block-end:0;}";
   const PrintUI=(function(){
     function render(w, pagedHTML){
       if(!w) return;
@@ -3329,9 +3348,11 @@
       const left=document.createElement("div"); applyStyles(left, WCfg.Style.left);
       const rightWrap=document.createElement("div"); applyStyles(rightWrap, WCfg.Style.rightWrap);
       rightWrap.appendChild(WDom.title("Editor"));
+      ensureBaseStyles(document);
       const area=document.createElement("div");
       area.contentEditable="true";
       applyStyles(area, WCfg.Style.area);
+      area.classList.add("weditor_fullscreen-area");
       area.innerHTML=Breaks.serialize(inst.el);
       Breaks.ensurePlaceholders(area);
       HistoryManager.init(inst, area);
@@ -10382,6 +10403,7 @@
     OutputBinding.syncDebounced(this);
   }
   WEditorInstance.prototype._mount=function(){
+    ensureBaseStyles(document);
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
