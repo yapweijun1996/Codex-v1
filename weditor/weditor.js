@@ -4381,34 +4381,88 @@
     }
     function applyBlockFormat(inst, ctx, tag){
       const target=resolveTarget(inst, ctx); if(!target) return false;
-      const selection=getSelectionWithin(target); if(!selection) return false;
       const normalized=(tag||"p").toString().trim().toLowerCase();
       const desired=normalized ? normalized : "p";
       const upper=desired.toUpperCase();
       const attempts=[];
-      const { range }=selection;
-      const startBlock=findBlockNode(range.startContainer, target);
-      const endBlock=findBlockNode(range.endContainer, target);
-      if(startBlock && endBlock && startBlock===endBlock){
-        const currentTag=(startBlock.tagName||"").toLowerCase();
-        const coversEntire=rangeCoversNode(range, startBlock);
-        if(currentTag===desired && !coversEntire){ return true; }
-        if(!coversEntire){
-          const manual=wrapSelectionAsBlock(target, selection, desired);
-          if(manual) return true;
-        }
-      }
       if(desired==="p"){ attempts.push("p"); }
       attempts.push(upper, "<"+upper+">");
-      let success=false;
-      for(let i=0;i<attempts.length && !success;i++){
-        success=execCommand(target, "formatBlock", attempts[i], false);
+      function applyWithSelection(selection){
+        if(!selection || !selection.range) return false;
+        const { range }=selection;
+        const startBlock=findBlockNode(range.startContainer, target);
+        const endBlock=findBlockNode(range.endContainer, target);
+        if(startBlock && endBlock && startBlock===endBlock){
+          const currentTag=(startBlock.tagName||"").toLowerCase();
+          const coversEntire=rangeCoversNode(range, startBlock);
+          if(currentTag===desired && !coversEntire){ return true; }
+          if(!coversEntire){
+            const manual=wrapSelectionAsBlock(target, selection, desired);
+            if(manual) return true;
+          }
+        }
+        let success=false;
+        for(let i=0;i<attempts.length && !success;i++){
+          success=execCommand(target, "formatBlock", attempts[i], false);
+        }
+        if(success){
+          Normalizer.fixStructure(target);
+          Breaks.ensurePlaceholders(target);
+        }
+        return success;
       }
-      if(success){
-        Normalizer.fixStructure(target);
-        Breaks.ensurePlaceholders(target);
+      const tableSelection=(typeof TableSelection!=='undefined' && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(tableSelection && tableSelection.cells && tableSelection.cells.length){
+        const cells=tableSelection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+        if(cells.length){
+          const doc=target.ownerDocument || document;
+          const win=doc.defaultView || window;
+          const selAccessor=(win && typeof win.getSelection==="function") ? function(){ return win.getSelection(); } : (typeof window!=="undefined" && typeof window.getSelection==="function" ? function(){ return window.getSelection(); } : null);
+          if(doc && typeof doc.createRange==="function" && selAccessor){
+            const sel=selAccessor();
+            if(sel){
+              const savedRanges=[];
+              for(let i=0;i<sel.rangeCount;i++){
+                try{
+                  savedRanges.push(sel.getRangeAt(i).cloneRange());
+                }catch(err){
+                }
+              }
+              let applied=false;
+              for(let i=0;i<cells.length;i++){
+                const cell=cells[i];
+                if(!cell) continue;
+                try{
+                  const range=doc.createRange();
+                  range.selectNodeContents(cell);
+                  sel.removeAllRanges();
+                  sel.addRange(range);
+                  const current=getSelectionWithin(target);
+                  if(applyWithSelection(current)){ applied=true; }
+                }catch(err){
+                }
+              }
+              sel.removeAllRanges();
+              if(savedRanges.length){
+                for(let i=0;i<savedRanges.length;i++){
+                  try{ sel.addRange(savedRanges[i]); }catch(err){ }
+                }
+              } else if(cells[0]){
+                try{
+                  const fallbackRange=doc.createRange();
+                  fallbackRange.selectNodeContents(cells[0]);
+                  fallbackRange.collapse(true);
+                  sel.addRange(fallbackRange);
+                }catch(err){
+                }
+              }
+              return applied;
+            }
+          }
+        }
       }
-      return success;
+      const selection=getSelectionWithin(target);
+      return applyWithSelection(selection);
     }
     function getBlockFormat(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return "p";
