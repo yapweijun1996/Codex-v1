@@ -3923,140 +3923,153 @@
       const sel=win.getSelection ? win.getSelection() : window.getSelection();
       const originalRange = sel && sel.rangeCount ? (function(){ try{ return sel.getRangeAt(0).cloneRange(); } catch(e){ return null; } })() : null;
       let changed=false;
-      function tryRemoveFormat(){
-        try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
-        try{ if(document.execCommand("removeFormat", false, null)) changed=true; }
-        catch(err){ }
-        try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
-      }
-      tryRemoveFormat();
-      if(fallbackClearHighlight(target)) changed=true;
-      if(fallbackClearFontColor(target)) changed=true;
-      const selectionInfo=ensureSelectionInfo(target);
-      const nodes=[];
-      const seen=new Set();
-      function addNode(node){
-        if(!node || node===target) return;
-        if(node.nodeType!==1) return;
-        if(!target.contains(node)) return;
-        if(seen.has(node)) return;
-        seen.add(node);
-        nodes.push(node);
-      }
-      const range = selectionInfo ? (function(){ try{ return selectionInfo.range.cloneRange(); } catch(e){ return null; } })() : null;
-      if(range){
-        const ancestor=range.commonAncestorContainer;
-        if(ancestor && ancestor.nodeType===1) addNode(ancestor);
-        addNode(findBlockNode(range.startContainer, target));
-        addNode(findBlockNode(range.endContainer, target));
-        if(doc && doc.createTreeWalker){
-          const walker=doc.createTreeWalker(ancestor || target, NodeFilter.SHOW_ELEMENT, null);
-          let current=walker.currentNode;
-          if(current && current!==ancestor && intersectsRange(range, current)) addNode(current);
-          while((current=walker.nextNode())){
-            if(!target.contains(current)) continue;
-            if(intersectsRange(range, current)) addNode(current);
-          }
+      function runClear(){
+        let runChanged=false;
+        function mark(){
+          if(!runChanged) runChanged=true;
+          changed=true;
         }
-      } else {
-        let baseNode=null;
-        if(sel && sel.rangeCount){
-          try{
-            const caretRange=sel.getRangeAt(0);
-            if(caretRange && target.contains(caretRange.startContainer)){
-              baseNode=findBlockNode(caretRange.startContainer, target) || findBlockNode(caretRange.endContainer, target);
+        function tryRemoveFormat(){
+          try{ document.execCommand("styleWithCSS", false, true); } catch(e){}
+          try{ if(document.execCommand("removeFormat", false, null)) mark(); }
+          catch(err){ }
+          try{ document.execCommand("styleWithCSS", false, false); } catch(e){}
+        }
+        tryRemoveFormat();
+        if(fallbackClearHighlight(target)) mark();
+        if(fallbackClearFontColor(target)) mark();
+        const selectionInfo=ensureSelectionInfo(target);
+        const nodes=[];
+        const seen=new Set();
+        function addNode(node){
+          if(!node || node===target) return;
+          if(node.nodeType!==1) return;
+          if(!target.contains(node)) return;
+          if(seen.has(node)) return;
+          seen.add(node);
+          nodes.push(node);
+        }
+        const range = selectionInfo ? (function(){ try{ return selectionInfo.range.cloneRange(); } catch(e){ return null; } })() : null;
+        if(range){
+          const ancestor=range.commonAncestorContainer;
+          if(ancestor && ancestor.nodeType===1) addNode(ancestor);
+          addNode(findBlockNode(range.startContainer, target));
+          addNode(findBlockNode(range.endContainer, target));
+          if(doc && doc.createTreeWalker){
+            const walker=doc.createTreeWalker(ancestor || target, NodeFilter.SHOW_ELEMENT, null);
+            let current=walker.currentNode;
+            if(current && current!==ancestor && intersectsRange(range, current)) addNode(current);
+            while((current=walker.nextNode())){
+              if(!target.contains(current)) continue;
+              if(intersectsRange(range, current)) addNode(current);
             }
-          } catch(err){ baseNode=null; }
-        }
-        if(!baseNode) baseNode=target;
-        if(baseNode!==target) addNode(baseNode);
-        if(doc && doc.createTreeWalker){
-          const walker=doc.createTreeWalker(baseNode, NodeFilter.SHOW_ELEMENT, null);
-          let current=walker.currentNode;
-          if(current && current!==baseNode && current!==target) addNode(current);
-          while((current=walker.nextNode())){
-            if(current===target) continue;
-            addNode(current);
+          }
+        } else {
+          let baseNode=null;
+          if(sel && sel.rangeCount){
+            try{
+              const caretRange=sel.getRangeAt(0);
+              if(caretRange && target.contains(caretRange.startContainer)){
+                baseNode=findBlockNode(caretRange.startContainer, target) || findBlockNode(caretRange.endContainer, target);
+              }
+            } catch(err){ baseNode=null; }
+          }
+          if(!baseNode) baseNode=target;
+          if(baseNode!==target) addNode(baseNode);
+          if(doc && doc.createTreeWalker){
+            const walker=doc.createTreeWalker(baseNode, NodeFilter.SHOW_ELEMENT, null);
+            let current=walker.currentNode;
+            if(current && current!==baseNode && current!==target) addNode(current);
+            while((current=walker.nextNode())){
+              if(current===target) continue;
+              addNode(current);
+            }
           }
         }
-      }
-      if(!nodes.length){
-        if(target.childNodes){
-          for(let i=0;i<target.childNodes.length;i++){
-            addNode(target.childNodes[i]);
+        if(!nodes.length){
+          if(target.childNodes){
+            for(let i=0;i<target.childNodes.length;i++){
+              addNode(target.childNodes[i]);
+            }
           }
         }
+        if(!nodes.length){
+          return runChanged;
+        }
+        const blockReset={ H1:"p", H2:"p", H3:"p", H4:"p", H5:"p", H6:"p", BLOCKQUOTE:"p", PRE:"p" };
+        const inlineUnwrap={ B:1, STRONG:1, I:1, EM:1, U:1, S:1, STRIKE:1, MARK:1, SUB:1, SUP:1, CODE:1 };
+        const styleProps=["font-weight","font-style","text-decoration","text-decoration-line","text-decoration-style","text-decoration-color","font-size","font-family","color","background","background-color","line-height","letter-spacing","text-transform","vertical-align","text-align","margin","margin-left","margin-right","margin-top","margin-bottom","padding","padding-left","padding-right","padding-top","padding-bottom","border","border-top","border-right","border-bottom","border-left","border-color","border-style","border-width","outline","outline-color","outline-style","outline-width"];
+        const attrRemovals=["color","face","size","bgcolor","background","align"]; // style handled separately above
+        function toCamel(prop){ return prop.replace(/-([a-z])/g, function(_,c){ return c?c.toUpperCase():""; }); }
+        function unwrap(el){
+          const parent=el.parentNode;
+          if(!parent) return;
+          while(el.firstChild){ parent.insertBefore(el.firstChild, el); }
+          parent.removeChild(el);
+        }
+        for(let i=0;i<nodes.length;i++){
+          let el=nodes[i];
+          if(!el || el.nodeType!==1) continue;
+          if(el.hasAttribute && el.hasAttribute("data-weditor-break-placeholder")) continue;
+          let tag=(el.tagName||"").toUpperCase();
+          if(blockReset[tag]){
+            const replacement=doc.createElement(blockReset[tag]);
+            while(el.firstChild){ replacement.appendChild(el.firstChild); }
+            if(el.parentNode){ el.parentNode.replaceChild(replacement, el); }
+            nodes[i]=replacement;
+            el=replacement;
+            tag=(el.tagName||"").toUpperCase();
+            mark();
+          }
+          if(el.style){
+            let styleChanged=false;
+            for(let j=0;j<styleProps.length;j++){
+              const prop=styleProps[j];
+              let current="";
+              if(el.style.getPropertyValue){ current=el.style.getPropertyValue(prop); }
+              if(current){ el.style.removeProperty(prop); styleChanged=true; continue; }
+              const camel=toCamel(prop);
+              if(el.style[camel]){ el.style[camel]=""; styleChanged=true; }
+            }
+            if(styleChanged) mark();
+            if(el.getAttribute && el.getAttribute("style") && !el.getAttribute("style").trim()) el.removeAttribute("style");
+          }
+          for(let j=0;j<attrRemovals.length;j++){
+            const name=attrRemovals[j];
+            if(name==="style") continue;
+            if(el.hasAttribute && el.hasAttribute(name)){ el.removeAttribute(name); mark(); }
+          }
+          if(el.hasAttribute && el.hasAttribute("class")){
+            const clsRaw=el.getAttribute("class")||"";
+            const filtered=clsRaw.split(/\s+/).filter(function(token){ return token && !/^mso/i.test(token); });
+            if(filtered.length){
+              if(filtered.join(" ")!==clsRaw.trim()){ el.setAttribute("class", filtered.join(" ")); mark(); }
+            } else {
+              el.removeAttribute("class");
+              if(clsRaw.trim()) mark();
+            }
+          }
+          if(tag==="SPAN" || tag==="FONT"){
+            const attrCount=el.attributes ? el.attributes.length : 0;
+            if(attrCount===0){ unwrap(el); mark(); continue; }
+          }
+          if(inlineUnwrap[tag]){ unwrap(el); mark(); }
+        }
+        if(runChanged){
+          Normalizer.fixStructure(target);
+          Breaks.ensurePlaceholders(target);
+        }
+        return runChanged;
       }
-      if(!nodes.length){
+      const multi=applyAcrossTableSelection(inst, ctx, target, function(){ return runClear(); });
+      if(multi.handled){
         if(originalRange && sel){
           try{ sel.removeAllRanges(); sel.addRange(originalRange); }
           catch(e){}
         }
-        return changed;
+        return multi.changed;
       }
-      const blockReset={ H1:"p", H2:"p", H3:"p", H4:"p", H5:"p", H6:"p", BLOCKQUOTE:"p", PRE:"p" };
-      const inlineUnwrap={ B:1, STRONG:1, I:1, EM:1, U:1, S:1, STRIKE:1, MARK:1, SUB:1, SUP:1, CODE:1 };
-      const styleProps=["font-weight","font-style","text-decoration","text-decoration-line","text-decoration-style","text-decoration-color","font-size","font-family","color","background","background-color","line-height","letter-spacing","text-transform","vertical-align","text-align","margin","margin-left","margin-right","margin-top","margin-bottom","padding","padding-left","padding-right","padding-top","padding-bottom","border","border-top","border-right","border-bottom","border-left","border-color","border-style","border-width","outline","outline-color","outline-style","outline-width"];
-      const attrRemovals=["color","face","size","bgcolor","background","align"]; // style handled separately above
-      function toCamel(prop){ return prop.replace(/-([a-z])/g, function(_,c){ return c?c.toUpperCase():""; }); }
-      function unwrap(el){
-        const parent=el.parentNode;
-        if(!parent) return;
-        while(el.firstChild){ parent.insertBefore(el.firstChild, el); }
-        parent.removeChild(el);
-      }
-      for(let i=0;i<nodes.length;i++){
-        let el=nodes[i];
-        if(!el || el.nodeType!==1) continue;
-        if(el.hasAttribute && el.hasAttribute("data-weditor-break-placeholder")) continue;
-        let tag=(el.tagName||"").toUpperCase();
-        if(blockReset[tag]){
-          const replacement=doc.createElement(blockReset[tag]);
-          while(el.firstChild){ replacement.appendChild(el.firstChild); }
-          if(el.parentNode){ el.parentNode.replaceChild(replacement, el); }
-          nodes[i]=replacement;
-          el=replacement;
-          tag=(el.tagName||"").toUpperCase();
-          changed=true;
-        }
-        if(el.style){
-          let styleChanged=false;
-          for(let j=0;j<styleProps.length;j++){
-            const prop=styleProps[j];
-            let current="";
-            if(el.style.getPropertyValue){ current=el.style.getPropertyValue(prop); }
-            if(current){ el.style.removeProperty(prop); styleChanged=true; continue; }
-            const camel=toCamel(prop);
-            if(el.style[camel]){ el.style[camel]=""; styleChanged=true; }
-          }
-          if(styleChanged) changed=true;
-          if(el.getAttribute && el.getAttribute("style") && !el.getAttribute("style").trim()) el.removeAttribute("style");
-        }
-        for(let j=0;j<attrRemovals.length;j++){
-          const name=attrRemovals[j];
-          if(name==="style") continue;
-          if(el.hasAttribute && el.hasAttribute(name)){ el.removeAttribute(name); changed=true; }
-        }
-        if(el.hasAttribute && el.hasAttribute("class")){
-          const clsRaw=el.getAttribute("class")||"";
-          const filtered=clsRaw.split(/\s+/).filter(function(token){ return token && !/^mso/i.test(token); });
-          if(filtered.length){
-            if(filtered.join(" ")!==clsRaw.trim()){ el.setAttribute("class", filtered.join(" ")); changed=true; }
-          } else {
-            el.removeAttribute("class");
-            if(clsRaw.trim()) changed=true;
-          }
-        }
-        if(tag==="SPAN" || tag==="FONT"){
-          const attrCount=el.attributes ? el.attributes.length : 0;
-          if(attrCount===0){ unwrap(el); changed=true; continue; }
-        }
-        if(inlineUnwrap[tag]){ unwrap(el); changed=true; }
-      }
-      if(changed){
-        Normalizer.fixStructure(target);
-        Breaks.ensurePlaceholders(target);
-      }
+      runClear();
       if(originalRange && sel){
         try{ sel.removeAllRanges(); sel.addRange(originalRange); }
         catch(e){}
