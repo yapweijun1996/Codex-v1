@@ -8601,9 +8601,9 @@
       input.max="240";
       input.step="1";
       input.placeholder="--";
-      input.style.width="64px";
-      input.style.height="28px";
-      input.style.padding="4px 6px";
+      input.style.width="56px";
+      input.style.height="26px";
+      input.style.padding="3px 6px";
       input.style.border="1px solid "+WCfg.UI.borderSubtle;
       input.style.borderRadius="6px";
       input.style.font="12px/1.4 Segoe UI,system-ui";
@@ -8640,19 +8640,26 @@
       label.setAttribute("aria-hidden","true");
       container.appendChild(label);
       const panel=document.createElement("div");
-      panel.style.display="flex";
-      panel.style.flexDirection="column";
-      panel.style.gap="10px";
+      panel.style.display="grid";
+      panel.style.gridTemplateColumns="minmax(0, 148px) auto";
+      panel.style.columnGap="16px";
+      panel.style.rowGap="8px";
+      panel.style.alignItems="start";
       panel.style.padding="10px 12px";
       panel.style.border="1px solid "+WCfg.UI.borderSubtle;
       panel.style.borderRadius="12px";
       panel.style.background="#fff";
       panel.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";
       container.appendChild(panel);
+      const leftColumn=document.createElement("div");
+      leftColumn.style.display="flex";
+      leftColumn.style.flexDirection="column";
+      leftColumn.style.gap="6px";
+      panel.appendChild(leftColumn);
       const allRow=document.createElement("div");
       allRow.style.display="flex";
       allRow.style.alignItems="center";
-      allRow.style.gap="8px";
+      allRow.style.gap="6px";
       const allLabel=document.createElement("span");
       allLabel.textContent="All";
       allLabel.style.font="11px/1.4 Segoe UI,system-ui";
@@ -8667,12 +8674,12 @@
       allRow.appendChild(allLabel);
       allRow.appendChild(allInput);
       allRow.appendChild(allUnit);
-      panel.appendChild(allRow);
+      leftColumn.appendChild(allRow);
       const presetRow=document.createElement("div");
       presetRow.style.display="flex";
       presetRow.style.flexWrap="wrap";
       presetRow.style.gap="6px";
-      panel.appendChild(presetRow);
+      leftColumn.appendChild(presetRow);
       const presetButtons=[];
       const presetDefs=[
         { label:"0", value:0, aria:"Apply 0px padding to selected cells" },
@@ -8705,14 +8712,19 @@
         presetRow.appendChild(btn);
         presetButtons.push({ value:def.value, button:btn });
       });
+      const sideWrap=document.createElement("div");
+      sideWrap.style.display="flex";
+      sideWrap.style.alignItems="center";
+      sideWrap.style.justifyContent="center";
+      panel.appendChild(sideWrap);
       const sideGrid=document.createElement("div");
       sideGrid.style.display="grid";
       sideGrid.style.gridTemplateColumns="auto auto auto";
       sideGrid.style.gridAutoRows="auto";
-      sideGrid.style.gap="8px 16px";
+      sideGrid.style.gap="6px 14px";
       sideGrid.style.alignItems="center";
       sideGrid.style.justifyItems="center";
-      sideGrid.style.paddingTop="4px";
+      sideGrid.style.padding="2px 0";
       const positions={ top:{ row:1, col:2 }, right:{ row:2, col:3 }, bottom:{ row:3, col:2 }, left:{ row:2, col:1 } };
       const sideInputs=[];
       for(let i=0;i<SIDES.length;i++){
@@ -8721,7 +8733,7 @@
         const wrap=document.createElement("div");
         wrap.style.display="flex";
         wrap.style.alignItems="center";
-        wrap.style.gap="6px";
+        wrap.style.gap="4px";
         wrap.style.gridColumn=String(pos.col);
         wrap.style.gridRow=String(pos.row);
         const sideLabel=document.createElement("span");
@@ -8738,8 +8750,8 @@
       const center=document.createElement("div");
       center.style.gridColumn="2";
       center.style.gridRow="2";
-      center.style.width="42px";
-      center.style.height="42px";
+      center.style.width="36px";
+      center.style.height="36px";
       center.style.border="1px dashed "+WCfg.UI.borderSubtle;
       center.style.borderRadius="10px";
       center.style.display="flex";
@@ -8752,7 +8764,7 @@
       center.style.letterSpacing=".08em";
       center.innerHTML="<span>per</span><span>side</span>";
       sideGrid.appendChild(center);
-      panel.appendChild(sideGrid);
+      sideWrap.appendChild(sideGrid);
       const root=(ctx && ctx.area) ? ctx.area : inst ? inst.el : null;
       const doc=root ? root.ownerDocument || document : document;
       let lastAllValue=null;
@@ -10269,7 +10281,9 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
+      ] },
+      { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
@@ -10286,7 +10300,9 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
+      ] },
+      { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
