@@ -10400,9 +10400,19 @@
     const raw=el.getAttribute(name);
     if(raw==null) return null;
     const value=raw.trim().toLowerCase();
-    if(value==="" || value==="true" || value==="1" || value==="yes" || value==="on") return true;
-    if(value==="false" || value==="0" || value==="no" || value==="off") return false;
+    if(value==="" || value==="true" || value==="1" || value==="yes" || value==="on" || value==="y") return true;
+    if(value==="false" || value==="0" || value==="no" || value==="off" || value==="n") return false;
     return true;
+  }
+  function readYNAttribute(el, name){
+    if(!el) return null;
+    const raw=el.getAttribute(name);
+    if(raw==null) return null;
+    const value=raw.trim().toLowerCase();
+    if(!value) return null;
+    if(value==="y" || value==="yes" || value==="true" || value==="1" || value==="on") return true;
+    if(value==="n" || value==="no" || value==="false" || value==="0" || value==="off") return false;
+    return null;
   }
   let INSTANCE_SEQ=0;
   function WEditorInstance(editorEl){
@@ -10421,9 +10431,10 @@
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
     const fixHeightAttr=readBooleanAttribute(editorEl, "data-fix-page-height");
+    const fixHeightYNAttr=readYNAttribute(editorEl, "data-fix-a4-page-height-yn");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
     this.footerEnabled = footerAttr!=null ? footerAttr : false;
-    this.fixPageHeight = fixHeightAttr!=null ? !!fixHeightAttr : true;
+    this.fixPageHeight = fixHeightAttr!=null ? !!fixHeightAttr : (fixHeightYNAttr!=null ? !!fixHeightYNAttr : true);
     if(editorEl.classList.contains("weditor--no-header")) this.headerEnabled=false;
     if(editorEl.classList.contains("weditor--no-footer")) this.footerEnabled=false;
     this.outputEls = OutputBinding.resolveAll(editorEl);
