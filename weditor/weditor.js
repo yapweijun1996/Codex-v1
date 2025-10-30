@@ -6347,6 +6347,176 @@
       const table=refCell && refCell.closest ? refCell.closest("table") : null;
       return { changed:changed, cell:refCell, cells:cells, table, hidden:true };
     }
+    const PADDING_SIDES=["top","right","bottom","left"];
+    function normalizePaddingNumber(value){
+      if(typeof value==="undefined") return undefined;
+      if(value===null) return null;
+      let numeric=value;
+      if(typeof numeric==="string"){
+        const trimmed=numeric.trim();
+        if(!trimmed) return null;
+        numeric=parseFloat(trimmed);
+      }
+      if(typeof numeric!=="number" || Number.isNaN(numeric) || !Number.isFinite(numeric)) return undefined;
+      const clamped=Math.max(0, Math.min(240, numeric));
+      return Math.round(clamped*100)/100;
+    }
+    function normalizePaddingValues(values){
+      if(!values || typeof values!=="object") return null;
+      const normalized={ top:undefined, right:undefined, bottom:undefined, left:undefined };
+      let hasAny=false;
+      if(Object.prototype.hasOwnProperty.call(values, "all")){
+        const norm=normalizePaddingNumber(values.all);
+        if(norm!==undefined){
+          normalized.top=norm;
+          normalized.right=norm;
+          normalized.bottom=norm;
+          normalized.left=norm;
+          hasAny=true;
+        } else if(values.all===null){
+          normalized.top=null;
+          normalized.right=null;
+          normalized.bottom=null;
+          normalized.left=null;
+          hasAny=true;
+        }
+      }
+      for(let i=0;i<PADDING_SIDES.length;i++){
+        const side=PADDING_SIDES[i];
+        if(Object.prototype.hasOwnProperty.call(values, side)){
+          const norm=normalizePaddingNumber(values[side]);
+          if(norm!==undefined){
+            normalized[side]=norm;
+            hasAny=true;
+          } else if(values[side]===null){
+            normalized[side]=null;
+            hasAny=true;
+          }
+        }
+      }
+      return hasAny ? normalized : null;
+    }
+    function formatPaddingValue(value){
+      if(value===null) return null;
+      if(typeof value!=="number" || Number.isNaN(value)) return null;
+      const rounded=Math.round(value*100)/100;
+      if(!rounded) return "0px";
+      return rounded+"px";
+    }
+    function readCellPadding(cell){
+      if(!cell) return null;
+      try{
+        const doc=cell.ownerDocument || document;
+        const win=doc.defaultView || window;
+        const computed=(win && typeof win.getComputedStyle==="function") ? win.getComputedStyle(cell) : null;
+        const result={ top:0, right:0, bottom:0, left:0 };
+        for(let i=0;i<PADDING_SIDES.length;i++){
+          const side=PADDING_SIDES[i];
+          const prop="padding"+side.charAt(0).toUpperCase()+side.slice(1);
+          let source=null;
+          if(cell.style && cell.style[prop] && cell.style[prop].trim()){
+            source=cell.style[prop];
+          } else if(computed && computed[prop]){
+            source=computed[prop];
+          }
+          const parsed=normalizePaddingNumber(source==null?null:source);
+          result[side]=typeof parsed==="number" ? parsed : 0;
+        }
+        return result;
+      }catch(err){
+        return { top:0, right:0, bottom:0, left:0 };
+      }
+    }
+    function applyPaddingToCell(cell, normalized){
+      if(!cell || !normalized) return false;
+      let changed=false;
+      for(let i=0;i<PADDING_SIDES.length;i++){
+        const side=PADDING_SIDES[i];
+        const norm=normalized[side];
+        if(typeof norm==="undefined") continue;
+        const prop="padding"+side.charAt(0).toUpperCase()+side.slice(1);
+        const cssProp="padding-"+side;
+        if(norm===null){
+          if(cell.style && cell.style[prop]){
+            cell.style[prop]="";
+            if(cell.style.removeProperty) cell.style.removeProperty(cssProp);
+            changed=true;
+          }
+        } else {
+          const formatted=formatPaddingValue(norm) || "0px";
+          if(cell.style[prop]!==formatted){
+            cell.style[prop]=formatted;
+            changed=true;
+          }
+        }
+      }
+      return changed;
+    }
+    function setCellPadding(inst, ctx, values){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return { changed:false };
+      const normalized=normalizePaddingValues(values);
+      if(!normalized) return { changed:false };
+      const cells=collectTargetCells(inst, ctx, target);
+      if(!cells.length){
+        const single=currentSelectionCell(target);
+        if(single) cells.push(single);
+      }
+      if(!cells.length) return { changed:false };
+      let changed=false;
+      let primary=null;
+      const tables=new Set();
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(!cell) continue;
+        if(!primary) primary=cell;
+        const table=cell.closest ? cell.closest("table") : null;
+        if(table) tables.add(table);
+        if(applyPaddingToCell(cell, normalized)){
+          changed=true;
+        }
+      }
+      tables.forEach(function(table){ if(table){ TableResizer.ensureTable(table); } });
+      const first=primary || cells[0] || null;
+      const table=first && first.closest ? first.closest("table") : null;
+      return { changed, cell:first, table };
+    }
+    function getCellPadding(inst, ctx){
+      const target=resolveTarget(inst, ctx);
+      if(!target) return null;
+      const cells=collectTargetCells(inst, ctx, target);
+      if(!cells.length){
+        const single=currentSelectionCell(target);
+        if(single) cells.push(single);
+      }
+      if(!cells.length) return null;
+      let primary=null;
+      const summary={ top:null, right:null, bottom:null, left:null };
+      const mixed={ top:false, right:false, bottom:false, left:false };
+      for(let i=0;i<cells.length;i++){
+        const cell=cells[i];
+        if(!cell) continue;
+        if(!primary) primary=cell;
+        const padding=readCellPadding(cell);
+        if(!padding) continue;
+        PADDING_SIDES.forEach(function(side){
+          if(summary[side]===null && i===0){
+            summary[side]=padding[side];
+            mixed[side]=false;
+          } else if(summary[side]===null && i>0){
+            mixed[side]=true;
+          } else if(summary[side]!==null){
+            const current=summary[side];
+            if(Math.abs(padding[side]-current)>0.1){
+              summary[side]=null;
+              mixed[side]=true;
+            }
+          }
+        });
+      }
+      if(!primary) return null;
+      return { cell:primary, padding:summary, mixed:mixed };
+    }
     function normalizeCellVerticalAlign(value){
       const key=(value==null?"":String(value)).trim().toLowerCase();
       if(key==="center") return "middle";
@@ -6449,7 +6619,7 @@
       if(!table) return null;
       return readTableState(table);
     }
-    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellVerticalAlign, getCellAlignment };
+    return { applyColor, applyDefault, hideBorders, getState, normalizeColor, applyCellBorder, clearCellBorder, setCellVerticalAlign, getCellAlignment, setCellPadding, getCellPadding };
   })();
   const TableSelection=(function(){
     const CELL_CLASS="weditor-table-cell-selected";
@@ -8333,6 +8503,231 @@
     }
     return { create };
   })();
+  const TableCellPaddingUI=(function(){
+    const SIDES=[
+      { key:"top", label:"Top" },
+      { key:"right", label:"Right" },
+      { key:"bottom", label:"Bottom" },
+      { key:"left", label:"Left" }
+    ];
+    function createNumberInput(){
+      const input=document.createElement("input");
+      input.type="number";
+      input.inputMode="decimal";
+      input.min="0";
+      input.max="240";
+      input.step="1";
+      input.placeholder="--";
+      input.style.width="56px";
+      input.style.padding="4px 6px";
+      input.style.border="1px solid "+WCfg.UI.borderSubtle;
+      input.style.borderRadius="6px";
+      input.style.font="12px/1.4 Segoe UI,system-ui";
+      input.style.color=WCfg.UI.text;
+      input.style.background="#fff";
+      return input;
+    }
+    function formatDisplayValue(value){
+      if(typeof value!=="number" || Number.isNaN(value)) return "";
+      const rounded=Math.round(value*100)/100;
+      if(Math.abs(rounded-Math.round(rounded))<0.01) return String(Math.round(rounded));
+      return rounded.toString();
+    }
+    function parseInputValue(value){
+      const raw=value==null?"":String(value).trim();
+      if(!raw) return null;
+      const num=parseFloat(raw);
+      if(Number.isNaN(num) || !Number.isFinite(num)) return undefined;
+      return Math.max(0, Math.min(240, Math.round(num*100)/100));
+    }
+    function create(inst, ctx){
+      const container=document.createElement("div");
+      container.style.display="inline-flex";
+      container.style.alignItems="center";
+      container.style.flexWrap="wrap";
+      container.style.gap="8px";
+      const label=document.createElement("span");
+      label.textContent="Cell Padding";
+      label.style.font="12px/1.4 Segoe UI,system-ui";
+      label.style.color=WCfg.UI.textDim;
+      label.setAttribute("aria-hidden","true");
+      const controls=document.createElement("div");
+      controls.style.display="flex";
+      controls.style.alignItems="center";
+      controls.style.flexWrap="wrap";
+      controls.style.gap="8px";
+      const allWrap=document.createElement("div");
+      allWrap.style.display="inline-flex";
+      allWrap.style.alignItems="center";
+      allWrap.style.gap="4px";
+      const allLabel=document.createElement("span");
+      allLabel.textContent="All";
+      allLabel.style.font="11px/1.4 Segoe UI,system-ui";
+      allLabel.style.color=WCfg.UI.textDim;
+      const allInput=createNumberInput();
+      allInput.setAttribute("aria-label","Set padding on all sides for selected cells");
+      allWrap.appendChild(allLabel);
+      allWrap.appendChild(allInput);
+      controls.appendChild(allWrap);
+      const sideGrid=document.createElement("div");
+      sideGrid.style.display="inline-grid";
+      sideGrid.style.gridTemplateColumns="repeat(4, auto)";
+      sideGrid.style.gap="6px";
+      const sideInputs=[];
+      for(let i=0;i<SIDES.length;i++){
+        const side=SIDES[i];
+        const wrap=document.createElement("div");
+        wrap.style.display="inline-flex";
+        wrap.style.alignItems="center";
+        wrap.style.gap="4px";
+        const sideLabel=document.createElement("span");
+        sideLabel.textContent=side.label;
+        sideLabel.style.font="11px/1.4 Segoe UI,system-ui";
+        sideLabel.style.color=WCfg.UI.textDim;
+        const input=createNumberInput();
+        input.setAttribute("aria-label","Set "+side.label.toLowerCase()+" padding for selected cells");
+        wrap.appendChild(sideLabel);
+        wrap.appendChild(input);
+        sideGrid.appendChild(wrap);
+        sideInputs.push({ key:side.key, label:side.label, input:input, lastValue:null });
+      }
+      controls.appendChild(sideGrid);
+      container.appendChild(label);
+      container.appendChild(controls);
+      const root=(ctx && ctx.area) ? ctx.area : inst ? inst.el : null;
+      const doc=root ? root.ownerDocument || document : document;
+      let lastAllValue=null;
+      let rafId=null;
+      function setDisabled(disabled){
+        const inputs=[allInput];
+        for(let i=0;i<sideInputs.length;i++){ inputs.push(sideInputs[i].input); }
+        inputs.forEach(function(input){
+          input.disabled=disabled;
+          input.style.opacity=disabled?"0.6":"1";
+        });
+      }
+      function refreshFromSelection(){
+        const state=TableStyler.getCellPadding(inst, ctx);
+        if(!state){
+          lastAllValue=null;
+          allInput.value="";
+          allInput.placeholder="--";
+          sideInputs.forEach(function(entry){ entry.lastValue=null; entry.input.value=""; entry.input.placeholder="--"; });
+          setDisabled(true);
+          return;
+        }
+        setDisabled(false);
+        const padding=state.padding||{};
+        const mixed=state.mixed||{};
+        const values={ top:null, right:null, bottom:null, left:null };
+        let uniform=true;
+        for(let i=0;i<SIDES.length;i++){
+          const key=SIDES[i].key;
+          const entry=sideInputs[i];
+          const value=padding[key];
+          const isMixed=!!mixed[key];
+          if(value===null || isMixed){
+            entry.input.value="";
+            entry.input.placeholder="--";
+            entry.lastValue=null;
+            uniform=false;
+            values[key]=null;
+          } else {
+            entry.input.value=formatDisplayValue(value);
+            entry.input.placeholder="";
+            entry.lastValue=value;
+            values[key]=value;
+          }
+        }
+        if(values.top==null || values.right==null || values.bottom==null || values.left==null){
+          uniform=false;
+        } else {
+          const first=values.top;
+          if(Math.abs(values.right-first)>0.1 || Math.abs(values.bottom-first)>0.1 || Math.abs(values.left-first)>0.1){
+            uniform=false;
+          }
+        }
+        if(uniform && values.top!=null){
+          allInput.value=formatDisplayValue(values.top);
+          allInput.placeholder="";
+          lastAllValue=values.top;
+        } else {
+          allInput.value="";
+          allInput.placeholder="--";
+          lastAllValue=null;
+        }
+      }
+      function scheduleRefresh(){
+        if(typeof window!=="undefined" && typeof window.requestAnimationFrame==="function"){
+          if(rafId!==null) return;
+          rafId=window.requestAnimationFrame(function(){ rafId=null; refreshFromSelection(); });
+        } else {
+          if(rafId!==null) return;
+          const timeoutFn = typeof setTimeout==="function" ? setTimeout : function(fn){ fn(); return null; };
+          rafId=timeoutFn(function(){ rafId=null; refreshFromSelection(); }, 60);
+        }
+      }
+      function applyPadding(values, historyLabel){
+        const result=TableStyler.setCellPadding(inst, ctx, values);
+        if(!result || !result.cell){
+          window.alert("Place the caret inside a table cell to adjust its padding.");
+          refreshFromSelection();
+          return;
+        }
+        if(result.changed){
+          const target=HistoryManager.resolveTarget(inst, ctx);
+          HistoryManager.record(inst, target, { label:historyLabel, repeatable:false });
+          OutputBinding.syncDebounced(inst);
+        }
+        refreshFromSelection();
+      }
+      allInput.addEventListener("change", function(){
+        const parsed=parseInputValue(allInput.value);
+        if(typeof parsed==="undefined"){
+          if(lastAllValue!=null){
+            allInput.value=formatDisplayValue(lastAllValue);
+            allInput.placeholder="";
+          } else {
+            allInput.value="";
+            allInput.placeholder="--";
+          }
+          return;
+        }
+        const historyLabel = parsed===null ? "Clear Cell Padding" : "Set Cell Padding";
+        applyPadding({ all:parsed }, historyLabel);
+      });
+      sideInputs.forEach(function(entry){
+        entry.input.addEventListener("change", function(){
+          const parsed=parseInputValue(entry.input.value);
+          if(typeof parsed==="undefined"){
+            if(entry.lastValue!=null){
+              entry.input.value=formatDisplayValue(entry.lastValue);
+              entry.input.placeholder="";
+            } else {
+              entry.input.value="";
+              entry.input.placeholder="--";
+            }
+            return;
+          }
+          const historyLabel = parsed===null ? "Clear "+entry.label+" Cell Padding" : "Set "+entry.label+" Cell Padding";
+          const values={};
+          values[entry.key]=parsed;
+          applyPadding(values, historyLabel);
+        });
+      });
+      if(root){
+        root.addEventListener("keyup", scheduleRefresh);
+        root.addEventListener("mouseup", scheduleRefresh);
+        root.addEventListener("focusin", scheduleRefresh);
+      }
+      if(doc){
+        doc.addEventListener("selectionchange", scheduleRefresh);
+      }
+      refreshFromSelection();
+      return container;
+    }
+    return { create };
+  })();
   const TableCellAlignUI=(function(){
     const OPTIONS=[
       { value:"top", label:"Top", aria:"Align selected cell content to the top", history:"Align Cell Top" },
@@ -9523,6 +9918,11 @@
       ariaLabel:"Table border color or visibility",
       render:function(inst, ctx){ return TableBorderUI.create(inst, ctx); }
     },
+    "table.cellPadding":{
+      kind:"custom",
+      ariaLabel:"Table cell padding",
+      render:function(inst, ctx){ return TableCellPaddingUI.create(inst, ctx); }
+    },
     "table.cellVerticalAlign":{
       kind:"custom",
       ariaLabel:"Table cell vertical alignment",
@@ -9606,7 +10006,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
@@ -9623,7 +10023,7 @@
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
         { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
-        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] }
+        { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
