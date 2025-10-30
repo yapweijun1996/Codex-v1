@@ -4291,17 +4291,6 @@
         if(!target.contains(range.commonAncestorContainer)){ return false; }
         if(range.collapsed){ return false; }
         const doc=target.ownerDocument || document;
-        try{
-          const span=doc.createElement("span");
-          span.style.textDecorationLine="underline";
-          span.style.textDecorationStyle=style;
-          range.surroundContents(span);
-          sel.removeAllRanges();
-          const newRange=doc.createRange();
-          newRange.selectNodeContents(span);
-          sel.addRange(newRange);
-          return true;
-        } catch(err){}
         const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
           acceptNode:function(node){ return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; }
         });
@@ -4310,10 +4299,11 @@
         let changed=false;
         for(let i=0;i<updates.length;i++){
           const el=updates[i];
+          if(!el || !el.style){ continue; }
           const computed=window.getComputedStyle(el);
-          const hasUnderline=(computed && computed.textDecorationLine && computed.textDecorationLine.indexOf("underline")>-1);
+          const textLine=(computed && (computed.textDecorationLine || computed.textDecoration || "")) || "";
+          const hasUnderline=textLine.indexOf("underline")>-1;
           if(hasUnderline){
-            el.style.textDecorationLine="underline";
             el.style.textDecorationStyle=style;
             changed=true;
           }
