@@ -897,6 +897,7 @@
     }
     function makePage(pageNo, opts){
       const headerEnabled=opts.headerEnabled, footerEnabled=opts.footerEnabled, headerHTML=opts.headerHTML, footerHTML=opts.footerHTML;
+      const fixPageHeight=opts.fixPageHeight!==false;
       const headerAlign=HFAlign.normalize(opts.headerAlign);
       const footerAlign=HFAlign.normalize(opts.footerAlign);
       const headerHeight=opts.headerHeight!=null ? opts.headerHeight : (headerEnabled?WCfg.HDR_H:0);
@@ -905,7 +906,9 @@
       const textStyle=StyleMirror.merge(null, opts.textStyle);
       const page=document.createElement("div");
       page.setAttribute("data-page", String(pageNo));
-      page.style.cssText="width:"+A4W+"px;height:"+A4H+"px;"+Style.pageFrame+";";
+      page.style.cssText="width:"+A4W+"px;"+Style.pageFrame+";";
+      page.style.height=A4H+"px";
+      page.setAttribute("data-weditor-page-height", String(A4H));
       let header=null, footer=null;
       if(headerEnabled){
         header=document.createElement("div");
@@ -945,7 +948,7 @@
         footer.appendChild(fl);
         page.appendChild(footer);
       }
-      return { page, content, headerNode:header, footerNode:footer, explicit:false, headerHeight, footerHeight, baseHeaderHeight:headerHeight, baseFooterHeight:footerHeight };
+      return { page, content, headerNode:header, footerNode:footer, explicit:false, headerHeight, footerHeight, baseHeaderHeight:headerHeight, baseFooterHeight:footerHeight, fixPageHeight };
     }
     function substituteTokensForMeasure(html){
       if(!html) return "";
@@ -1005,6 +1008,7 @@
       const {headerEnabled, footerEnabled, headerHTML, footerHTML}=state;
       const headerAlign=HFAlign.normalize(state.headerAlign);
       const footerAlign=HFAlign.normalize(state.footerAlign);
+      const fixPageHeight = !(state && state.fixPageHeight===false);
       const {A4W,A4H,PAD,UI,Style}=WCfg;
       const textStyle=StyleMirror.capture(state && state.el ? state.el : null);
       const layout=measureLayout(headerEnabled, headerHTML, footerEnabled, footerHTML, headerAlign, footerAlign);
@@ -1035,9 +1039,9 @@
       const CONTENT_WIDTH=A4W - 2*PAD;
       const measWrap=document.createElement("div"); measWrap.style.cssText="position:absolute;left:-99999px;top:-99999px;visibility:hidden;width:"+A4W+"px";
       document.body.appendChild(measWrap);
-      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle});
+      const measPage=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle, fixPageHeight});
       const measContent=measPage.content; measWrap.appendChild(measPage.page);
-      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); let used=0;
+      const pages=[]; let cur=makePage(1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle, fixPageHeight}); let used=0;
       function hasContent(pg){
         if(!pg || !pg.content) return false;
         const text=(pg.content.textContent||"").replace(/\u00a0/g," ").replace(/\u200b/g,"").trim();
@@ -1046,7 +1050,7 @@
         return !!pg.content.querySelector("img,table,svg,canvas,video,figure,ul,ol,li,blockquote,hr,pre,code");
       }
       function push(force){ if(force || hasContent(cur)){ pages.push(cur); } }
-      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); used=0; }
+      function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle, fixPageHeight}); used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
         function parseDim(value){
@@ -1142,6 +1146,26 @@
       if(document && document.fonts && document.fonts.ready && typeof document.fonts.ready.then==="function"){
         pendingMedia.push(document.fonts.ready.catch(function(){ return null; }));
       }
+      function updatePageHeight(pg){
+        if(!pg || !pg.page) return;
+        if(pg.fixPageHeight!==false){
+          pg.page.style.height = A4H+"px";
+          pg.page.setAttribute("data-weditor-page-height", String(A4H));
+          return;
+        }
+        const headerSize = pg.headerNode ? Math.ceil(pg.headerNode.offsetHeight||0) : 0;
+        const footerSize = pg.footerNode ? Math.ceil(pg.footerNode.offsetHeight||0) : 0;
+        let contentSize = 0;
+        if(pg.content){
+          const rect=pg.content.getBoundingClientRect();
+          const measured=Math.ceil(rect.height||0);
+          const scroll=Math.ceil(pg.content.scrollHeight||0);
+          contentSize = Math.max(measured, scroll, 0);
+        }
+        const total=Math.max(1, headerSize + footerSize + contentSize);
+        pg.page.style.height = total+"px";
+        pg.page.setAttribute("data-weditor-page-height", String(total));
+      }
       function adjustPageOffsets(pg){
         if(!pg) return;
         const baseHeader=Math.max(0, pg.baseHeaderHeight||0);
@@ -1170,6 +1194,7 @@
           pg.content.style.top = pg.headerNode ? topOffset+"px" : "0px";
           pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
         }
+        updatePageHeight(pg);
       }
       for(let i=0;i<pages.length;i++){
         const pg=pages[i];
@@ -2761,6 +2786,7 @@
       else if(typeof data.headerHTML==="string") inst.headerHTML=sanitizeHTML(data.headerHTML);
       if(typeof footer.html==="string") inst.footerHTML=sanitizeHTML(footer.html);
       else if(typeof data.footerHTML==="string") inst.footerHTML=sanitizeHTML(data.footerHTML);
+      if(typeof data.fixPageHeight==="boolean") inst.fixPageHeight=data.fixPageHeight;
       if(!headerEnabledExplicit && inst.headerHTML && inst.headerHTML.trim()) inst.headerEnabled=true;
       if(!footerEnabledExplicit && inst.footerHTML && inst.footerHTML.trim()) inst.footerEnabled=true;
       if(header.align) inst.headerAlign=HFAlign.normalize(header.align);
@@ -2787,7 +2813,8 @@
           enabled:!!inst.footerEnabled,
           html:inst.footerHTML,
           align:inst.footerAlign
-        }
+        },
+        fixPageHeight: inst.fixPageHeight!==false
       };
       return state;
     }
@@ -3358,9 +3385,7 @@
         if(WCfg.PREVIEW_MAX_SCALE && scale>WCfg.PREVIEW_MAX_SCALE){ scale=WCfg.PREVIEW_MAX_SCALE; }
         if(!isFinite(scale) || scale<=0){ scale=1; }
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
-        const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const totalFrameWidth=scaledWidth + previewPadding*2;
-        const totalFrameHeight=scaledHeight + previewPadding*2;
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
         for(let i=0;i<out.pages.length;i++){
@@ -3368,6 +3393,11 @@
           page.style.margin="0";
           page.style.transform="";
           page.style.transformOrigin="";
+          const baseHeightAttr=page.getAttribute("data-weditor-page-height");
+          let baseHeight=parseFloat(baseHeightAttr);
+          if(!isFinite(baseHeight) || baseHeight<=0){ baseHeight=WCfg.A4H; }
+          const scaledHeight=Math.max(1, Math.round(baseHeight * scale));
+          const totalFrameHeight=scaledHeight + previewPadding*2;
           const wrap=document.createElement("div");
           wrap.style.width=scaledWidth+"px";
           wrap.style.height=scaledHeight+"px";
@@ -3392,7 +3422,7 @@
           page.style.left="0";
           page.style.top="0";
           page.style.width=WCfg.A4W+"px";
-          page.style.height=WCfg.A4H+"px";
+          page.style.height=baseHeight+"px";
           outer.appendChild(wrap);
           wrap.appendChild(page);
           stage.appendChild(outer);
@@ -9509,6 +9539,13 @@
         HistoryManager.record(inst, inst ? inst.el : null, { label:inst.footerEnabled ? "Enable Footer" : "Disable Footer", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "toggle.fixPageHeight":{ label:"Fix A4 Page Height", kind:"toggle", ariaLabel:"Toggle fixed A4 page height", getActive:function(inst){ return inst ? inst.fixPageHeight!==false : true; },
+      run:function(inst, arg){
+        if(!inst) return;
+        inst.fixPageHeight = inst.fixPageHeight===false ? true : false;
+        if(arg && arg.ctx && typeof arg.ctx.refreshPreview==="function"){ arg.ctx.refreshPreview(); }
+        OutputBinding.syncDebounced(inst);
+      } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){
       if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
@@ -9559,7 +9596,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","toggle.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
     quickActions:["fullscreen.open"]
@@ -9576,7 +9613,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","toggle.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ]
   };
@@ -9605,8 +9642,10 @@
     this.customFooterLogoURL = customFooterAttr || null;
     const headerAttr=readBooleanAttribute(editorEl, "data-header-enabled");
     const footerAttr=readBooleanAttribute(editorEl, "data-footer-enabled");
+    const fixHeightAttr=readBooleanAttribute(editorEl, "data-fix-page-height");
     this.headerEnabled = headerAttr!=null ? headerAttr : false;
     this.footerEnabled = footerAttr!=null ? footerAttr : false;
+    this.fixPageHeight = fixHeightAttr==null ? true : !!fixHeightAttr;
     if(editorEl.classList.contains("weditor--no-header")) this.headerEnabled=false;
     if(editorEl.classList.contains("weditor--no-footer")) this.footerEnabled=false;
     this.outputEls = OutputBinding.resolveAll(editorEl);
