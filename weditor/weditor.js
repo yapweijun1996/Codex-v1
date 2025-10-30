@@ -6,6 +6,7 @@
   const LIST_STYLE_ATTR="data-weditor-list-style";
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
+  const BASE_STYLE_ID="weditor-base-style";
   const DEFAULT_LETTERHEAD_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
   const DEFAULT_FOOTER_LOGO_URL=DEFAULT_LETTERHEAD_LOGO_URL;
   function sanitizeImageURL(value){
@@ -33,6 +34,15 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/'/g, "&#39;");
+  }
+  function ensureBaseStyles(doc){
+    const targetDoc=doc || (typeof document!=="undefined" ? document : null);
+    if(!targetDoc || !targetDoc.head) return;
+    if(targetDoc.getElementById(BASE_STYLE_ID)) return;
+    const style=targetDoc.createElement("style");
+    style.id=BASE_STYLE_ID;
+    style.textContent="[data-weditor-instance] p,[data-page] p{margin:0;}";
+    targetDoc.head.appendChild(style);
   }
   const WCfg=(function(){
     const A4W=720, A4H=1050, HDR_H=84, FTR_H=64, PAD=0;
@@ -10382,6 +10392,7 @@
     OutputBinding.syncDebounced(this);
   }
   WEditorInstance.prototype._mount=function(){
+    ensureBaseStyles(this.el.ownerDocument || document);
     const shell=document.createElement("div"); applyStyles(shell, WCfg.Style.shell);
     const toolbarWrap=document.createElement("div"); applyStyles(toolbarWrap, WCfg.Style.toolbarWrap);
     ToolbarFactory.build(toolbarWrap, TOOLBAR_PAGE, this, null);
