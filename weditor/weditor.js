@@ -10269,7 +10269,9 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
+      ] },
+      { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
@@ -10286,7 +10288,9 @@
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
-        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] },
+        { label:"Paragraph", compact:true, items:["format.bulletedList","format.numberedList","format.multilevelList","format.decreaseIndent","format.increaseIndent","format.alignLeft","format.alignCenter","format.alignRight","format.alignJustify","format.lineSpacing"] }
+      ] },
+      { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellPadding","table.cellVerticalAlign"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
