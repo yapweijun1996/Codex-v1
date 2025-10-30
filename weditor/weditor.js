@@ -906,6 +906,16 @@
       const page=document.createElement("div");
       page.setAttribute("data-page", String(pageNo));
       page.style.cssText="width:"+A4W+"px;height:"+A4H+"px;"+Style.pageFrame+";";
+      const pageMeta={
+        headerEnabled:!!headerEnabled,
+        footerEnabled:!!footerEnabled,
+        headerHeight:headerHeight,
+        footerHeight:footerHeight,
+        pad:PAD,
+        contentUsedHeight:0,
+        totalHeight:headerHeight+footerHeight+2*PAD
+      };
+      page.__weditorMeta = pageMeta;
       let header=null, footer=null;
       if(headerEnabled){
         header=document.createElement("div");
@@ -1019,6 +1029,7 @@
         return p;
       }
       const linear=[];
+      let manualBreaks=0;
       for(let i=0;i<src.childNodes.length;i++){
         const n=src.childNodes[i];
         if(n.nodeType===8){
@@ -1045,7 +1056,18 @@
         if(!pg.content.querySelector) return false;
         return !!pg.content.querySelector("img,table,svg,canvas,video,figure,ul,ol,li,blockquote,hr,pre,code");
       }
-      function push(force){ if(force || hasContent(cur)){ pages.push(cur); } }
+      function push(force){
+        if(force || hasContent(cur)){
+          const meta=cur.page && cur.page.__weditorMeta ? cur.page.__weditorMeta : null;
+          if(meta){
+            meta.contentUsedHeight=Math.max(0, Math.min(AVAIL, used));
+            meta.headerHeight=cur.headerHeight||0;
+            meta.footerHeight=cur.footerHeight||0;
+            meta.totalHeight=(meta.headerHeight||0)+(meta.footerHeight||0)+2*PAD+meta.contentUsedHeight;
+          }
+          pages.push(cur);
+        }
+      }
       function next(force){ push(!!force); cur=makePage(pages.length+1, {headerEnabled, footerEnabled, headerHTML, footerHTML, headerHeight, footerHeight, headerAlign, footerAlign, textStyle}); used=0; }
       function ensureMeasuredBlock(block, containerWidth){
         const imgs=block.querySelectorAll ? block.querySelectorAll("img") : null; if(!imgs) return;
@@ -1113,7 +1135,7 @@
       }
       for(let i=0;i<linear.length;i++){
         const it=linear[i];
-        if(it.t==="break"){ next(true); continue; }
+        if(it.t==="break"){ manualBreaks++; next(true); continue; }
         const block=it.node;
         ensureMeasuredBlock(block, CONTENT_WIDTH);
         measContent.innerHTML=""; const probe=block.cloneNode(true); probe.style.margin="0"; ensureMeasuredBlock(probe, CONTENT_WIDTH);
@@ -1132,7 +1154,16 @@
         }
       }
       push(false);
-      if(!pages.length){ pages.push(cur); }
+      if(!pages.length){
+        const meta=cur.page && cur.page.__weditorMeta ? cur.page.__weditorMeta : null;
+        if(meta){
+          meta.contentUsedHeight=Math.max(0, Math.min(AVAIL, used));
+          meta.headerHeight=cur.headerHeight||0;
+          meta.footerHeight=cur.footerHeight||0;
+          meta.totalHeight=(meta.headerHeight||0)+(meta.footerHeight||0)+2*PAD+meta.contentUsedHeight;
+        }
+        pages.push(cur);
+      }
       const measurePagesHost=document.createElement("div");
       measurePagesHost.style.cssText="position:absolute;left:-99999px;top:-99999px;width:"+A4W+"px;visibility:hidden;pointer-events:none;opacity:0;";
       measWrap.appendChild(measurePagesHost);
@@ -1170,6 +1201,12 @@
           pg.content.style.top = pg.headerNode ? topOffset+"px" : "0px";
           pg.content.style.bottom = pg.footerNode ? bottomOffset+"px" : "0px";
         }
+        if(pg.page && pg.page.__weditorMeta){
+          const meta=pg.page.__weditorMeta;
+          meta.headerHeight=pg.headerHeight||0;
+          meta.footerHeight=pg.footerHeight||0;
+          meta.totalHeight=(meta.headerHeight||0)+(meta.footerHeight||0)+2*PAD+(meta.contentUsedHeight||0);
+        }
       }
       for(let i=0;i<pages.length;i++){
         const pg=pages[i];
@@ -1202,7 +1239,22 @@
         cleanup();
         ready=Promise.resolve(initialHTML);
       }
-      return { pages: pages.map(function(p){ return p.page; }), pagesHTML: initialHTML, ready };
+      const pageNodes=pages.map(function(p){ return p.page; });
+      const meta={
+        pageCount:pageNodes.length,
+        headerEnabled:!!headerEnabled,
+        footerEnabled:!!footerEnabled,
+        hasManualBreaks:manualBreaks>0,
+        pageHeights:pageNodes.map(function(node){
+          const info=node && node.__weditorMeta ? node.__weditorMeta : null;
+          return info && typeof info.totalHeight==="number" ? info.totalHeight : null;
+        }),
+        contentHeights:pageNodes.map(function(node){
+          const info=node && node.__weditorMeta ? node.__weditorMeta : null;
+          return info && typeof info.contentUsedHeight==="number" ? info.contentUsedHeight : null;
+        })
+      };
+      return { pages: pageNodes, pagesHTML: initialHTML, ready, meta };
     }
     function pagesHTML(inst){ return paginate(Breaks.serialize(inst.el), inst).pagesHTML; }
     return { paginate, pagesHTML };
@@ -2751,6 +2803,9 @@
       if(typeof data.outputMode==="string"){
         inst.outputMode=data.outputMode.toLowerCase()==="paged"?"paged":"raw";
       }
+      if(typeof data.fixPageHeight==="boolean"){
+        inst.fixPageHeight=data.fixPageHeight;
+      }
       const headerEnabledExplicit=typeof header.enabled==="boolean" || typeof data.headerEnabled==="boolean";
       const footerEnabledExplicit=typeof footer.enabled==="boolean" || typeof data.footerEnabled==="boolean";
       if(typeof header.enabled==="boolean") inst.headerEnabled=header.enabled;
@@ -2777,6 +2832,7 @@
       const state={
         version:"1.0",
         outputMode:inst.outputMode,
+        fixPageHeight:!(inst && inst.fixPageHeight===false),
         html:Breaks.serialize(inst.el),
         header:{
           enabled:!!inst.headerEnabled,
@@ -3357,10 +3413,11 @@
         let scale=fitScale;
         if(WCfg.PREVIEW_MAX_SCALE && scale>WCfg.PREVIEW_MAX_SCALE){ scale=WCfg.PREVIEW_MAX_SCALE; }
         if(!isFinite(scale) || scale<=0){ scale=1; }
+        const fixPageHeight = !(inst && inst.fixPageHeight===false);
+        const meta=out && out.meta ? out.meta : null;
+        const allowDynamicHeight=!fixPageHeight && meta && meta.pageCount===1 && !meta.headerEnabled && !meta.footerEnabled && !meta.hasManualBreaks;
         const scaledWidth=Math.max(1, Math.round(WCfg.A4W * scale));
-        const scaledHeight=Math.max(1, Math.round(WCfg.A4H * scale));
         const totalFrameWidth=scaledWidth + previewPadding*2;
-        const totalFrameHeight=scaledHeight + previewPadding*2;
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
         for(let i=0;i<out.pages.length;i++){
@@ -3368,6 +3425,11 @@
           page.style.margin="0";
           page.style.transform="";
           page.style.transformOrigin="";
+          const pageMeta=page && page.__weditorMeta ? page.__weditorMeta : null;
+          const dynamicApplied=allowDynamicHeight && pageMeta && typeof pageMeta.totalHeight==="number" && pageMeta.totalHeight>0;
+          const basePageHeight=dynamicApplied ? Math.max(1, pageMeta.totalHeight) : WCfg.A4H;
+          const scaledHeight=Math.max(1, Math.round(basePageHeight * scale));
+          const totalFrameHeight=scaledHeight + previewPadding*2;
           const wrap=document.createElement("div");
           wrap.style.width=scaledWidth+"px";
           wrap.style.height=scaledHeight+"px";
@@ -3392,7 +3454,9 @@
           page.style.left="0";
           page.style.top="0";
           page.style.width=WCfg.A4W+"px";
-          page.style.height=WCfg.A4H+"px";
+          page.style.height=basePageHeight+"px";
+          if(dynamicApplied){ page.setAttribute("data-weditor-dynamic-height","true"); }
+          else if(page.removeAttribute){ page.removeAttribute("data-weditor-dynamic-height"); }
           outer.appendChild(wrap);
           wrap.appendChild(page);
           stage.appendChild(outer);
@@ -9509,6 +9573,15 @@
         HistoryManager.record(inst, inst ? inst.el : null, { label:inst.footerEnabled ? "Enable Footer" : "Disable Footer", repeatable:false });
         OutputBinding.syncDebounced(inst);
       } },
+    "toggle.fixPageHeight":{ label:"Fix A4 Page Height", kind:"toggle", ariaLabel:"Toggle fixed A4 page height for previews", getActive:function(inst){ return !(inst && inst.fixPageHeight===false); },
+      run:function(inst, arg){
+        if(inst){
+          const current = !(inst.fixPageHeight===false);
+          inst.fixPageHeight = !current;
+        }
+        if(arg && arg.ctx && arg.ctx.refreshPreview){ arg.ctx.refreshPreview(); }
+        if(inst){ OutputBinding.syncDebounced(inst); }
+      } },
     "reflow":{ label:"Reflow", kind:"button", ariaLabel:"Write changes back to editor", run:function(inst, arg){ if(arg && arg.ctx && arg.ctx.writeBack){ arg.ctx.writeBack(); if(arg.ctx.refreshPreview) arg.ctx.refreshPreview(); } } },
     "print":{ label:"Print", kind:"button", ariaLabel:"Print paged HTML", run:function(inst, arg){
       if(arg && arg.ctx && arg.ctx.writeBack) arg.ctx.writeBack();
@@ -9559,7 +9632,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","toggle.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
     quickActions:["fullscreen.open"]
@@ -9576,7 +9649,7 @@
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
-      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer"] },
+      { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","toggle.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ]
   };
@@ -9599,6 +9672,7 @@
     this.footerHTML = "";
     this.headerAlign = HFAlign.normalize(editorEl.getAttribute("data-header-align"));
     this.footerAlign = HFAlign.normalize(editorEl.getAttribute("data-footer-align"));
+    this.fixPageHeight = true;
     const customLetterheadAttr=sanitizeImageURL(editorEl.getAttribute("data-custom-letterhead-logo-url"));
     this.customLetterheadLogoURL = customLetterheadAttr || null;
     const customFooterAttr=sanitizeImageURL(editorEl.getAttribute("data-custom-footer-logo-url"));
