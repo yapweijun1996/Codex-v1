@@ -4381,34 +4381,40 @@
     }
     function applyBlockFormat(inst, ctx, tag){
       const target=resolveTarget(inst, ctx); if(!target) return false;
-      const selection=getSelectionWithin(target); if(!selection) return false;
+      focusTarget(target);
       const normalized=(tag||"p").toString().trim().toLowerCase();
       const desired=normalized ? normalized : "p";
       const upper=desired.toUpperCase();
-      const attempts=[];
-      const { range }=selection;
-      const startBlock=findBlockNode(range.startContainer, target);
-      const endBlock=findBlockNode(range.endContainer, target);
-      if(startBlock && endBlock && startBlock===endBlock){
-        const currentTag=(startBlock.tagName||"").toLowerCase();
-        const coversEntire=rangeCoversNode(range, startBlock);
-        if(currentTag===desired && !coversEntire){ return true; }
-        if(!coversEntire){
-          const manual=wrapSelectionAsBlock(target, selection, desired);
-          if(manual) return true;
+      const runBlockFormat=function(){
+        const selection=getSelectionWithin(target); if(!selection) return false;
+        const attempts=[];
+        const { range }=selection;
+        const startBlock=findBlockNode(range.startContainer, target);
+        const endBlock=findBlockNode(range.endContainer, target);
+        if(startBlock && endBlock && startBlock===endBlock){
+          const currentTag=(startBlock.tagName||"").toLowerCase();
+          const coversEntire=rangeCoversNode(range, startBlock);
+          if(currentTag===desired && !coversEntire){ return true; }
+          if(!coversEntire){
+            const manual=wrapSelectionAsBlock(target, selection, desired);
+            if(manual) return true;
+          }
         }
-      }
-      if(desired==="p"){ attempts.push("p"); }
-      attempts.push(upper, "<"+upper+">");
-      let success=false;
-      for(let i=0;i<attempts.length && !success;i++){
-        success=execCommand(target, "formatBlock", attempts[i], false);
-      }
-      if(success){
-        Normalizer.fixStructure(target);
-        Breaks.ensurePlaceholders(target);
-      }
-      return success;
+        if(desired==="p"){ attempts.push("p"); }
+        attempts.push(upper, "<"+upper+">");
+        let success=false;
+        for(let i=0;i<attempts.length && !success;i++){
+          success=execCommand(target, "formatBlock", attempts[i], false);
+        }
+        if(success){
+          Normalizer.fixStructure(target);
+          Breaks.ensurePlaceholders(target);
+        }
+        return success;
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, runBlockFormat);
+      if(multi.handled){ return multi.changed; }
+      return runBlockFormat();
     }
     function getBlockFormat(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return "p";
