@@ -10284,7 +10284,8 @@
       ] },
       { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
-        { compact:true, items:["table.cellPadding"] }
+        { compact:true, items:["table.cellPadding"] },
+        { label:"Insert", compact:true, items:["insert.table"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
@@ -10304,7 +10305,8 @@
       ] },
       { id:"table", label:"Table", items:[
         { label:"Table", compact:true, items:["table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
-        { compact:true, items:["table.cellPadding"] }
+        { compact:true, items:["table.cellPadding"] },
+        { label:"Insert", compact:true, items:["insert.table"] }
       ] },
       { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
