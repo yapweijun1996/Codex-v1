@@ -6167,8 +6167,6 @@
     function applyCellBorder(inst, ctx, color, sides){
       const target=resolveTarget(inst, ctx);
       if(!target) return { changed:false };
-      const cell=currentSelectionCell(target);
-      if(!cell) return { changed:false };
       const normalized=normalizeColor(color);
       if(!normalized) return { changed:false };
       const list=[];
@@ -6186,17 +6184,49 @@
       if(!list.length){
         list.push("top","right","bottom","left");
       }
-      let changed=false;
-      for(let i=0;i<list.length;i++){
-        const side=list[i];
-        const cap=side.charAt(0).toUpperCase()+side.slice(1);
-        const colorProp="border"+cap+"Color";
-        const widthProp="border"+cap+"Width";
-        const styleProp="border"+cap+"Style";
-        if(cell.style[colorProp]!==normalized){ cell.style[colorProp]=normalized; changed=true; }
-        if(cell.style[widthProp]!=="1px"){ cell.style[widthProp]="1px"; changed=true; }
-        if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+      const tables=new Set();
+      function applyToCell(cell){
+        if(!cell) return false;
+        let changed=false;
+        for(let i=0;i<list.length;i++){
+          const side=list[i];
+          const cap=side.charAt(0).toUpperCase()+side.slice(1);
+          const colorProp="border"+cap+"Color";
+          const widthProp="border"+cap+"Width";
+          const styleProp="border"+cap+"Style";
+          if(cell.style[colorProp]!==normalized){ cell.style[colorProp]=normalized; changed=true; }
+          if(cell.style[widthProp]!=="1px"){ cell.style[widthProp]="1px"; changed=true; }
+          if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+        }
+        const table=cell.closest ? cell.closest("table") : null;
+        if(table) tables.add(table);
+        return changed;
       }
+      const tableSelection=(typeof TableSelection!=='undefined' && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(tableSelection && tableSelection.cells && tableSelection.cells.length){
+        const cells=tableSelection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+        if(cells.length){
+          let changed=false;
+          let primary=null;
+          for(let i=0;i<cells.length;i++){
+            const cell=cells[i];
+            if(!primary) primary=cell;
+            if(applyToCell(cell)) changed=true;
+          }
+          tables.forEach(function(table){
+            if(!table) return;
+            if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
+            table.setAttribute("data-weditor-border-hidden","0");
+            TableResizer.ensureTable(table);
+          });
+          const first=primary || cells[0] || null;
+          const table=first && first.closest ? first.closest("table") : null;
+          return { changed, cell:first, table, color:normalized };
+        }
+      }
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const changed=applyToCell(cell);
       const table=cell.closest ? cell.closest("table") : null;
       if(table){
         if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
@@ -6208,8 +6238,6 @@
     function clearCellBorder(inst, ctx, sides){
       const target=resolveTarget(inst, ctx);
       if(!target) return { changed:false };
-      const cell=currentSelectionCell(target);
-      if(!cell) return { changed:false };
       const list=[];
       if(Array.isArray(sides)){
         for(let i=0;i<sides.length;i++){
@@ -6225,20 +6253,51 @@
       if(!list.length){
         list.push("top","right","bottom","left");
       }
-      let changed=false;
-      for(let i=0;i<list.length;i++){
-        const side=list[i];
-        const cap=side.charAt(0).toUpperCase()+side.slice(1);
-        const colorProp="border"+cap+"Color";
-        const widthProp="border"+cap+"Width";
-        const styleProp="border"+cap+"Style";
-        if(cell.style[colorProp]!=="transparent"){ cell.style[colorProp]="transparent"; changed=true; }
-        if(cell.style[widthProp]!=="0px"){ cell.style[widthProp]="0px"; changed=true; }
-        if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+      const tables=new Set();
+      function clearFromCell(cell){
+        if(!cell) return false;
+        let changed=false;
+        for(let i=0;i<list.length;i++){
+          const side=list[i];
+          const cap=side.charAt(0).toUpperCase()+side.slice(1);
+          const colorProp="border"+cap+"Color";
+          const widthProp="border"+cap+"Width";
+          const styleProp="border"+cap+"Style";
+          if(cell.style[colorProp]!=="transparent"){ cell.style[colorProp]="transparent"; changed=true; }
+          if(cell.style[widthProp]!=="0px"){ cell.style[widthProp]="0px"; changed=true; }
+          if(cell.style[styleProp]!=="solid"){ cell.style[styleProp]="solid"; changed=true; }
+        }
+        if(list.length===4){
+          if(cell.style.border!=="0"){ cell.style.border="0"; changed=true; }
+        }
+        const table=cell.closest ? cell.closest("table") : null;
+        if(table) tables.add(table);
+        return changed;
       }
-      if(list.length===4){
-        if(cell.style.border!=="0"){ cell.style.border="0"; changed=true; }
+      const tableSelection=(typeof TableSelection!=='undefined' && TableSelection && typeof TableSelection.getSelection==="function") ? TableSelection.getSelection(inst, ctx) : null;
+      if(tableSelection && tableSelection.cells && tableSelection.cells.length){
+        const cells=tableSelection.cells.filter(function(cell){ return cell && cell.isConnected && target.contains(cell); });
+        if(cells.length){
+          let changed=false;
+          let primary=null;
+          for(let i=0;i<cells.length;i++){
+            const cell=cells[i];
+            if(!primary) primary=cell;
+            if(clearFromCell(cell)) changed=true;
+          }
+          tables.forEach(function(table){
+            if(!table) return;
+            if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
+            TableResizer.ensureTable(table);
+          });
+          const first=primary || cells[0] || null;
+          const table=first && first.closest ? first.closest("table") : null;
+          return { changed, cell:first, table, hidden:true };
+        }
       }
+      const cell=currentSelectionCell(target);
+      if(!cell) return { changed:false };
+      const changed=clearFromCell(cell);
       const table=cell.closest ? cell.closest("table") : null;
       if(table){
         if(!table.style.borderCollapse) table.style.borderCollapse="collapse";
