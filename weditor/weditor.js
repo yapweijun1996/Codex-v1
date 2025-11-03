@@ -155,7 +155,25 @@
       hfPreviewHeader:{ minHeight:"58px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderBottom:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewFooter:{ minHeight:"52px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderTop:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
-      hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
+      hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" },
+      docTplModal:{ width:"min(960px, 100%)", maxHeight:"92vh", display:"flex", flexDirection:"column", background:"#fff", borderRadius:"16px", boxShadow:"0 24px 48px rgba(0,0,0,.22)" },
+      docTplHeader:{ padding:"20px 24px", borderBottom:"1px solid "+UI.border, display:"flex", flexWrap:"wrap", alignItems:"center", gap:"12px" },
+      docTplTitle:{ font:"20px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
+      docTplSubtitle:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      docTplClose:{ border:"0", background:"transparent", color:UI.textDim, font:"22px/1 Segoe UI,system-ui", cursor:"pointer", marginLeft:"auto", padding:"4px", borderRadius:"6px" },
+      docTplBody:{ display:"grid", gridTemplateColumns:"280px 1fr", gap:"0", flex:"1", minHeight:"0" },
+      docTplList:{ padding:"20px", borderRight:"1px solid "+UI.border, display:"flex", flexDirection:"column", gap:"12px", overflowY:"auto", background:"#faf9f8" },
+      docTplCard:{ border:"1px solid "+UI.borderSubtle, borderRadius:"10px", background:"#fff", padding:"14px 16px", textAlign:"left", display:"flex", flexDirection:"column", gap:"6px", cursor:"pointer", transition:"all .18s ease", alignItems:"flex-start" },
+      docTplCardTitle:{ font:"14px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      docTplCardDesc:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      docTplCardMeta:{ marginTop:"4px", font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, textTransform:"uppercase", letterSpacing:".08em" },
+      docTplPreviewWrap:{ position:"relative", display:"flex", flexDirection:"column", padding:"24px", background:"#f3f2f1", overflow:"hidden" },
+      docTplPreviewStage:{ flex:"1", minHeight:"0", overflow:"auto", display:"flex", justifyContent:"center", padding:"12px" },
+      docTplPreviewPage:{ width:"min(620px, 100%)", background:"#fff", borderRadius:"14px", border:"1px solid "+UI.borderSubtle, boxShadow:"0 12px 30px rgba(0,0,0,.12)", padding:"32px 36px", boxSizing:"border-box", color:UI.text, font:"14px/1.6 Segoe UI,system-ui", display:"flex", flexDirection:"column", gap:"18px" },
+      docTplPreviewTitle:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim, marginBottom:"12px" },
+      docTplMeta:{ display:"flex", gap:"16px", flexWrap:"wrap", padding:"0 24px 18px", font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, borderTop:"1px solid "+UI.border },
+      docTplFooter:{ padding:"16px 24px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap", background:"#fff" },
+      docTplPreviewNotice:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,PREVIEW_FRAME_PADDING,Style };
   })();
@@ -2261,6 +2279,597 @@
       }
       return result;
     }
+    const DOC_TEMPLATE_LIBRARY=[
+      {
+        id:"sales_invoice",
+        label:"🧾 Sales Invoice",
+        description:"Itemised invoice with billing summary, payment terms, and totals table.",
+        header:{ templateId:"letterhead_logo", align:"left" },
+        footer:{ templateId:"invoice", align:"left" },
+        preview:'<strong>Sales Invoice</strong><span>Bill to · Totals · Payment instructions</span>',
+        html:function(){
+          return [
+            '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;">',
+              '<div>',
+                '<div style="font-size:24px;font-weight:700;color:#0f6cbd;">Sales Invoice</div>',
+                '<div style="font-size:13px;color:#605e5c;margin-top:6px;">Thank you for your business.</div>',
+              '</div>',
+              '<div style="text-align:right;font-size:13px;line-height:1.6;color:#323130;">',
+                '<div><strong>Invoice #</strong> INV-2024-001</div>',
+                '<div><strong>Date</strong> {{date}}</div>',
+                '<div><strong>Due</strong> 30 days</div>',
+              '</div>',
+            '</div>',
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;margin-bottom:24px;font-size:13px;line-height:1.6;color:#323130;">',
+              '<div>',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Bill To</div>',
+                '<div style="margin-top:6px;">Acme Industries Pte Ltd</div>',
+                '<div>Attn: Maria Tan</div>',
+                '<div>55 Market Street</div>',
+                '<div>Singapore 048941</div>',
+              '</div>',
+              '<div>',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Ship To</div>',
+                '<div style="margin-top:6px;">Same as billing</div>',
+                '<div>Warehouse Dock 3</div>',
+                '<div>Opening Hours: 9am – 6pm</div>',
+              '</div>',
+              '<div>',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Payment</div>',
+                '<div style="margin-top:6px;">Bank Transfer · UOB 123-456-789-0</div>',
+                '<div>Payable to Weditor Studio</div>',
+                '<div>SWIFT: UOVBSGSG</div>',
+              '</div>',
+            '</div>',
+            '<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px;color:#323130;">',
+              '<thead>',
+                '<tr>',
+                  '<th style="text-align:left;padding:12px;border-bottom:2px solid #0f6cbd;">Item</th>',
+                  '<th style="text-align:center;padding:12px;border-bottom:2px solid #0f6cbd;">Qty</th>',
+                  '<th style="text-align:right;padding:12px;border-bottom:2px solid #0f6cbd;">Unit Price</th>',
+                  '<th style="text-align:right;padding:12px;border-bottom:2px solid #0f6cbd;">Amount</th>',
+                '</tr>',
+              '</thead>',
+              '<tbody>',
+                '<tr>',
+                  '<td style="padding:12px;border-bottom:1px solid #e1dfdd;">Consulting Services</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">8</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">$350.00</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">$2,800.00</td>',
+                '</tr>',
+                '<tr>',
+                  '<td style="padding:12px;border-bottom:1px solid #e1dfdd;">Implementation Package</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">1</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">$1,200.00</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">$1,200.00</td>',
+                '</tr>',
+                '<tr>',
+                  '<td style="padding:12px;border-bottom:1px solid #e1dfdd;">Monthly Support Plan</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">3</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">$80.00</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">$240.00</td>',
+                '</tr>',
+              '</tbody>',
+            '</table>',
+            '<div style="display:flex;flex-wrap:wrap;gap:24px;justify-content:flex-end;align-items:flex-start;">',
+              '<div style="flex:1 1 260px;font-size:12px;color:#605e5c;line-height:1.6;">',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Notes</div>',
+                '<p style="margin:8px 0 0;">Please remit payment within 30 days. Late payments may incur a 1.5% monthly finance charge.</p>',
+                '<p style="margin:8px 0 0;">For any billing questions contact finance@weditor.app.</p>',
+              '</div>',
+              '<div style="flex:0 0 240px;">',
+                '<table style="width:100%;border-collapse:collapse;font-size:13px;color:#323130;">',
+                  '<tbody>',
+                    '<tr><td style="padding:6px 12px;color:#605e5c;">Subtotal</td><td style="padding:6px 12px;text-align:right;">$4,240.00</td></tr>',
+                    '<tr><td style="padding:6px 12px;color:#605e5c;">GST (8%)</td><td style="padding:6px 12px;text-align:right;">$339.20</td></tr>',
+                    '<tr><td style="padding:6px 12px;border-top:1px solid #e1dfdd;font-weight:600;">Total Due</td><td style="padding:6px 12px;border-top:1px solid #e1dfdd;text-align:right;font-weight:700;">$4,579.20</td></tr>',
+                  '</tbody>',
+                '</table>',
+              '</div>',
+            '</div>'
+          ].join('');
+        }
+      },
+      {
+        id:"delivery_order",
+        label:"🚚 Delivery Order",
+        description:"Delivery order with shipping details, checklist, and recipient acknowledgement.",
+        header:{ templateId:"letterhead_logo", align:"left" },
+        footer:{ templateId:"delivery", align:"left" },
+        preview:'<strong>Delivery Order</strong><span>Ship from · Ship to · Recipient sign-off</span>',
+        html:function(){
+          return [
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">',
+              '<div>',
+                '<div style="font-size:24px;font-weight:700;color:#0f6cbd;">Delivery Order</div>',
+                '<div style="font-size:13px;color:#605e5c;margin-top:6px;">Ensure goods are inspected upon receipt.</div>',
+              '</div>',
+              '<div style="text-align:right;font-size:13px;line-height:1.6;color:#323130;">',
+                '<div><strong>DO #</strong> DO-2024-118</div>',
+                '<div><strong>Reference</strong> INV-2024-001</div>',
+                '<div><strong>Date</strong> {{date}}</div>',
+              '</div>',
+            '</div>',
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px;font-size:13px;color:#323130;line-height:1.6;margin-bottom:20px;">',
+              '<div>',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Ship From</div>',
+                '<div style="margin-top:6px;">Weditor Fulfilment Centre</div>',
+                '<div>81 Science Park Drive</div>',
+                '<div>Singapore 118257</div>',
+                '<div>Contact: +65 6100 8899</div>',
+              '</div>',
+              '<div>',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Ship To</div>',
+                '<div style="margin-top:6px;">Acme Distribution Warehouse</div>',
+                '<div>12 Pioneer Crescent</div>',
+                '<div>Singapore 628555</div>',
+                '<div>Loading Bay 4 · 9am – 5pm</div>',
+              '</div>',
+              '<div>',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Logistics</div>',
+                '<div style="margin-top:6px;">Courier: Acme Express</div>',
+                '<div>Driver: Samuel Lee · +65 9123 4567</div>',
+                '<div>Vehicle: SGX1234G</div>',
+              '</div>',
+            '</div>',
+            '<table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px;color:#323130;">',
+              '<thead>',
+                '<tr>',
+                  '<th style="text-align:left;padding:12px;border-bottom:2px solid #0f6cbd;">Item Description</th>',
+                  '<th style="text-align:center;padding:12px;border-bottom:2px solid #0f6cbd;">Qty</th>',
+                  '<th style="text-align:center;padding:12px;border-bottom:2px solid #0f6cbd;">UOM</th>',
+                  '<th style="text-align:right;padding:12px;border-bottom:2px solid #0f6cbd;">Remarks</th>',
+                '</tr>',
+              '</thead>',
+              '<tbody>',
+                '<tr>',
+                  '<td style="padding:12px;border-bottom:1px solid #e1dfdd;">Weditor Pro Console</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">10</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">Units</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">Packed on pallets</td>',
+                '</tr>',
+                '<tr>',
+                  '<td style="padding:12px;border-bottom:1px solid #e1dfdd;">Quickstart Kit</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">10</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">Sets</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">Include warranty cards</td>',
+                '</tr>',
+                '<tr>',
+                  '<td style="padding:12px;border-bottom:1px solid #e1dfdd;">Spare Parts Pack</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">5</td>',
+                  '<td style="padding:12px;text-align:center;border-bottom:1px solid #e1dfdd;">Boxes</td>',
+                  '<td style="padding:12px;text-align:right;border-bottom:1px solid #e1dfdd;">Labelled by SKU</td>',
+                '</tr>',
+              '</tbody>',
+            '</table>',
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:12px;">',
+              '<div style="font-size:12px;color:#605e5c;">',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Checklist</div>',
+                '<ul style="margin:10px 0 0;padding-left:18px;">',
+                  '<li>Verify packaging integrity</li>',
+                  '<li>Cross-check SKU labels with manifest</li>',
+                  '<li>Photograph loaded goods before dispatch</li>',
+                '</ul>',
+              '</div>',
+              '<div style="font-size:12px;color:#605e5c;">',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Special Instructions</div>',
+                '<p style="margin:10px 0 0;">Deliver to receiving office, obtain recipient signature, and note any discrepancies immediately.</p>',
+              '</div>',
+              '<div style="font-size:12px;color:#605e5c;">',
+                '<div style="font-weight:600;color:#0f6cbd;text-transform:uppercase;font-size:12px;letter-spacing:.08em;">Acknowledgement</div>',
+                '<p style="margin:10px 0 0;">I acknowledge receipt of the goods in good order and condition.</p>',
+                '<div style="margin-top:16px;border-top:1px solid #c8c6c4;padding-top:12px;">',
+                  '<div style="margin-bottom:12px;">Recipient Name / Signature</div>',
+                  '<div style="height:1px;background:#c8c6c4;margin:18px 0;"></div>',
+                  '<div>Date: __________</div>',
+                '</div>',
+              '</div>',
+            '</div>'
+          ].join('');
+        }
+      },
+      {
+        id:"project_report",
+        label:"📊 Project Report",
+        description:"Two-page executive report with summary, milestones, and risk tracker.",
+        header:{ templateId:"project", align:"left" },
+        footer:{ templateId:"footer_logo_page_meta", align:"right" },
+        preview:'<strong>Project Report</strong><span>Highlights · KPIs · Next steps</span>',
+        html:function(){
+          return [
+            '<div style="text-align:center;margin-bottom:28px;">',
+              '<div style="font-size:24px;font-weight:700;color:#0f6cbd;">Project Phoenix – Monthly Review</div>',
+              '<div style="font-size:13px;color:#605e5c;margin-top:8px;">Prepared for leadership on {{date}}</div>',
+            '</div>',
+            '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px;margin-bottom:26px;">',
+              '<div style="padding:18px;border:1px solid #e1dfdd;border-radius:12px;background:#f8fbff;">',
+                '<div style="font-size:12px;font-weight:600;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Executive Summary</div>',
+                '<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#323130;">Project Phoenix remains on schedule with 78% completion. The new onboarding flow increased activation by 14% week-over-week and customer satisfaction remains above target.</p>',
+              '</div>',
+              '<div style="padding:18px;border:1px solid #e1dfdd;border-radius:12px;background:#fff;">',
+                '<div style="font-size:12px;font-weight:600;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Key Metrics</div>',
+                '<ul style="margin:10px 0 0;padding-left:18px;font-size:13px;color:#323130;line-height:1.6;">',
+                  '<li>Active users: 18,420 (+12% vs last month)</li>',
+                  '<li>Deployment frequency: 5 releases/week</li>',
+                  '<li>Incident rate: 0 Sev-1, 2 Sev-2 (resolved)</li>',
+                '</ul>',
+              '</div>',
+            '</section>',
+            '<section style="margin-bottom:26px;">',
+              '<div style="font-size:12px;font-weight:600;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Milestone Progress</div>',
+              '<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;color:#323130;">',
+                '<thead>',
+                  '<tr>',
+                    '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;">Milestone</th>',
+                    '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;">Target Date</th>',
+                    '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;">Status</th>',
+                    '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;">Notes</th>',
+                  '</tr>',
+                '</thead>',
+                '<tbody>',
+                  '<tr>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">M3 – Analytics rollout</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">15 Aug</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">✅ On Track</td>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">Beta feedback incorporated, launch assets finalised.</td>',
+                  '</tr>',
+                  '<tr>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">M4 – Regional pilot</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">05 Sep</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">⚠️ At Risk</td>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">Awaiting security clearance; contingency vendor engaged.</td>',
+                  '</tr>',
+                  '<tr>',
+                    '<td style="padding:10px;">M5 – Global launch</td>',
+                    '<td style="padding:10px;text-align:center;">28 Sep</td>',
+                    '<td style="padding:10px;text-align:center;">⬜ Planned</td>',
+                    '<td style="padding:10px;">Marketing assets drafted, localization kick-off scheduled.</td>',
+                  '</tr>',
+                '</tbody>',
+              '</table>',
+            '</section>',
+            '<section style="margin-bottom:20px;">',
+              '<div style="font-size:12px;font-weight:600;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Upcoming Focus</div>',
+              '<ol style="margin:10px 0 0;padding-left:18px;font-size:13px;color:#323130;line-height:1.6;">',
+                '<li>Complete security remediation and obtain approval from InfoSec.</li>',
+                '<li>Launch customer advisory board for pilot cohorts.</li>',
+                '<li>Prepare enablement materials for support and sales teams.</li>',
+              '</ol>',
+            '</section>',
+            '<!--page:break-->',
+            '<section style="margin-bottom:26px;">',
+              '<div style="font-size:12px;font-weight:600;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Risk & Mitigation Tracker</div>',
+              '<table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px;color:#323130;">',
+                '<thead>',
+                  '<tr>',
+                    '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;">Risk</th>',
+                    '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;">Impact</th>',
+                    '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;">Owner</th>',
+                    '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;">Mitigation Plan</th>',
+                  '</tr>',
+                '</thead>',
+                '<tbody>',
+                  '<tr>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">Data residency approval delay</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">High</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">Alex Wong</td>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">Engaging legal counsel and preparing fallback deployment in EU region.</td>',
+                  '</tr>',
+                  '<tr>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">Pilot adoption lag</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">Medium</td>',
+                    '<td style="padding:10px;text-align:center;border-bottom:1px solid #e1dfdd;">Priya Shah</td>',
+                    '<td style="padding:10px;border-bottom:1px solid #e1dfdd;">Deploy guided onboarding, weekly check-ins, and success metrics dashboard.</td>',
+                  '</tr>',
+                  '<tr>',
+                    '<td style="padding:10px;">Capacity constraints for QA</td>',
+                    '<td style="padding:10px;text-align:center;">Medium</td>',
+                    '<td style="padding:10px;text-align:center;">Min Chen</td>',
+                    '<td style="padding:10px;">Activate vendor QA pool and stagger sprint scope to balance workload.</td>',
+                  '</tr>',
+                '</tbody>',
+              '</table>',
+            '</section>',
+            '<section>',
+              '<div style="font-size:12px;font-weight:600;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Sign-off</div>',
+              '<p style="margin:10px 0 0;font-size:13px;color:#323130;">Prepared by: Digital Transformation Office</p>',
+              '<p style="margin:6px 0 0;font-size:13px;color:#323130;">Reviewed by: Steering Committee – {{date}}</p>',
+            '</section>'
+          ].join('');
+        }
+      }
+    ];
+    function resolveDocTemplateValue(value, context){
+      if(typeof value==="function") return value(context)||"";
+      return value||"";
+    }
+    function getHFTemplateById(kind, templateId, inst){
+      if(!templateId) return null;
+      const resolved=resolveTemplates(kind, inst||null);
+      for(let i=0;i<resolved.length;i++){
+        if(resolved[i] && resolved[i].id===templateId) return resolved[i];
+      }
+      return null;
+    }
+    function estimatePageCount(html){
+      if(!html) return 1;
+      const matches=String(html).match(/<!--\s*page:break\s*-->/gi);
+      return (matches ? matches.length : 0) + 1;
+    }
+    const DocTemplateLibrary=(function(){
+      function resolveSection(config, kind, inst, ctx){
+        if(!config) return null;
+        const section={ html:"", align:kind==="header"?"left":"center", enabled:true, templateId:null, sourceLabel:null };
+        if(config.templateId){
+          const resolved=getHFTemplateById(kind, config.templateId, inst);
+          if(resolved){
+            section.html=resolved.html||"";
+            section.align=resolved.align || section.align;
+            section.templateId=config.templateId;
+            section.sourceLabel=resolved.label || null;
+          }
+        }
+        if(Object.prototype.hasOwnProperty.call(config, "html")){
+          const raw=resolveDocTemplateValue(config.html, ctx);
+          if(raw) section.html=raw;
+        }
+        if(Object.prototype.hasOwnProperty.call(config, "align")){
+          const norm=HFAlign.normalize(config.align);
+          if(norm) section.align=norm;
+        } else {
+          section.align=HFAlign.normalize(section.align);
+        }
+        if(Object.prototype.hasOwnProperty.call(config, "enabled")) section.enabled=!!config.enabled;
+        if(!section.html) section.enabled=false;
+        return section;
+      }
+      function buildTemplates(inst){
+        const ctx={ inst };
+        const templates=[];
+        for(let i=0;i<DOC_TEMPLATE_LIBRARY.length;i++){
+          const def=DOC_TEMPLATE_LIBRARY[i];
+          const html=resolveDocTemplateValue(def.html, ctx);
+          const previewRaw=resolveDocTemplateValue(def.preview, ctx) || html;
+          const header=resolveSection(def.header||null, "header", inst, ctx);
+          const footer=resolveSection(def.footer||null, "footer", inst, ctx);
+          const previewHTML=Sanitizer.clean(replacePreviewTokens(previewRaw));
+          templates.push({
+            id:def.id,
+            label:def.label,
+            description:def.description || "",
+            html:html,
+            previewHTML:previewHTML,
+            header:header,
+            footer:footer,
+            pageCount:estimatePageCount(html)
+          });
+        }
+        return templates;
+      }
+      function describeSection(label, section){
+        if(!section || !section.enabled || !section.html) return label+": Disabled";
+        const align=section.align ? section.align.charAt(0).toUpperCase()+section.align.slice(1) : "Default";
+        const source=section.sourceLabel || "Custom";
+        return label+": "+source+" · "+align;
+      }
+      function hasMeaningfulContent(html){
+        if(!html) return false;
+        const cleaned=Sanitizer.clean(html).replace(/<!--[^>]*-->/g,"").replace(/<[^>]+>/g," ").replace(/&nbsp;/gi," ").replace(/\s+/g," ").trim();
+        return cleaned.length>0;
+      }
+      function open(inst){
+        if(!inst || !inst.el) return;
+        const templates=buildTemplates(inst);
+        if(!templates.length) return;
+        const existing=document.querySelector('[data-weditor-modal="doc-template"]');
+        if(existing){
+          if(typeof existing.__weditorClose==="function"){ existing.__weditorClose(); }
+          else if(existing.parentNode){ existing.parentNode.removeChild(existing); }
+        }
+        A11y.lockScroll();
+        const bg=document.createElement("div"); applyStyles(bg, WCfg.Style.modalBg);
+        bg.setAttribute("data-weditor-modal","doc-template");
+        if(inst && typeof inst.uid!=="undefined") bg.setAttribute("data-weditor-owner", String(inst.uid));
+        const modal=document.createElement("div"); applyStyles(modal, WCfg.Style.docTplModal);
+        const head=document.createElement("div"); applyStyles(head, WCfg.Style.docTplHeader);
+        const title=document.createElement("h2"); applyStyles(title, WCfg.Style.docTplTitle); title.textContent="Document Templates";
+        head.appendChild(title);
+        const subtitle=document.createElement("div"); applyStyles(subtitle, WCfg.Style.docTplSubtitle);
+        subtitle.textContent="Start fast with curated layouts for invoices, delivery orders, and reports.";
+        head.appendChild(subtitle);
+        const closeBtn=document.createElement("button"); closeBtn.type="button"; applyStyles(closeBtn, WCfg.Style.docTplClose); closeBtn.innerHTML="&times;"; closeBtn.setAttribute("aria-label","Close template library");
+        closeBtn.onmouseenter=function(){ closeBtn.style.background="#f3f2f1"; };
+        closeBtn.onmouseleave=function(){ closeBtn.style.background="transparent"; };
+        head.appendChild(closeBtn);
+        modal.appendChild(head);
+        const bodyWrap=document.createElement("div"); applyStyles(bodyWrap, WCfg.Style.docTplBody);
+        const list=document.createElement("div"); applyStyles(list, WCfg.Style.docTplList);
+        list.setAttribute("role","list");
+        const previewWrap=document.createElement("div"); applyStyles(previewWrap, WCfg.Style.docTplPreviewWrap);
+        previewWrap.style.display="flex";
+        previewWrap.style.flexDirection="column";
+        previewWrap.style.minHeight="0";
+        previewWrap.style.flex="1";
+        const previewTitle=document.createElement("div"); applyStyles(previewTitle, WCfg.Style.docTplPreviewTitle);
+        previewWrap.appendChild(previewTitle);
+        const previewStage=document.createElement("div"); applyStyles(previewStage, WCfg.Style.docTplPreviewStage);
+        previewStage.style.flexDirection="column";
+        previewStage.style.alignItems="center";
+        previewStage.style.gap="24px";
+        previewWrap.appendChild(previewStage);
+        const metaBar=document.createElement("div"); applyStyles(metaBar, WCfg.Style.docTplMeta);
+        previewWrap.appendChild(metaBar);
+        const previewNotice=document.createElement("div"); applyStyles(previewNotice, WCfg.Style.docTplPreviewNotice);
+        previewNotice.textContent="Applying a template replaces the current editor content and updates header/footer.";
+        previewWrap.appendChild(previewNotice);
+        bodyWrap.appendChild(list);
+        bodyWrap.appendChild(previewWrap);
+        modal.appendChild(bodyWrap);
+        const footer=document.createElement("div"); applyStyles(footer, WCfg.Style.docTplFooter);
+        const cancelBtn=WDom.btn("Cancel", false, "Dismiss without applying");
+        const applyBtn=WDom.btn("Use template", true, "Replace editor content with selected template");
+        footer.appendChild(cancelBtn);
+        footer.appendChild(applyBtn);
+        modal.appendChild(footer);
+        bg.appendChild(modal);
+        document.body.appendChild(bg);
+        const cards=[];
+        let selectedIndex=0;
+        function updateSelection(){
+          for(let i=0;i<cards.length;i++){
+            const card=cards[i];
+            const active=i===selectedIndex;
+            card.setAttribute("data-active", active?"1":"0");
+            card.style.borderColor = active ? WCfg.UI.brand : WCfg.UI.borderSubtle;
+            card.style.boxShadow = active ? "0 0 0 2px rgba(15,108,189,.18)" : "none";
+            card.style.background = active ? "#f0f7ff" : "#fff";
+            card.style.color = active ? WCfg.UI.text : WCfg.UI.text;
+          }
+        }
+        function createCard(tpl, index){
+          const card=document.createElement("button"); card.type="button"; applyStyles(card, WCfg.Style.docTplCard);
+          card.setAttribute("role","listitem");
+          const cardTitle=document.createElement("div"); applyStyles(cardTitle, WCfg.Style.docTplCardTitle); cardTitle.textContent=tpl.label;
+          card.appendChild(cardTitle);
+          if(tpl.description){
+            const cardDesc=document.createElement("div"); applyStyles(cardDesc, WCfg.Style.docTplCardDesc); cardDesc.textContent=tpl.description;
+            card.appendChild(cardDesc);
+          }
+          const cardMeta=document.createElement("div"); applyStyles(cardMeta, WCfg.Style.docTplCardMeta);
+          cardMeta.textContent='Approx. '+tpl.pageCount+' page'+(tpl.pageCount>1?'s':'');
+          card.appendChild(cardMeta);
+          card.onmouseenter=function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#f3f2f1"; };
+          card.onmouseleave=function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#fff"; };
+          card.onclick=function(){ selectedIndex=index; updateSelection(); renderPreview(); };
+          card.onkeydown=function(e){ if(e.key==="Enter" || e.key===" "){ e.preventDefault(); selectedIndex=index; updateSelection(); renderPreview(); applyBtn.focus(); } };
+          list.appendChild(card);
+          cards.push(card);
+        }
+        for(let i=0;i<templates.length;i++){ createCard(templates[i], i); }
+        function renderPreview(){
+          const tpl=templates[selectedIndex];
+          if(!tpl) return;
+          previewTitle.textContent=tpl.label + (tpl.description?" — "+tpl.description:"");
+          while(previewStage.firstChild){ previewStage.removeChild(previewStage.firstChild); }
+          const raw=tpl.html || "";
+          const segments=String(raw).split(/<!--\s*page:break\s*-->/gi);
+          for(let i=0;i<segments.length;i++){
+            const page=document.createElement("div"); applyStyles(page, WCfg.Style.docTplPreviewPage);
+            const content=Sanitizer.clean(replacePreviewTokens(segments[i]||"")) || "";
+            page.innerHTML=content || '<div style="font-size:12px;color:#605e5c;">(Empty section)</div>';
+            previewStage.appendChild(page);
+            if(i<segments.length-1){
+              const divider=document.createElement("div"); applyStyles(divider, WCfg.Style.pageDivider); divider.textContent="Page Break"; previewStage.appendChild(divider);
+            }
+          }
+          metaBar.textContent=[describeSection("Header", tpl.header), describeSection("Footer", tpl.footer), 'Pages: '+tpl.pageCount].join('   ·   ');
+        }
+        function applyTemplate(){
+          const tpl=templates[selectedIndex];
+          if(!tpl) return;
+          const currentHTML=Breaks.serialize(inst.el);
+          if(hasMeaningfulContent(currentHTML)){
+            const confirmMsg='Apply "'+tpl.label.replace(/<[^>]+>/g,'')+'" template and replace current content?';
+            if(!window.confirm(confirmMsg)) return;
+          }
+          const cleanBody=Sanitizer.clean(tpl.html||"");
+          inst.el.innerHTML=cleanBody;
+          Normalizer.fixStructure(inst.el);
+          Breaks.ensurePlaceholders(inst.el);
+          if(inst.el.querySelectorAll){
+            const tables=inst.el.querySelectorAll('table');
+            for(let i=0;i<tables.length;i++){ TableResizer.ensureTable(tables[i]); }
+          }
+          const headerSection=tpl.header;
+          const footerSection=tpl.footer;
+          if(headerSection && headerSection.enabled && headerSection.html){
+            inst.headerHTML=Sanitizer.clean(headerSection.html);
+            inst.headerEnabled=true;
+            inst.headerAlign=HFAlign.normalize(headerSection.align)||"left";
+          } else {
+            inst.headerHTML="";
+            inst.headerEnabled=false;
+          }
+          if(footerSection && footerSection.enabled && footerSection.html){
+            inst.footerHTML=Sanitizer.clean(footerSection.html);
+            inst.footerEnabled=true;
+            inst.footerAlign=HFAlign.normalize(footerSection.align)||"left";
+          } else {
+            inst.footerHTML="";
+            inst.footerEnabled=false;
+          }
+          inst.el.classList.toggle("weditor--no-header", !inst.headerEnabled);
+          inst.el.classList.toggle("weditor--no-footer", !inst.footerEnabled);
+          inst.el.focus();
+          HistoryManager.record(inst, inst.el, { label:"Apply Template – "+tpl.label, repeatable:false });
+          OutputBinding.syncDebounced(inst);
+          close();
+        }
+        function applyLayout(){
+          const compact=window.innerWidth < WCfg.MOBILE_BP;
+          if(compact){
+            bg.style.alignItems="stretch";
+            bg.style.justifyContent="flex-start";
+            bg.style.padding="0";
+            modal.style.width="100%";
+            modal.style.height="100%";
+            modal.style.maxHeight="none";
+            modal.style.borderRadius="0";
+            modal.style.boxShadow="none";
+            bodyWrap.style.gridTemplateColumns="1fr";
+            bodyWrap.style.gridTemplateRows="auto 1fr";
+            list.style.borderRight="0";
+            list.style.borderBottom="1px solid "+WCfg.UI.border;
+            list.style.maxHeight="240px";
+          } else {
+            bg.style.alignItems="center";
+            bg.style.justifyContent="center";
+            bg.style.padding="32px 16px";
+            modal.style.width="min(960px, 100%)";
+            modal.style.height="auto";
+            modal.style.maxHeight="92vh";
+            modal.style.borderRadius="16px";
+            modal.style.boxShadow="0 24px 48px rgba(0,0,0,.22)";
+            bodyWrap.style.gridTemplateColumns="280px 1fr";
+            bodyWrap.style.gridTemplateRows="auto";
+            list.style.borderRight="1px solid "+WCfg.UI.border;
+            list.style.borderBottom="0";
+            list.style.maxHeight="none";
+          }
+        }
+        applyLayout();
+        const onResize=function(){ applyLayout(); };
+        window.addEventListener("resize", onResize);
+        let closing=false;
+        function close(){
+          if(closing) return;
+          closing=true;
+          bg.style.pointerEvents="none";
+          bg.style.opacity="0";
+          window.setTimeout(function(){ if(bg.parentNode) bg.parentNode.removeChild(bg); }, 200);
+          A11y.unlockScroll();
+          document.removeEventListener("keydown", onKey);
+          window.removeEventListener("resize", onResize);
+          bg.removeAttribute("data-weditor-modal");
+          bg.removeAttribute("data-weditor-owner");
+          bg.__weditorClose=null;
+        }
+        function onKey(ev){
+          if(ev.key==="Escape"){ ev.preventDefault(); close(); }
+          else if((ev.key==="Enter"||ev.key==="Return") && (ev.metaKey||ev.ctrlKey)){ ev.preventDefault(); applyTemplate(); }
+        }
+        document.addEventListener("keydown", onKey);
+        bg.__weditorClose=close;
+        cancelBtn.onclick=function(){ close(); };
+        closeBtn.onclick=function(){ close(); };
+        applyBtn.onclick=function(){ applyTemplate(); };
+        bg.addEventListener("click", function(e){ if(e.target===bg) close(); });
+        window.requestAnimationFrame(function(){ bg.style.opacity="1"; cards[0] && cards[0].focus(); });
+        updateSelection();
+        renderPreview();
+      }
+      return { open };
+    })();
     function section(kind, titleText, description, enabled, html, align, inst){
       const changeHandlers=[];
       function notifyChange(){ for(let i=0;i<changeHandlers.length;i++){ changeHandlers[i](); } }
@@ -10294,6 +10903,8 @@
           OutputBinding.syncDebounced(inst);
         }
       } },
+    "doc.templates":{ label:"Templates", kind:"button", ariaLabel:"Open document template library",
+      run:function(inst){ DocTemplateLibrary.open(inst); } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
@@ -10370,7 +10981,7 @@
         { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
+      { id:"insert", label:"Insert", items:["doc.templates","insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -10390,7 +11001,7 @@
         { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
+      { id:"insert", label:"Insert", items:["doc.templates","insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
