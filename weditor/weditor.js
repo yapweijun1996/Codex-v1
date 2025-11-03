@@ -155,6 +155,31 @@
       hfPreviewHeader:{ minHeight:"58px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderBottom:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewFooter:{ minHeight:"52px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderTop:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
+      templateModal:{ width:"100%", maxWidth:"960px", background:"#fff", borderRadius:"16px", display:"flex", flexDirection:"column", boxShadow:"0 24px 60px rgba(0,0,0,.18)", maxHeight:"92vh", overflow:"hidden" },
+      templateHead:{ padding:"22px 28px", borderBottom:"1px solid "+UI.border, display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:"16px" },
+      templateHeadText:{ display:"flex", flexDirection:"column", gap:"6px", minWidth:"0", flex:"1 1 auto" },
+      templateTitle:{ font:"20px/1.35 Segoe UI,system-ui", color:UI.text, margin:"0" },
+      templateSubtitle:{ font:"13px/1.55 Segoe UI,system-ui", color:UI.textDim },
+      templateBody:{ flex:"1", display:"flex", gap:"24px", padding:"24px 28px", background:"#faf9f8", boxSizing:"border-box", overflow:"auto" },
+      templateListColumn:{ flex:"1 1 60%", display:"flex", flexDirection:"column", gap:"18px", minWidth:"0" },
+      templateIntro:{ padding:"14px 16px", borderRadius:"12px", border:"1px solid "+UI.borderSubtle, background:"#fff", font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      templateGrid:{ display:"grid", gap:"12px", gridTemplateColumns:"repeat(auto-fill, minmax(240px, 1fr))" },
+      templateCard:{ borderRadius:"12px", border:"1px solid "+UI.borderSubtle, background:"#fff", padding:"14px 16px", display:"flex", flexDirection:"column", gap:"8px", textAlign:"left", cursor:"pointer", transition:"all .18s ease" },
+      templateCardTitle:{ font:"14px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      templateCardDesc:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      templateCardPreview:{ font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, display:"flex", flexDirection:"column", gap:"2px" },
+      templateCardMeta:{ display:"flex", flexWrap:"wrap", gap:"6px" },
+      templateBadge:{ borderRadius:"999px", padding:"4px 10px", background:"#f3f2f1", color:UI.textDim, font:"11px/1.2 Segoe UI,system-ui" },
+      templatePreviewColumn:{ flex:"1 1 40%", display:"flex", flexDirection:"column", gap:"16px", minWidth:"260px" },
+      templatePreviewWrap:{ display:"flex", flexDirection:"column", gap:"12px", borderRadius:"12px", border:"1px solid "+UI.borderSubtle, background:"#fff", padding:"18px", boxShadow:"0 12px 30px rgba(0,0,0,.08)" },
+      templatePreviewTitle:{ font:"12px/1.4 Segoe UI,system-ui", color:UI.textDim, textTransform:"uppercase", letterSpacing:".08em" },
+      templatePreviewFrame:{ display:"flex", justifyContent:"center" },
+      templatePreviewPage:{ width:"100%", maxWidth:"360px", background:"#fff", borderRadius:"10px", border:"1px solid "+UI.borderSubtle, padding:"18px", boxSizing:"border-box", display:"flex", flexDirection:"column", gap:"10px", minHeight:"420px", boxShadow:"0 10px 26px rgba(0,0,0,.06)" },
+      templatePreviewFeatures:{ display:"flex", flexDirection:"column", gap:"8px" },
+      templatePreviewFeature:{ display:"flex", alignItems:"flex-start", gap:"8px", font:"12px/1.5 Segoe UI,system-ui", color:UI.text },
+      templatePreviewFeatureBullet:{ fontSize:"14px", lineHeight:"1", color:UI.brand, marginTop:"2px" },
+      templatePreviewFallback:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim, textAlign:"center" },
+      templateFooter:{ padding:"18px 28px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px" },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,PREVIEW_FRAME_PADDING,Style };
@@ -9832,6 +9857,789 @@
     }
     return { create };
   })();
+  const ContentTemplates=(function(){
+    const TEMPLATES=[
+      {
+        id:"sales_invoice",
+        label:"🧾 Sales Invoice",
+        description:"Letterhead-ready invoice with totals, terms, and payment summary.",
+        features:[
+          "Letterhead summary block",
+          "Itemised table with subtotal & tax",
+          "Page break with supporting notes"
+        ],
+        preview:'<strong>Sales Invoice</strong><span style="font-size:11px;color:#605e5c;">Invoice INV-2024-001 · Due in 30 days</span>',
+        previewHtml:[
+          '<section style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:16px;">',
+            '<div style="display:flex;flex-direction:column;gap:4px;">',
+              '<div style="font-size:18px;font-weight:700;color:#0f6cbd;">Acme Supplies Pte Ltd</div>',
+              '<div style="font-size:11px;color:#605e5c;">123 Orchard Road · Singapore</div>',
+            '</div>',
+            '<div style="text-align:right;display:flex;flex-direction:column;gap:4px;">',
+              '<div style="font-size:20px;font-weight:700;color:#323130;letter-spacing:.08em;">SALES INVOICE</div>',
+              '<div style="font-size:11px;color:#605e5c;">Issue Date: 12 Mar 2024</div>',
+            '</div>',
+          '</section>',
+          '<table style="width:100%;border-collapse:collapse;">',
+            '<thead>',
+              '<tr>',
+                '<th style="text-align:left;padding:8px;border-bottom:2px solid #0f6cbd;font-size:11px;color:#323130;">Item</th>',
+                '<th style="text-align:right;padding:8px;border-bottom:2px solid #0f6cbd;font-size:11px;color:#323130;width:120px;">Amount</th>',
+              '</tr>',
+            '</thead>',
+            '<tbody>',
+              '<tr>',
+                '<td style="padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;">Design Retainer</td>',
+                '<td style="padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;text-align:right;">$2,400.00</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;">Campaign Assets</td>',
+                '<td style="padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;text-align:right;">$3,150.00</td>',
+              '</tr>',
+            '</tbody>',
+          '</table>'
+        ].join(''),
+        html:[
+          '<section style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:24px;">',
+            '<div style="display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:22px;font-weight:700;color:#0f6cbd;">Acme Supplies Pte Ltd</div>',
+              '<div style="font-size:12px;color:#605e5c;">123 Orchard Road, #08-01 · Singapore 238888</div>',
+              '<div style="font-size:12px;color:#605e5c;">GST Reg. 201234567Z</div>',
+            '</div>',
+            '<div style="text-align:right;display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:26px;font-weight:700;color:#323130;letter-spacing:.08em;">SALES INVOICE</div>',
+              '<div style="font-size:12px;color:#605e5c;">Invoice No. INV-2024-001</div>',
+              '<div style="font-size:12px;color:#605e5c;">Issue Date: 12 Mar 2024</div>',
+              '<div style="font-size:12px;color:#605e5c;">Due Date: 11 Apr 2024</div>',
+            '</div>',
+          '</section>',
+          '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;margin-bottom:24px;">',
+            '<div style="display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Bill To</div>',
+              '<div style="font-size:15px;font-weight:600;">Bright Ideas Studio</div>',
+              '<div style="font-size:12px;color:#605e5c;">45 Beach Road<br>Singapore 189678</div>',
+              '<div style="font-size:12px;color:#605e5c;">Attn: Finance Department</div>',
+            '</div>',
+            '<div style="display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Ship To</div>',
+              '<div style="font-size:15px;font-weight:600;">Bright Ideas Studio Warehouse</div>',
+              '<div style="font-size:12px;color:#605e5c;">12 Tuas Avenue 4<br>Singapore 639423</div>',
+              '<div style="font-size:12px;color:#605e5c;">Contact: +65 6123 4567</div>',
+            '</div>',
+            '<div style="display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Summary</div>',
+              '<div style="font-size:12px;color:#605e5c;">Salesperson: Jamie Tan</div>',
+              '<div style="font-size:12px;color:#605e5c;">PO Number: PO-7781</div>',
+              '<div style="font-size:12px;color:#605e5c;">Currency: SGD</div>',
+            '</div>',
+          '</section>',
+          '<table style="width:100%;border-collapse:collapse;margin-bottom:18px;">',
+            '<thead>',
+              '<tr>',
+                '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;">Item</th>',
+                '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;">Description</th>',
+                '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;width:70px;">Qty</th>',
+                '<th style="text-align:right;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;width:110px;">Unit Price</th>',
+                '<th style="text-align:right;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;width:120px;">Amount</th>',
+              '</tr>',
+            '</thead>',
+            '<tbody>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:13px;font-weight:600;">Design Retainer</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#605e5c;">Creative direction and monthly brand support</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:12px;">1</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:right;font-size:12px;">$2,400.00</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:right;font-size:12px;">$2,400.00</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:13px;font-weight:600;">Campaign Assets</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#605e5c;">Social media graphics, email set, landing page visuals</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:12px;">1</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:right;font-size:12px;">$3,150.00</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:right;font-size:12px;">$3,150.00</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:13px;font-weight:600;">Printing Support</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#605e5c;">A2 posters and brochures · 5 business days lead time</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:12px;">200</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:right;font-size:12px;">$4.80</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:right;font-size:12px;">$960.00</td>',
+              '</tr>',
+            '</tbody>',
+          '</table>',
+          '<div style="display:flex;justify-content:flex-end;margin-bottom:18px;">',
+            '<table style="width:280px;border-collapse:collapse;font-size:12px;color:#323130;">',
+              '<tr>',
+                '<td style="padding:6px 10px;border-bottom:1px solid #e1dfdd;">Subtotal</td>',
+                '<td style="padding:6px 10px;border-bottom:1px solid #e1dfdd;text-align:right;">$6,510.00</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:6px 10px;border-bottom:1px solid #e1dfdd;">Less: Retainer Credit</td>',
+                '<td style="padding:6px 10px;border-bottom:1px solid #e1dfdd;text-align:right;">-$500.00</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:6px 10px;border-bottom:1px solid #e1dfdd;">GST (8%)</td>',
+                '<td style="padding:6px 10px;border-bottom:1px solid #e1dfdd;text-align:right;">$480.80</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:10px;font-weight:700;">Total Due</td>',
+                '<td style="padding:10px;font-weight:700;text-align:right;font-size:14px;">$6,490.80</td>',
+              '</tr>',
+            '</table>',
+          '</div>',
+          '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;margin-bottom:18px;">',
+            '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#f8fbff;display:flex;flex-direction:column;gap:8px;">',
+              '<div style="font-size:12px;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Payment Details</div>',
+              '<div style="font-size:12px;color:#323130;">Bank: DBS Corporate Account</div>',
+              '<div style="font-size:12px;color:#323130;">Account: 001-234567-9</div>',
+              '<div style="font-size:12px;color:#323130;">Reference: INV-2024-001</div>',
+            '</div>',
+            '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff7f0;display:flex;flex-direction:column;gap:8px;">',
+              '<div style="font-size:12px;color:#d83b01;text-transform:uppercase;letter-spacing:.08em;">Reminder</div>',
+              '<div style="font-size:12px;color:#323130;">Payment terms: Net 30 days.</div>',
+              '<div style="font-size:12px;color:#323130;">Late payments incur 2% monthly interest.</div>',
+            '</div>',
+          '</section>',
+          '<section style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;margin-bottom:12px;display:flex;flex-direction:column;gap:8px;">',
+            '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Notes</div>',
+            '<ul style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+              '<li>Thank you for partnering with us on the Q2 brand refresh campaign.</li>',
+              '<li>Please notify accounts@acmesupplies.sg after payment is made.</li>',
+              '<li>Support hotline: +65 6988 4455 (Mon–Fri, 9am–6pm).</li>',
+            '</ul>',
+          '</section>',
+          '<div style="font-size:11px;color:#605e5c;text-align:center;padding-top:12px;border-top:1px dashed #e1dfdd;">This invoice is computer generated and does not require a signature.</div>',
+          '<!--page:break-->',
+          '<section style="display:flex;flex-direction:column;gap:18px;margin-top:12px;">',
+            '<h2 style="font-size:18px;font-weight:700;color:#323130;margin:0;">Supporting Details</h2>',
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:6px;">',
+                '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Work Summary</div>',
+                '<div style="font-size:12px;color:#323130;">Scope covers creative concepting, three revision rounds, and production handover.</div>',
+              '</div>',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:6px;">',
+                '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Timeline</div>',
+                '<div style="font-size:12px;color:#323130;">Kick-off 4 Mar · Draft 1 on 12 Mar · Final sign-off 28 Mar · Launch 2 Apr.</div>',
+              '</div>',
+            '</div>',
+            '<table style="width:100%;border-collapse:collapse;margin-top:4px;">',
+              '<thead>',
+                '<tr>',
+                  '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Milestone</th>',
+                  '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Owner</th>',
+                  '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Status</th>',
+                  '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Remarks</th>',
+                '</tr>',
+              '</thead>',
+              '<tbody>',
+                '<tr>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Creative direction workshop</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Jamie Tan</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Completed</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Recorded notes shared via Teams.</td>',
+                '</tr>',
+                '<tr>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Asset production</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Nurul Azizah</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">In progress (80%)</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Awaiting copy approval for brochures.</td>',
+                '</tr>',
+              '</tbody>',
+            '</table>',
+            '<section style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fafafa;display:flex;flex-direction:column;gap:8px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Next Steps</div>',
+              '<ol style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+                '<li>Release 50% payment upon confirmation of artwork (due 18 Mar).</li>',
+                '<li>Share final brand guideline updates for alignment.</li>',
+                '<li>Schedule launch retro meeting for week of 15 Apr.</li>',
+              '</ol>',
+            '</section>',
+          '</section>'
+        ].join('')
+      },
+      {
+        id:"delivery_order",
+        label:"🚚 Delivery Order",
+        description:"Delivery checklist with fulfilment steps and sign-off blocks.",
+        features:[
+          "Pickup and ship-to blocks",
+          "Item fulfilment table",
+          "Signature strip plus page break"
+        ],
+        preview:'<strong>Delivery Order</strong><span style="font-size:11px;color:#605e5c;">DO-4582 · Van 3 · 14 Mar 2024</span>',
+        previewHtml:[
+          '<section style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:16px;">',
+            '<div style="display:flex;flex-direction:column;gap:4px;">',
+              '<div style="font-size:18px;font-weight:700;color:#0f6cbd;">SwiftLogistics LLP</div>',
+              '<div style="font-size:11px;color:#605e5c;">21 Bukit Batok Street 23</div>',
+            '</div>',
+            '<div style="text-align:right;display:flex;flex-direction:column;gap:4px;">',
+              '<div style="font-size:20px;font-weight:700;color:#323130;letter-spacing:.08em;">DELIVERY ORDER</div>',
+              '<div style="font-size:11px;color:#605e5c;">Dispatch Date: 14 Mar 2024</div>',
+            '</div>',
+          '</section>',
+          '<table style="width:100%;border-collapse:collapse;">',
+            '<thead>',
+              '<tr>',
+                '<th style="text-align:left;padding:8px;border-bottom:2px solid #0f6cbd;font-size:11px;color:#323130;">Item</th>',
+                '<th style="text-align:center;padding:8px;border-bottom:2px solid #0f6cbd;font-size:11px;color:#323130;width:70px;">Qty</th>',
+                '<th style="text-align:center;padding:8px;border-bottom:2px solid #0f6cbd;font-size:11px;color:#323130;width:80px;">Packed</th>',
+              '</tr>',
+            '</thead>',
+            '<tbody>',
+              '<tr>',
+                '<td style="padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;">Modular display set</td>',
+                '<td style="padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;text-align:center;">12</td>',
+                '<td style="padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;text-align:center;">&#9744;</td>',
+              '</tr>',
+            '</tbody>',
+          '</table>'
+        ].join(''),
+        html:[
+          '<section style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:24px;">',
+            '<div style="display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:22px;font-weight:700;color:#0f6cbd;">SwiftLogistics LLP</div>',
+              '<div style="font-size:12px;color:#605e5c;">21 Bukit Batok Street 23 · Singapore 659527</div>',
+              '<div style="font-size:12px;color:#605e5c;">Hotline: +65 6800 8899</div>',
+            '</div>',
+            '<div style="display:flex;flex-direction:column;gap:6px;text-align:right;">',
+              '<div style="font-size:26px;font-weight:700;color:#323130;letter-spacing:.08em;">DELIVERY ORDER</div>',
+              '<div style="font-size:12px;color:#605e5c;">DO No. DO-4582</div>',
+              '<div style="font-size:12px;color:#605e5c;">Dispatch Date: 14 Mar 2024</div>',
+              '<div style="font-size:12px;color:#605e5c;">Vehicle: Van 3 · Driver: Malik</div>',
+            '</div>',
+          '</section>',
+          '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;margin-bottom:24px;">',
+            '<div style="display:flex;flex-direction:column;gap:6px;padding:14px;border:1px solid #e1dfdd;border-radius:10px;background:#f8fbff;">',
+              '<div style="font-size:12px;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">From</div>',
+              '<div style="font-size:13px;font-weight:600;">Acme Supplies Warehouse</div>',
+              '<div style="font-size:12px;color:#605e5c;">15 Pioneer Crescent, Singapore 628566</div>',
+              '<div style="font-size:12px;color:#605e5c;">Contact: +65 6012 8890</div>',
+            '</div>',
+            '<div style="display:flex;flex-direction:column;gap:6px;padding:14px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Deliver To</div>',
+              '<div style="font-size:13px;font-weight:600;">Bright Ideas Studio Warehouse</div>',
+              '<div style="font-size:12px;color:#605e5c;">12 Tuas Avenue 4, Singapore 639423</div>',
+              '<div style="font-size:12px;color:#605e5c;">Receiving Contact: +65 6123 4567</div>',
+            '</div>',
+            '<div style="display:flex;flex-direction:column;gap:6px;padding:14px;border:1px solid #e1dfdd;border-radius:10px;background:#fff7f0;">',
+              '<div style="font-size:12px;color:#d83b01;text-transform:uppercase;letter-spacing:.08em;">Delivery Info</div>',
+              '<div style="font-size:12px;color:#323130;">Window: 10:00 AM – 12:00 PM</div>',
+              '<div style="font-size:12px;color:#323130;">Special handling: Fragile signage panels</div>',
+              '<div style="font-size:12px;color:#323130;">Temperature: Ambient (No chiller required)</div>',
+            '</div>',
+          '</section>',
+          '<table style="width:100%;border-collapse:collapse;margin-bottom:18px;">',
+            '<thead>',
+              '<tr>',
+                '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;">Item</th>',
+                '<th style="text-align:left;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;">Description</th>',
+                '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;width:70px;">Qty</th>',
+                '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;width:90px;">Packed</th>',
+                '<th style="text-align:center;padding:10px;border-bottom:2px solid #0f6cbd;font-size:12px;color:#323130;width:90px;">Delivered</th>',
+              '</tr>',
+            '</thead>',
+            '<tbody>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;font-weight:600;">Modular display set</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#605e5c;">Panels A1–A4 with connectors</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:12px;">12</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:16px;">&#9744;</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:16px;">&#9744;</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;font-weight:600;">Lighting kit</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#605e5c;">LED bars with power adapters</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:12px;">6</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:16px;">&#9744;</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:16px;">&#9744;</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;font-weight:600;">Event brochures</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#605e5c;">Brochure packs (50 per box)</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:12px;">8</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:16px;">&#9744;</td>',
+                '<td style="padding:10px;border-bottom:1px solid #e1dfdd;text-align:center;font-size:16px;">&#9744;</td>',
+              '</tr>',
+            '</tbody>',
+          '</table>',
+          '<section style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;margin-bottom:18px;display:flex;flex-direction:column;gap:8px;background:#fafafa;">',
+            '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Special Instructions</div>',
+            '<ul style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+              '<li>Stack crates no more than three levels high.</li>',
+              '<li>Collect signed goods received note before departure.</li>',
+              '<li>Notify dispatcher if site lift is unavailable.</li>',
+            '</ul>',
+          '</section>',
+          '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;margin-bottom:12px;">',
+            '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:10px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Received By</div>',
+              '<div style="height:1px;background:#d0d0d0;width:100%;"></div>',
+              '<div style="display:flex;justify-content:space-between;font-size:11px;color:#605e5c;">',
+                '<span>Name</span><span>Date</span>',
+              '</div>',
+              '<div style="height:1px;background:#d0d0d0;width:100%;"></div>',
+              '<div style="display:flex;justify-content:space-between;font-size:11px;color:#605e5c;">',
+                '<span>Signature</span><span>Company Stamp</span>',
+              '</div>',
+            '</div>',
+            '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:10px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Delivered By</div>',
+              '<div style="height:1px;background:#d0d0d0;width:100%;"></div>',
+              '<div style="display:flex;justify-content:space-between;font-size:11px;color:#605e5c;">',
+                '<span>Driver</span><span>Date</span>',
+              '</div>',
+              '<div style="height:1px;background:#d0d0d0;width:100%;"></div>',
+              '<div style="display:flex;justify-content:space-between;font-size:11px;color:#605e5c;">',
+                '<span>Signature</span><span>Time Out</span>',
+              '</div>',
+            '</div>',
+          '</section>',
+          '<div style="font-size:11px;color:#605e5c;text-align:center;padding-top:12px;border-top:1px dashed #e1dfdd;">Please return a signed copy to logistics@swiftlogistics.sg within 24 hours.</div>',
+          '<!--page:break-->',
+          '<section style="display:flex;flex-direction:column;gap:18px;margin-top:12px;">',
+            '<h2 style="font-size:18px;font-weight:700;color:#323130;margin:0;">Packing Checklist</h2>',
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;">',
+                '<ul style="margin:0;padding-left:18px;color:#323130;font-size:12px;line-height:1.6;">',
+                  '<li>Validate pallet labels against DO number.</li>',
+                  '<li>Seal cartons with tamper-evident tape.</li>',
+                  '<li>Photograph loaded vehicle before departure.</li>',
+                '</ul>',
+              '</div>',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;">',
+                '<ul style="margin:0;padding-left:18px;color:#323130;font-size:12px;line-height:1.6;">',
+                  '<li>Confirm site contact prior to arrival.</li>',
+                  '<li>Ensure safety cones and gloves available.</li>',
+                  '<li>Record temperature for any chilled goods.</li>',
+                '</ul>',
+              '</div>',
+            '</div>',
+            '<table style="width:100%;border-collapse:collapse;">',
+              '<thead>',
+                '<tr>',
+                  '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Incident Log</th>',
+                  '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;width:140px;">Actioned By</th>',
+                  '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;width:120px;">Status</th>',
+                '</tr>',
+              '</thead>',
+              '<tbody>',
+                '<tr>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;color:#605e5c;">Record any damages, delays, or substitutions.</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">&nbsp;</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">&nbsp;</td>',
+                '</tr>',
+                '<tr>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;color:#605e5c;">Customer feedback / remarks.</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">&nbsp;</td>',
+                  '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">&nbsp;</td>',
+                '</tr>',
+              '</tbody>',
+            '</table>',
+          '</section>'
+        ].join('')
+      },
+      {
+        id:"project_status",
+        label:"📄 Project Status Update",
+        description:"Two-page executive summary for project milestones and next actions.",
+        features:[
+          "Executive summary hero",
+          "Milestone status grid",
+          "Risks and next steps page"
+        ],
+        preview:'<strong>Project Phoenix</strong><span style="font-size:11px;color:#605e5c;">Status update · 15 Mar 2024</span>',
+        previewHtml:[
+          '<section style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:16px;">',
+            '<div style="display:flex;flex-direction:column;gap:4px;">',
+              '<div style="font-size:20px;font-weight:700;color:#323130;">Project Phoenix Status</div>',
+              '<div style="font-size:11px;color:#605e5c;">Sprint 18 of 24 · Overall health: On track</div>',
+            '</div>',
+            '<div style="padding:10px 16px;border-radius:10px;background:#f0f6ff;border:1px solid #c5daff;text-align:right;">',
+              '<div style="font-size:12px;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Report Date</div>',
+              '<div style="font-size:14px;font-weight:600;color:#0f6cbd;">15 Mar 2024</div>',
+            '</div>',
+          '</section>',
+          '<table style="width:100%;border-collapse:collapse;">',
+            '<thead>',
+              '<tr>',
+                '<th style="text-align:left;padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;">Milestone</th>',
+                '<th style="text-align:left;padding:8px;border-bottom:1px solid #e1dfdd;font-size:11px;color:#323130;width:120px;">Status</th>',
+              '</tr>',
+            '</thead>',
+            '<tbody>',
+              '<tr>',
+                '<td style="padding:8px;border-bottom:1px solid #f3f2f1;font-size:11px;color:#323130;">Data migration batch 2</td>',
+                '<td style="padding:8px;border-bottom:1px solid #f3f2f1;font-size:11px;color:#0f6cbd;">Green</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:8px;border-bottom:1px solid #f3f2f1;font-size:11px;color:#323130;">UAT preparation</td>',
+                '<td style="padding:8px;border-bottom:1px solid #f3f2f1;font-size:11px;color:#d83b01;">Amber</td>',
+              '</tr>',
+            '</tbody>',
+          '</table>'
+        ].join(''),
+        html:[
+          '<section style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:24px;">',
+            '<div style="display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:26px;font-weight:700;color:#323130;">Project Phoenix Status</div>',
+              '<div style="font-size:12px;color:#605e5c;">Report Date: 15 Mar 2024</div>',
+              '<div style="font-size:12px;color:#605e5c;">Prepared by: PMO Office</div>',
+            '</div>',
+            '<div style="padding:12px 18px;border-radius:12px;background:#f0f6ff;border:1px solid #c5daff;text-align:right;display:flex;flex-direction:column;gap:6px;">',
+              '<div style="font-size:12px;color:#0f6cbd;text-transform:uppercase;letter-spacing:.08em;">Overall Health</div>',
+              '<div style="font-size:16px;font-weight:700;color:#0f6cbd;">On Track</div>',
+              '<div style="font-size:11px;color:#605e5c;">Sprint 18 of 24</div>',
+            '</div>',
+          '</section>',
+          '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;margin-bottom:24px;">',
+            '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:8px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Highlights</div>',
+              '<ul style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+                '<li>New analytics dashboard launched to pilot users.</li>',
+                '<li>Customer success playbook approved for rollout.</li>',
+              '</ul>',
+            '</div>',
+            '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:8px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Focus Areas</div>',
+              '<ul style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+                '<li>Stabilise API error rate below 0.5%.</li>',
+                '<li>Complete training assets for regional teams.</li>',
+              '</ul>',
+            '</div>',
+            '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:8px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Budget</div>',
+              '<div style="font-size:12px;color:#323130;">Spend to date: 62% of allocated budget.</div>',
+              '<div style="font-size:12px;color:#323130;">Variance: +2.5% (approved for cloud credits).</div>',
+            '</div>',
+          '</section>',
+          '<table style="width:100%;border-collapse:collapse;margin-bottom:18px;">',
+            '<thead>',
+              '<tr>',
+                '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Milestone</th>',
+                '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Owner</th>',
+                '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Status</th>',
+                '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Due</th>',
+                '<th style="text-align:left;padding:10px;border-bottom:1px solid #e1dfdd;font-size:12px;color:#323130;">Comment</th>',
+              '</tr>',
+            '</thead>',
+            '<tbody>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Data migration batch 2</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Erin Wong</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;color:#107c10;">Green</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">20 Mar</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Dry run completed with zero defects.</td>',
+              '</tr>',
+              '<tr>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">UAT preparation</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Rahul Menon</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;color:#d83b01;">Amber</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">5 Apr</td>',
+                '<td style="padding:10px;border-bottom:1px solid #f3f2f1;font-size:12px;">Test scripts pending sign-off from legal.</td>',
+              '</tr>',
+            '</tbody>',
+          '</table>',
+          '<section style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fafafa;display:flex;flex-direction:column;gap:8px;">',
+            '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Upcoming</div>',
+            '<ol style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+              '<li>Complete security penetration test (due 28 Mar).</li>',
+              '<li>Lock scope for phase 2 enhancements.</li>',
+              '<li>Prepare steering committee readout for 22 Mar.</li>',
+            '</ol>',
+          '</section>',
+          '<!--page:break-->',
+          '<section style="display:flex;flex-direction:column;gap:18px;margin-top:12px;">',
+            '<h2 style="font-size:18px;font-weight:700;color:#323130;margin:0;">Risks & Dependencies</h2>',
+            '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:8px;">',
+                '<div style="font-size:12px;color:#d83b01;text-transform:uppercase;letter-spacing:.08em;">Risk R-014</div>',
+                '<div style="font-size:12px;color:#323130;">Data residency review pending from security team.</div>',
+                '<div style="font-size:12px;color:#323130;">Mitigation: Escalated to CTO, decision expected 19 Mar.</div>',
+              '</div>',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:8px;">',
+                '<div style="font-size:12px;color:#d83b01;text-transform:uppercase;letter-spacing:.08em;">Dependency D-006</div>',
+                '<div style="font-size:12px;color:#323130;">Final data extract from legacy vendor due 22 Mar.</div>',
+                '<div style="font-size:12px;color:#323130;">Follow-up: Weekly checkpoint with vendor team every Tuesday.</div>',
+              '</div>',
+            '</div>',
+            '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;">',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:8px;">',
+                '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Next Steps</div>',
+                '<ul style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+                  '<li>Coordinate cross-team demo for stakeholders on 20 Mar.</li>',
+                  '<li>Publish updated SOP for support desk by 25 Mar.</li>',
+                '</ul>',
+              '</div>',
+              '<div style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fff;display:flex;flex-direction:column;gap:8px;">',
+                '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Decisions Required</div>',
+                '<ul style="margin:0 0 0 18px;padding:0;color:#323130;font-size:12px;line-height:1.6;">',
+                  '<li>Approve revised analytics KPI list (steerco 22 Mar).</li>',
+                  '<li>Confirm customer pilot cohort for phase 2.</li>',
+                '</ul>',
+              '</div>',
+            '</section>',
+            '<section style="padding:16px;border:1px solid #e1dfdd;border-radius:10px;background:#fafafa;display:flex;flex-direction:column;gap:8px;">',
+              '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;">Notes</div>',
+              '<div style="font-size:12px;color:#323130;">This summary is shared with the steering committee and delivery leads. Contact phoenix-pmo@acme.com for clarifications.</div>',
+            '</section>',
+          '</section>'
+        ].join('')
+      }
+    ];
+    function sanitizePreview(html){
+      return Sanitizer.clean(html || "");
+    }
+    function hasEditorContent(inst){
+      if(!inst || !inst.el) return false;
+      if(ContentInspector && typeof ContentInspector.hasEditorContent==="function"){
+        return ContentInspector.hasEditorContent(inst);
+      }
+      const text=(inst.el.textContent||"").trim();
+      return text.length>0;
+    }
+    function focusEditor(el){
+      if(!el || typeof el.focus!=="function") return;
+      try{ el.focus({ preventScroll:true }); }
+      catch(err){ try{ el.focus(); } catch(err2){} }
+    }
+    function applyTemplate(inst, tpl){
+      if(!inst || !inst.el || !tpl) return false;
+      if(hasEditorContent(inst)){
+        const proceed=window.confirm("Applying this template will replace the current content. Continue?");
+        if(!proceed) return false;
+      }
+      inst.el.innerHTML=Sanitizer.clean(tpl.html || "");
+      Normalizer.fixStructure(inst.el);
+      Breaks.ensurePlaceholders(inst.el);
+      enforceZeroMargins(inst.el);
+      if(inst.el.__weditorHideOverlay) inst.el.__weditorHideOverlay();
+      focusEditor(inst.el);
+      WDom.placeCaretAtEnd(inst.el);
+      HistoryManager.record(inst, inst.el, { label:"Apply Template ("+tpl.label+")", repeatable:false });
+      OutputBinding.syncDebounced(inst);
+      return true;
+    }
+    function open(inst){
+      if(!inst || !inst.el) return;
+      const existing=document.querySelector('[data-weditor-modal="content-templates"]');
+      if(existing){
+        if(typeof existing.__weditorClose==="function"){ existing.__weditorClose(); }
+        else if(existing.parentNode){ existing.parentNode.removeChild(existing); }
+      }
+      A11y.lockScroll();
+      const bg=document.createElement("div");
+      applyStyles(bg, WCfg.Style.modalBg);
+      bg.setAttribute("data-weditor-modal","content-templates");
+      if(inst && typeof inst.uid!=="undefined"){ bg.setAttribute("data-weditor-owner", String(inst.uid)); }
+      const panel=document.createElement("div");
+      applyStyles(panel, WCfg.Style.templateModal);
+      panel.setAttribute("role","dialog");
+      panel.setAttribute("aria-modal","true");
+      panel.setAttribute("tabindex","-1");
+      const head=document.createElement("div"); applyStyles(head, WCfg.Style.templateHead);
+      const headText=document.createElement("div"); applyStyles(headText, WCfg.Style.templateHeadText);
+      const title=document.createElement("h2"); applyStyles(title, WCfg.Style.templateTitle);
+      const titleId="weditor-template-title-"+Math.floor(Math.random()*1e6);
+      title.id=titleId;
+      title.textContent="Document Templates";
+      const subtitle=document.createElement("p"); applyStyles(subtitle, WCfg.Style.templateSubtitle);
+      subtitle.textContent="Start faster with ready-made layouts for invoices, delivery orders, and project summaries.";
+      headText.appendChild(title);
+      headText.appendChild(subtitle);
+      const closeBtn=document.createElement("button");
+      closeBtn.type="button";
+      closeBtn.innerHTML="&times;";
+      closeBtn.setAttribute("aria-label","Close template library");
+      closeBtn.style.fontSize="24px";
+      closeBtn.style.lineHeight="1";
+      closeBtn.style.border="0";
+      closeBtn.style.background="transparent";
+      closeBtn.style.color=WCfg.UI.textDim;
+      closeBtn.style.cursor="pointer";
+      closeBtn.style.padding="4px";
+      closeBtn.style.borderRadius="6px";
+      closeBtn.onmouseenter=function(){ closeBtn.style.background="#f3f2f1"; };
+      closeBtn.onmouseleave=function(){ closeBtn.style.background="transparent"; };
+      head.appendChild(headText);
+      head.appendChild(closeBtn);
+      panel.appendChild(head);
+      panel.setAttribute("aria-labelledby", titleId);
+      const body=document.createElement("div"); applyStyles(body, WCfg.Style.templateBody);
+      const listColumn=document.createElement("div"); applyStyles(listColumn, WCfg.Style.templateListColumn);
+      const intro=document.createElement("div"); applyStyles(intro, WCfg.Style.templateIntro);
+      intro.innerHTML='<strong>Start fast:</strong> Choose a template to prefill the editor. We will ask before replacing existing content.';
+      const grid=document.createElement("div"); applyStyles(grid, WCfg.Style.templateGrid);
+      listColumn.appendChild(intro);
+      listColumn.appendChild(grid);
+      const previewColumn=document.createElement("aside"); applyStyles(previewColumn, WCfg.Style.templatePreviewColumn);
+      const previewWrap=document.createElement("div"); applyStyles(previewWrap, WCfg.Style.templatePreviewWrap);
+      const previewTitle=document.createElement("div"); applyStyles(previewTitle, WCfg.Style.templatePreviewTitle);
+      previewTitle.textContent="Preview";
+      const previewFrame=document.createElement("div"); applyStyles(previewFrame, WCfg.Style.templatePreviewFrame);
+      const previewPage=document.createElement("div"); applyStyles(previewPage, WCfg.Style.templatePreviewPage);
+      previewFrame.appendChild(previewPage);
+      const previewHint=document.createElement("div"); applyStyles(previewHint, WCfg.Style.templateCardDesc);
+      previewHint.textContent="Click a template card to insert it into the editor.";
+      const featureList=document.createElement("div"); applyStyles(featureList, WCfg.Style.templatePreviewFeatures);
+      previewWrap.appendChild(previewTitle);
+      previewWrap.appendChild(previewFrame);
+      previewWrap.appendChild(previewHint);
+      previewWrap.appendChild(featureList);
+      previewColumn.appendChild(previewWrap);
+      body.appendChild(listColumn);
+      body.appendChild(previewColumn);
+      panel.appendChild(body);
+      const footer=document.createElement("div"); applyStyles(footer, WCfg.Style.templateFooter);
+      const closeSecondary=WDom.btn("Close", false, "Close template library");
+      footer.appendChild(closeSecondary);
+      panel.appendChild(footer);
+      bg.appendChild(panel);
+      document.body.appendChild(bg);
+      function showFallback(){
+        previewPage.innerHTML="";
+        const msg=document.createElement("div");
+        applyStyles(msg, WCfg.Style.templatePreviewFallback);
+        msg.textContent="Select a template to preview it.";
+        previewPage.appendChild(msg);
+        featureList.innerHTML="";
+        featureList.style.display="none";
+      }
+      function renderFeatures(tpl){
+        featureList.innerHTML="";
+        if(!tpl || !tpl.features || !tpl.features.length){
+          featureList.style.display="none";
+          return;
+        }
+        featureList.style.display="flex";
+        for(let i=0;i<tpl.features.length;i++){
+          const feat=tpl.features[i];
+          if(!feat) continue;
+          const row=document.createElement("div");
+          applyStyles(row, WCfg.Style.templatePreviewFeature);
+          const bullet=document.createElement("span");
+          applyStyles(bullet, WCfg.Style.templatePreviewFeatureBullet);
+          bullet.textContent="✔";
+          const text=document.createElement("div");
+          text.textContent=feat;
+          text.style.flex="1 1 auto";
+          row.appendChild(bullet);
+          row.appendChild(text);
+          featureList.appendChild(row);
+        }
+      }
+      function updatePreview(tpl){
+        previewPage.innerHTML="";
+        if(!tpl){
+          showFallback();
+          return;
+        }
+        const html=sanitizePreview(tpl.previewHtml || tpl.html || tpl.preview || "");
+        if(html){
+          previewPage.innerHTML=html;
+        } else {
+          showFallback();
+        }
+        renderFeatures(tpl);
+      }
+      let activeCard=null;
+      const cards=[];
+      function setActive(card, tpl){
+        if(activeCard===card){
+          updatePreview(tpl);
+          return;
+        }
+        if(activeCard){
+          activeCard.style.borderColor=WCfg.UI.borderSubtle;
+          activeCard.style.boxShadow="none";
+          activeCard.style.background="#fff";
+        }
+        activeCard=card;
+        if(card){
+          card.style.borderColor=WCfg.UI.brand;
+          card.style.boxShadow="0 0 0 2px rgba(15,108,189,.16)";
+          card.style.background="#f5faff";
+        }
+        updatePreview(tpl);
+      }
+      for(let i=0;i<TEMPLATES.length;i++){
+        const tpl=TEMPLATES[i];
+        const card=document.createElement("button");
+        card.type="button";
+        applyStyles(card, WCfg.Style.templateCard);
+        card.setAttribute("data-template-id", tpl.id);
+        const cardTitle=document.createElement("div"); applyStyles(cardTitle, WCfg.Style.templateCardTitle);
+        cardTitle.textContent=tpl.label;
+        const cardDesc=document.createElement("div"); applyStyles(cardDesc, WCfg.Style.templateCardDesc);
+        cardDesc.textContent=tpl.description;
+        const cardPreview=document.createElement("div"); applyStyles(cardPreview, WCfg.Style.templateCardPreview);
+        cardPreview.innerHTML=sanitizePreview(tpl.preview || tpl.previewHtml || tpl.html || "");
+        const meta=document.createElement("div"); applyStyles(meta, WCfg.Style.templateCardMeta);
+        if(tpl.features && tpl.features.length){
+          for(let j=0;j<Math.min(3, tpl.features.length); j++){
+            const badge=document.createElement("span");
+            applyStyles(badge, WCfg.Style.templateBadge);
+            badge.textContent=tpl.features[j];
+            meta.appendChild(badge);
+          }
+        }
+        card.appendChild(cardTitle);
+        card.appendChild(cardDesc);
+        card.appendChild(cardPreview);
+        if(meta.childNodes.length) card.appendChild(meta);
+        card.addEventListener("mouseenter", function(){ setActive(card, tpl); });
+        card.addEventListener("focus", function(){ setActive(card, tpl); });
+        card.addEventListener("click", function(){ setActive(card, tpl); if(applyTemplate(inst, tpl)){ close(); } });
+        card.addEventListener("keydown", function(ev){ if(ev.key==="Enter" || ev.key===" "){ ev.preventDefault(); setActive(card, tpl); if(applyTemplate(inst, tpl)){ close(); } } });
+        grid.appendChild(card);
+        cards.push({ button:card, template:tpl });
+      }
+      function applyLayout(){
+        const compact=window.innerWidth < WCfg.MOBILE_BP;
+        if(compact){
+          body.style.flexDirection="column";
+          previewColumn.style.minWidth="0";
+        } else {
+          body.style.flexDirection="";
+          previewColumn.style.minWidth="260px";
+        }
+      }
+      applyLayout();
+      const onResize=function(){ applyLayout(); };
+      window.addEventListener("resize", onResize);
+      function onKey(ev){
+        if(ev.key==="Escape"){
+          ev.preventDefault();
+          close();
+        }
+      }
+      document.addEventListener("keydown", onKey);
+      closeBtn.addEventListener("click", function(){ close(); });
+      closeSecondary.addEventListener("click", function(){ close(); });
+      bg.addEventListener("click", function(ev){ if(ev.target===bg) close(); });
+      let closing=false;
+      function close(){
+        if(closing) return;
+        closing=true;
+        bg.style.pointerEvents="none";
+        bg.style.opacity="0";
+        window.setTimeout(function(){ if(bg.parentNode) bg.parentNode.removeChild(bg); }, 200);
+        A11y.unlockScroll();
+        document.removeEventListener("keydown", onKey);
+        window.removeEventListener("resize", onResize);
+        bg.removeAttribute("data-weditor-modal");
+        bg.removeAttribute("data-weditor-owner");
+        bg.__weditorClose=null;
+        if(inst && inst.el) focusEditor(inst.el);
+      }
+      bg.__weditorClose=close;
+      showFallback();
+      if(cards.length){ setActive(cards[0].button, cards[0].template); }
+      window.requestAnimationFrame(function(){ bg.style.opacity="1"; panel.focus(); });
+    }
+    return { open };
+  })();
+
   function decorateAlignButton(btn, align){
     if(!btn) return;
     const mode=(align||"").toLowerCase();
@@ -10178,6 +10986,12 @@
       title:"Superscript",
       run:function(inst, arg){ Formatting.applySimple(inst, arg && arg.ctx, "superscript"); OutputBinding.syncDebounced(inst); }
     },
+    "insert.templates":{
+      label:"Templates",
+      kind:"button",
+      ariaLabel:"Open template library",
+      run:function(inst, arg){ ContentTemplates.open(inst, arg && arg.ctx); }
+    },
     "insert.image":{ kind:"custom", ariaLabel:"Insert image", render:function(inst, ctx){ return ImageInsertUI.create(inst, ctx); } },
     "insert.table":{ label:"Insert Table", kind:"button", ariaLabel:"Insert table",
       run:function(inst, arg){
@@ -10370,7 +11184,7 @@
         { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
+      { id:"insert", label:"Insert", items:["insert.templates","insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
@@ -10390,7 +11204,7 @@
         { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
+      { id:"insert", label:"Insert", items:["insert.templates","insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
