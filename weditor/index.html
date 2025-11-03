@@ -49,5 +49,55 @@
                                 data-weditor-for="editorB"
                                 data-weditor-output="state">{"version":"1.0","outputMode":"raw","html":"<h2>Editor B (Raw Output)</h2><p>The JSON textarea below is pre-populated to simulate a database load.</p><p>You can tweak this JSON, reload the page, and the editor will pick it up automatically.</p>","header":{"enabled":false,"html":"","align":"left"},"footer":{"enabled":false,"html":"","align":"left"}}</textarea>
                 </div>
+                <textarea
+                        class="weditor_template_json"
+                        data-weditor-template-id="sales_invoice"
+                        hidden>
+{
+  "version": "1.0",
+  "id": "sales_invoice",
+  "label": "🧾 Sales Invoice",
+  "summary": "Invoice layout with billing blocks, line items, totals, and payment instructions.",
+  "previewHtml": "<strong>Invoice #INV-2048</strong><span>Balance due within 14 days</span>",
+  "outputMode": "paged",
+  "fixPageHeight": true,
+  "html": "<div style=\"display:flex;justify-content:space-between;gap:18px;margin-bottom:16px;\"><div><div style=\"font-size:18px;font-weight:700;color:#1a1a1a;margin-bottom:4px;\">Invoice</div><div style=\"font-size:13px;color:#605e5c;\">Bill To</div><div style=\"font-size:14px;color:#323130;\">Northwind Trading Pte Ltd</div><div style=\"font-size:12px;color:#605e5c;\">18 Collyer Quay, Singapore 049317</div></div><div style=\"text-align:right;font-size:12px;color:#605e5c;\"><div>Invoice #INV-2048</div><div>{{date}}</div><div>Payment Terms: 14 days</div></div></div><table style=\"width:100%;border-collapse:collapse;margin-bottom:18px;font-size:12px;color:#323130;\"><thead><tr style=\"background:#f3f2f1;text-transform:uppercase;letter-spacing:.04em;\"><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:left;\">Item</th><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:left;\">Description</th><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:right;\">Qty</th><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:right;\">Unit</th><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:right;\">Amount</th></tr></thead><tbody><tr><td style=\"padding:12px;border:1px solid #e1dfdd;font-weight:600;\">Consulting</td><td style=\"padding:12px;border:1px solid #e1dfdd;color:#605e5c;\">Quarterly strategy workshop</td><td style=\"padding:12px;border:1px solid #e1dfdd;text-align:right;\">2</td><td style=\"padding:12px;border:1px solid #e1dfdd;text-align:right;\">SGD 2,800.00</td><td style=\"padding:12px;border:1px solid #e1dfdd;text-align:right;font-weight:600;\">SGD 5,600.00</td></tr><tr><td style=\"padding:12px;border:1px solid #e1dfdd;font-weight:600;\">Support</td><td style=\"padding:12px;border:1px solid #e1dfdd;color:#605e5c;\">Managed support retainer</td><td style=\"padding:12px;border:1px solid #e1dfdd;text-align:right;\">1</td><td style=\"padding:12px;border:1px solid #e1dfdd;text-align:right;\">SGD 1,800.00</td><td style=\"padding:12px;border:1px solid #e1dfdd;text-align:right;font-weight:600;\">SGD 1,800.00</td></tr></tbody></table><div style=\"display:flex;justify-content:space-between;gap:18px;\"><div style=\"flex:1;min-width:0;\"><div style=\"font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:6px;\">Notes</div><p style=\"font-size:12px;line-height:1.6;color:#605e5c;margin:0 0 8px;\">Thank you for your business. Please include the invoice number with your payment.</p><p style=\"font-size:12px;line-height:1.6;color:#605e5c;margin:0;\">Payment via bank transfer to Brightwave Solutions Pte Ltd.</p></div><div style=\"width:220px;\"><table style=\"width:100%;border-collapse:collapse;font-size:12px;color:#323130;\"><tbody><tr><td style=\"padding:6px 0;color:#605e5c;\">Subtotal</td><td style=\"padding:6px 0;text-align:right;font-weight:600;\">SGD 7,400.00</td></tr><tr><td style=\"padding:6px 0;color:#605e5c;\">GST (8%)</td><td style=\"padding:6px 0;text-align:right;font-weight:600;\">SGD 592.00</td></tr><tr><td style=\"padding:8px 0;border-top:1px solid #e1dfdd;font-weight:700;\">Total Due</td><td style=\"padding:8px 0;border-top:1px solid #e1dfdd;text-align:right;font-weight:700;\">SGD 7,992.00</td></tr></tbody></table></div></div>",
+  "header": {
+    "enabled": true,
+    "align": "left",
+    "html": "<div style=\"display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;\"><div style=\"display:flex;align-items:center;gap:12px;\"><img src=\"https://picsum.photos/seed/weditor-invoice/64/64\" alt=\"Company logo\" style=\"width:64px;height:64px;border-radius:12px;object-fit:cover;\"><div><div style=\"font-size:16px;font-weight:600;color:#1a1a1a;\">Brightwave Solutions</div><div style=\"font-size:12px;color:#605e5c;\">25 Maxwell Road · Singapore 069113</div></div></div><div style=\"text-align:right;font-size:12px;color:#605e5c;line-height:1.6;\"><div>Invoice #INV-2048</div><div>{{date}}</div><div>+65 6123 4567</div></div></div>"
+  },
+  "footer": {
+    "enabled": true,
+    "align": "left",
+    "html": "<div style=\"display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:11px;color:#605e5c;\"><span>Brightwave Solutions · UEN 202312345K</span><span style=\"text-align:right;\">Page <span class=\"weditor_footer_page_num\">{{page}}</span> of <span class=\"weditor_footer_page_num_total\">{{total}}</span></span></div>"
+  }
+}
+                </textarea>
+                <textarea
+                        class="weditor_template_json"
+                        data-weditor-template-id="delivery_order"
+                        hidden>
+{
+  "version": "1.0",
+  "id": "delivery_order",
+  "label": "🚚 Delivery Order",
+  "summary": "Delivery order with pickup/delivery info, item checklist, and acknowledgement block.",
+  "previewHtml": "<strong>Delivery #DO-3021</strong><span>Outbound on {{date}}</span>",
+  "outputMode": "paged",
+  "fixPageHeight": true,
+  "html": "<div style=\"display:flex;justify-content:space-between;gap:18px;margin-bottom:14px;\"><div><div style=\"font-size:18px;font-weight:700;color:#1a1a1a;margin-bottom:4px;\">Delivery Order</div><div style=\"font-size:12px;color:#605e5c;\">Customer</div><div style=\"font-size:13px;color:#323130;\">Evergreen Retail Pte Ltd</div><div style=\"font-size:12px;color:#605e5c;\">8 Marina Boulevard, #16-01</div></div><div style=\"text-align:right;font-size:12px;color:#605e5c;\"><div>Delivery #DO-3021</div><div>{{date}}</div><div>Dispatch Window: 9:00 AM – 12:00 PM</div></div></div><table style=\"width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px;color:#323130;\"><thead><tr style=\"background:#f8f8f8;text-transform:uppercase;letter-spacing:.04em;\"><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:left;\">Item</th><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:left;\">Description</th><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:right;\">Qty</th><th style=\"padding:10px;border:1px solid #e1dfdd;text-align:left;\">Remarks</th></tr></thead><tbody><tr><td style=\"padding:10px;border:1px solid #e1dfdd;font-weight:600;\">SKU-1048</td><td style=\"padding:10px;border:1px solid #e1dfdd;color:#605e5c;\">Wireless barcode scanners</td><td style=\"padding:10px;border:1px solid #e1dfdd;text-align:right;\">12</td><td style=\"padding:10px;border:1px solid #e1dfdd;color:#605e5c;\">Packed in 3 cartons</td></tr><tr><td style=\"padding:10px;border:1px solid #e1dfdd;font-weight:600;\">SKU-2386</td><td style=\"padding:10px;border:1px solid #e1dfdd;color:#605e5c;\">POS terminals</td><td style=\"padding:10px;border:1px solid #e1dfdd;text-align:right;\">6</td><td style=\"padding:10px;border:1px solid #e1dfdd;color:#605e5c;\">Handle with care</td></tr></tbody></table><div style=\"display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:16px;\"><div style=\"border:1px solid #e1dfdd;border-radius:10px;padding:12px;background:#fafafa;\"><div style=\"font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:4px;\">Pickup</div><div style=\"font-size:12px;color:#605e5c;\">Brightwave Warehouse</div><div style=\"font-size:12px;color:#605e5c;\">60 Tuas South Ave 2</div></div><div style=\"border:1px solid #e1dfdd;border-radius:10px;padding:12px;background:#fafafa;\"><div style=\"font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:4px;\">Contact</div><div style=\"font-size:12px;color:#605e5c;\">Logistics Hotline: +65 6100 1234</div><div style=\"font-size:12px;color:#605e5c;\">Driver: M. Rahman · +65 9234 5678</div></div></div><div style=\"border:1px solid #e1dfdd;border-radius:10px;padding:14px;\"><div style=\"font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:8px;\">Acknowledgement</div><p style=\"font-size:12px;line-height:1.6;color:#605e5c;margin:0 0 10px;\">Goods received in good order and condition.</p><div style=\"display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#605e5c;\"><span>Recipient Signature: ____________________</span><span>Date: __________</span></div></div>",
+  "header": {
+    "enabled": true,
+    "align": "left",
+    "html": "<div style=\"display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;\"><div style=\"display:flex;align-items:center;gap:12px;\"><img src=\"https://picsum.photos/seed/weditor-do/56/56\" alt=\"Company logo\" style=\"width:56px;height:56px;border-radius:12px;object-fit:cover;\"><div><div style=\"font-size:16px;font-weight:600;color:#1a1a1a;\">Brightwave Logistics</div><div style=\"font-size:12px;color:#605e5c;\">3 Changi South Street 2</div></div></div><div style=\"text-align:right;font-size:12px;color:#605e5c;line-height:1.6;\"><div>Delivery Order</div><div>{{date}}</div><div>Hotline: +65 6100 1234</div></div></div>"
+  },
+  "footer": {
+    "enabled": true,
+    "align": "left",
+    "html": "<div style=\"display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;font-size:11px;color:#605e5c;\"><span>Brightwave Logistics</span><span style=\"text-align:center;\">Page <span class=\"weditor_footer_page_num\">{{page}}</span> of <span class=\"weditor_footer_page_num_total\">{{total}}</span></span><span style=\"text-align:right;\">www.brightwave-logistics.com</span></div>"
+  }
+}
+                </textarea>
         </body>
 </html>
