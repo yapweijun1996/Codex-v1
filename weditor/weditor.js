@@ -155,6 +155,11 @@
       hfPreviewHeader:{ minHeight:"58px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderBottom:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewFooter:{ minHeight:"52px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderTop:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
+      templateLayout:{ display:"grid", gridTemplateColumns:"minmax(0,1.4fr) minmax(0,1fr)", gap:"20px", alignItems:"start" },
+      templateList:{ display:"flex", flexDirection:"column", gap:"12px" },
+      templateGridLarge:{ display:"grid", gap:"12px", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))" },
+      templateDetails:{ display:"flex", flexDirection:"column", gap:"12px" },
+      templateDescription:{ font:"12px/1.6 Segoe UI,system-ui", color:UI.textDim },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,PREVIEW_FRAME_PADDING,Style };
@@ -9907,6 +9912,626 @@
     }
     btn.appendChild(icon);
   }
+  const DOCUMENT_TEMPLATES=[
+    {
+      id:"sales_invoice",
+      label:"🧾 Sales Invoice",
+      summary:"Two-page invoice with totals table, payment instructions, and signature block.",
+      preview:'<div style="display:flex;flex-direction:column;gap:4px;">'+
+        '<strong style="font-size:14px;color:#1a1a1a;">Invoice #INV-2048</strong>'+
+        '<span style="font-size:12px;color:#666;">Balance due within 14 days</span>'+
+        '<span style="font-size:12px;color:#666;">Subtotal SGD 7,400.00 · Tax SGD 592.00</span>'+
+      '</div>',
+      header:{
+        html:'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;width:100%;">'+
+          '<div style="display:flex;align-items:center;gap:12px;">'+
+            '<img src="https://picsum.photos/seed/weditor-invoice/64/64" alt="Company logo" style="width:64px;height:64px;border-radius:14px;object-fit:cover;">'+
+            '<div>'+
+              '<div style="font-size:18px;font-weight:600;color:#1a1a1a;">Brightwave Solutions</div>'+
+              '<div style="font-size:12px;color:#666;">25 Maxwell Road · Singapore 069113</div>'+
+              '<div style="font-size:12px;color:#666;">finance@brightwave.co</div>'+
+            '</div>'+
+          '</div>'+
+          '<div style="text-align:right;font-size:12px;color:#666;line-height:1.6;">'+
+            '<div>Invoice #INV-2048</div>'+
+            '<div>{{date}}</div>'+
+            '<div>+65 6123 4567</div>'+
+          '</div>'+
+        '</div>',
+        align:"left",
+        enabled:true
+      },
+      footer:{
+        html:'<div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:11px;color:#666;">'+
+          '<span>Brightwave Solutions · UEN 202312345K</span>'+
+          '<span style="text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
+        '</div>',
+        align:"left",
+        enabled:true
+      },
+      body:'<div style="display:flex;justify-content:space-between;gap:24px;margin-bottom:24px;">'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-size:12px;color:#666;margin-bottom:6px;">Bill To</div>'+
+          '<div style="font-size:15px;font-weight:600;color:#1a1a1a;">Northwind Trading Pte Ltd</div>'+
+          '<div style="font-size:13px;color:#444;line-height:1.6;">18 Collyer Quay<br>Singapore 049317</div>'+
+          '<div style="font-size:13px;color:#444;line-height:1.6;">Attn: Accounts Payable</div>'+
+        '</div>'+
+        '<div style="flex:1;min-width:0;">'+
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;color:#444;">'+
+            '<tbody>'+
+              '<tr>'+
+                '<td style="padding:4px 0;font-weight:600;color:#1a1a1a;">Invoice Date</td>'+
+                '<td style="padding:4px 0;text-align:right;">{{date}}</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:4px 0;font-weight:600;color:#1a1a1a;">Invoice No.</td>'+
+                '<td style="padding:4px 0;text-align:right;">INV-2048</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:4px 0;font-weight:600;color:#1a1a1a;">Payment Terms</td>'+
+                '<td style="padding:4px 0;text-align:right;">14 days</td>'+
+              '</tr>'+
+            '</tbody>'+
+          '</table>'+
+        '</div>'+
+      '</div>'+
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">'+
+        '<thead>'+
+          '<tr style="background:#f3f2f1;font-size:12px;color:#444;text-transform:uppercase;letter-spacing:.04em;">'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:left;">Item</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:left;">Description</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:right;">Qty</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:right;">Unit</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:right;">Amount</th>'+
+          '</tr>'+
+        '</thead>'+
+        '<tbody style="font-size:13px;color:#1a1a1a;">'+
+          '<tr>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">Consulting</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">Quarterly strategy workshop and deliverables</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">2</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">SGD 2,800.00</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;font-weight:600;">SGD 5,600.00</td>'+
+          '</tr>'+
+          '<tr>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">Support</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">Managed support retainer (April)</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">1</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">SGD 1,800.00</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;font-weight:600;">SGD 1,800.00</td>'+
+          '</tr>'+
+          '<tr>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">On-site</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">Implementation hours</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">4</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">SGD 150.00</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;font-weight:600;">SGD 600.00</td>'+
+          '</tr>'+
+        '</tbody>'+
+      '</table>'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:24px;">'+
+        '<div style="flex:1;min-width:0;">'+
+          '<div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:6px;">Notes</div>'+
+          '<p style="font-size:13px;line-height:1.6;color:#444;margin:0 0 12px;">Thank you for choosing Brightwave Solutions. We appreciate the opportunity to support your team.</p>'+
+          '<p style="font-size:13px;line-height:1.6;color:#444;margin:0;">Please include the invoice number on your payment advice.</p>'+
+        '</div>'+
+        '<div style="width:260px;">'+
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;color:#1a1a1a;">'+
+            '<tbody>'+
+              '<tr>'+
+                '<td style="padding:6px 0;color:#444;">Subtotal</td>'+
+                '<td style="padding:6px 0;text-align:right;font-weight:600;">SGD 7,400.00</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:6px 0;color:#444;">GST (8%)</td>'+
+                '<td style="padding:6px 0;text-align:right;font-weight:600;">SGD 592.00</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:8px 0;border-top:1px solid #e1dfdd;font-weight:700;">Total Due</td>'+
+                '<td style="padding:8px 0;border-top:1px solid #e1dfdd;text-align:right;font-weight:700;">SGD 7,992.00</td>'+
+              '</tr>'+
+            '</tbody>'+
+          '</table>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:18px;align-items:center;margin-bottom:24px;">'+
+        '<div style="width:48px;height:48px;border-radius:50%;background:#f3f2f1;"></div>'+
+        '<div>'+
+          '<div style="font-size:13px;font-weight:600;color:#1a1a1a;">Elaine Koh</div>'+
+          '<div style="font-size:12px;color:#666;">Finance Manager</div>'+
+        '</div>'+
+      '</div>'+
+      '<!-- page:break -->'+
+      '<h2 style="font-size:18px;color:#1a1a1a;margin:0 0 16px;">Payment Instructions</h2>'+
+      '<p style="font-size:13px;line-height:1.6;color:#444;margin:0 0 12px;">Payable to Brightwave Solutions Pte Ltd. Kindly reference the invoice number when making payment.</p>'+
+      '<ul style="margin:0 0 16px 20px;padding:0;font-size:13px;line-height:1.6;color:#444;">'+
+        '<li>Bank transfer: DBS Corporate · 001-234567-8</li>'+
+        '<li>PayNow UEN: 202312345K</li>'+
+        '<li>For cheque payments, mail to 25 Maxwell Road, Singapore 069113</li>'+
+      '</ul>'+
+      '<p style="font-size:12px;color:#666;margin:0;">Need help? Contact finance@brightwave.co or +65 6123 4567.</p>'
+    },
+    {
+      id:"delivery_order",
+      label:"🚚 Delivery Order",
+      summary:"Delivery order layout with shipment summary, signature fields, and checklist page.",
+      preview:'<div style="display:flex;flex-direction:column;gap:4px;">'+
+        '<strong style="font-size:14px;color:#1a1a1a;">Delivery Order #DO-1094</strong>'+
+        '<span style="font-size:12px;color:#666;">Warehouse to client dispatch</span>'+
+        '<span style="font-size:12px;color:#666;">Includes driver confirmation &amp; checklist</span>'+
+      '</div>',
+      header:{
+        html:'<div style="display:flex;align-items:center;justify-content:space-between;gap:18px;width:100%;">'+
+          '<div style="display:flex;align-items:center;gap:12px;">'+
+            '<img src="https://picsum.photos/seed/weditor-do/56/56" alt="Logistics logo" style="width:56px;height:56px;border-radius:12px;object-fit:cover;">'+
+            '<div>'+
+              '<div style="font-size:17px;font-weight:600;color:#1a1a1a;">Swift Freight Logistics</div>'+
+              '<div style="font-size:12px;color:#666;">Distribution Centre · Jurong West</div>'+
+            '</div>'+
+          '</div>'+
+          '<div style="text-align:right;font-size:12px;color:#666;line-height:1.6;">'+
+            '<div>Delivery Order #DO-1094</div>'+
+            '<div>{{date}}</div>'+
+            '<div>Hotline +65 6800 9876</div>'+
+          '</div>'+
+        '</div>',
+        align:"left",
+        enabled:true
+      },
+      footer:{
+        html:'<div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:11px;color:#666;">'+
+          '<span>Swift Freight Logistics · Warehouse 4</span>'+
+          '<span style="text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
+        '</div>',
+        align:"left",
+        enabled:true
+      },
+      body:'<div style="display:flex;flex-wrap:wrap;gap:24px;margin-bottom:24px;">'+
+        '<div style="flex:1 1 260px;min-width:0;">'+
+          '<div style="font-size:12px;color:#666;margin-bottom:6px;">Ship From</div>'+
+          '<div style="font-size:14px;font-weight:600;color:#1a1a1a;">Swift Freight Logistics</div>'+
+          '<div style="font-size:13px;color:#444;line-height:1.6;">21 Tuas View Circuit<br>Singapore 637358</div>'+
+        '</div>'+
+        '<div style="flex:1 1 260px;min-width:0;">'+
+          '<div style="font-size:12px;color:#666;margin-bottom:6px;">Ship To</div>'+
+          '<div style="font-size:14px;font-weight:600;color:#1a1a1a;">Greenlane Retail Stores</div>'+
+          '<div style="font-size:13px;color:#444;line-height:1.6;">12 Tampines Central 1<br>Singapore 529536</div>'+
+          '<div style="font-size:13px;color:#444;line-height:1.6;">Attn: Warehouse Supervisor</div>'+
+        '</div>'+
+        '<div style="flex:1 1 220px;min-width:0;">'+
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;color:#444;">'+
+            '<tbody>'+
+              '<tr>'+
+                '<td style="padding:4px 0;font-weight:600;color:#1a1a1a;">Delivery Date</td>'+
+                '<td style="padding:4px 0;text-align:right;">{{date}}</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:4px 0;font-weight:600;color:#1a1a1a;">Vehicle</td>'+
+                '<td style="padding:4px 0;text-align:right;">SGD 8423 D</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:4px 0;font-weight:600;color:#1a1a1a;">Driver</td>'+
+                '<td style="padding:4px 0;text-align:right;">Ahmad Rahman</td>'+
+              '</tr>'+
+            '</tbody>'+
+          '</table>'+
+        '</div>'+
+      '</div>'+
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">'+
+        '<thead>'+
+          '<tr style="background:#f3f2f1;font-size:12px;color:#444;text-transform:uppercase;letter-spacing:.04em;">'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:left;">Item</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:left;">Description</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Batch</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:right;">Qty</th>'+
+            '<th style="padding:10px;border:1px solid #e1dfdd;text-align:right;">Unit</th>'+
+          '</tr>'+
+        '</thead>'+
+        '<tbody style="font-size:13px;color:#1a1a1a;">'+
+          '<tr>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">GL-458</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">Eco friendly detergent (12 bottles)</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:center;">B2311</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">120</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">Cartons</td>'+
+          '</tr>'+
+          '<tr>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">GL-912</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">Multi-surface wipes (24 packs)</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:center;">B2309</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">80</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">Cartons</td>'+
+          '</tr>'+
+          '<tr>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">GL-205</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">Reusable bags (50 pcs)</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:center;">B2304</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">60</td>'+
+            '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">Cartons</td>'+
+          '</tr>'+
+        '</tbody>'+
+      '</table>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:24px;margin-bottom:24px;">'+
+        '<div style="flex:1 1 260px;min-width:0;">'+
+          '<div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:6px;">Handling Instructions</div>'+
+          '<ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6;color:#444;">'+
+            '<li>Keep upright. Do not stack more than 4 cartons.</li>'+
+            '<li>Store below 28°C immediately upon delivery.</li>'+
+            '<li>Verify seals before accepting.</li>'+
+          '</ul>'+
+        '</div>'+
+        '<div style="flex:1 1 260px;min-width:0;">'+
+          '<div style="font-size:12px;font-weight:600;color:#1a1a1a;margin-bottom:6px;">Remarks</div>'+
+          '<p style="font-size:13px;line-height:1.6;color:#444;margin:0;">Please check carton GL-912 for promotional inserts.</p>'+
+        '</div>'+
+      '</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:24px;margin-bottom:24px;">'+
+        '<div style="flex:1 1 220px;min-width:0;">'+
+          '<div style="font-size:12px;color:#666;margin-bottom:6px;">Driver Confirmation</div>'+
+          '<div style="height:64px;border:1px dashed #c8c6c4;border-radius:8px;"></div>'+
+          '<div style="font-size:12px;color:#666;margin-top:6px;">Signature / Stamp</div>'+
+        '</div>'+
+        '<div style="flex:1 1 220px;min-width:0;">'+
+          '<div style="font-size:12px;color:#666;margin-bottom:6px;">Receiver Confirmation</div>'+
+          '<div style="height:64px;border:1px dashed #c8c6c4;border-radius:8px;"></div>'+
+          '<div style="font-size:12px;color:#666;margin-top:6px;">Name, Signature &amp; Company Stamp</div>'+
+        '</div>'+
+        '<div style="flex:1 1 220px;min-width:0;">'+
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;color:#444;">'+
+            '<tbody>'+
+              '<tr>'+
+                '<td style="padding:6px 0;font-weight:600;color:#1a1a1a;">Packages</td>'+
+                '<td style="padding:6px 0;text-align:right;">260</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:6px 0;font-weight:600;color:#1a1a1a;">Pallets</td>'+
+                '<td style="padding:6px 0;text-align:right;">8</td>'+
+              '</tr>'+
+              '<tr>'+
+                '<td style="padding:6px 0;font-weight:600;color:#1a1a1a;">Weight</td>'+
+                '<td style="padding:6px 0;text-align:right;">3,120 kg</td>'+
+              '</tr>'+
+            '</tbody>'+
+          '</table>'+
+        '</div>'+
+      '</div>'+
+      '<!-- page:break -->'+
+      '<h2 style="font-size:18px;color:#1a1a1a;margin:0 0 16px;">Delivery Checklist</h2>'+
+      '<p style="font-size:13px;line-height:1.6;color:#444;margin:0 0 12px;">Verify the following items with the receiver before completing the delivery.</p>'+
+      '<ol style="margin:0 0 18px 20px;padding:0;font-size:13px;line-height:1.6;color:#444;">'+
+        '<li>Compare carton count against the delivery order and note any discrepancies.</li>'+
+        '<li>Inspect packaging integrity and photograph any damages.</li>'+
+        '<li>Confirm receiving party name, signature, and company stamp.</li>'+
+        '<li>Collect all empty pallets and return documents to operations.</li>'+
+      '</ol>'+
+      '<p style="font-size:12px;color:#666;margin:0;">For urgent issues, call the logistics hotline at +65 6800 9876.</p>'
+    },
+    {
+      id:"status_report",
+      label:"📊 Status Report",
+      summary:"Executive summary layout with KPI tiles, timeline table, and risk log with action items.",
+      preview:'<div style="display:flex;flex-direction:column;gap:4px;">'+
+        '<strong style="font-size:14px;color:#1a1a1a;">Project Phoenix</strong>'+
+        '<span style="font-size:12px;color:#666;">Executive summary, KPIs, timeline, and risks</span>'+
+      '</div>',
+      header:{
+        html:'<div style="width:100%;display:flex;flex-direction:column;gap:4px;text-align:left;">'+
+          '<div style="font-size:16px;font-weight:700;color:#1a1a1a;">Project Phoenix · Status Update</div>'+
+          '<div style="font-size:12px;color:#666;">Prepared for Leadership · {{date}}</div>'+
+        '</div>',
+        align:"left",
+        enabled:true
+      },
+      footer:{
+        html:'<div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:11px;color:#666;">'+
+          '<span>Confidential · Internal Use Only</span>'+
+          '<span style="text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></span>'+
+        '</div>',
+        align:"left",
+        enabled:true
+      },
+      body:'<h1 style="font-size:24px;color:#1a1a1a;margin:0 0 12px;">Executive Summary</h1>'+
+        '<p style="font-size:13px;line-height:1.7;color:#444;margin:0 0 16px;">Project Phoenix remains on schedule for the next release window. Customer onboarding metrics exceeded the Q2 target while infrastructure migration continues to track to plan.</p>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px;">'+
+          '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;background:#fafafa;">'+
+            '<div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Adoption</div>'+
+            '<div style="font-size:20px;font-weight:700;color:#1a1a1a;">142%</div>'+
+            '<div style="font-size:12px;color:#444;">Increase in active users vs. plan</div>'+
+          '</div>'+
+          '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;background:#fafafa;">'+
+            '<div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">NPS</div>'+
+            '<div style="font-size:20px;font-weight:700;color:#1a1a1a;">+54</div>'+
+            '<div style="font-size:12px;color:#444;">Customer satisfaction trend</div>'+
+          '</div>'+
+          '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;background:#fafafa;">'+
+            '<div style="font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Budget</div>'+
+            '<div style="font-size:20px;font-weight:700;color:#1a1a1a;">SGD 1.28M</div>'+
+            '<div style="font-size:12px;color:#444;">Spend to date (92% of allocation)</div>'+
+          '</div>'+
+        '</div>'+
+        '<h2 style="font-size:18px;color:#1a1a1a;margin:0 0 12px;">Timeline</h2>'+
+        '<table style="width:100%;border-collapse:collapse;margin-bottom:24px;">'+
+          '<thead>'+
+            '<tr style="background:#f3f2f1;font-size:12px;color:#444;text-transform:uppercase;letter-spacing:.04em;">'+
+              '<th style="padding:10px;border:1px solid #e1dfdd;text-align:left;">Milestone</th>'+
+              '<th style="padding:10px;border:1px solid #e1dfdd;text-align:left;">Owner</th>'+
+              '<th style="padding:10px;border:1px solid #e1dfdd;text-align:right;">Target</th>'+
+              '<th style="padding:10px;border:1px solid #e1dfdd;text-align:left;">Status</th>'+
+            '</tr>'+
+          '</thead>'+
+          '<tbody style="font-size:13px;color:#1a1a1a;">'+
+            '<tr>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">Beta launch (Wave 2)</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">K. Tan</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">12 Jun</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;color:#107c41;">On track</td>'+
+            '</tr>'+
+            '<tr>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">Data migration</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">R. Mah</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">28 Jun</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;color:#107c41;">On track</td>'+
+            '</tr>'+
+            '<tr>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;font-weight:600;">Security penetration test</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;color:#444;">S. Leong</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;">09 Jul</td>'+
+              '<td style="padding:12px;border:1px solid #e1dfdd;color:#c50f1f;">At risk · vendor backlog</td>'+
+            '</tr>'+
+          '</tbody>'+
+        '</table>'+
+        '<!-- page:break -->'+
+        '<h2 style="font-size:18px;color:#1a1a1a;margin:0 0 12px;">Risks &amp; Next Steps</h2>'+
+        '<div style="display:flex;flex-direction:column;gap:18px;">'+
+          '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:16px;background:#fff;">'+
+            '<div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:6px;">Vendor backlog may impact security test (High)</div>'+
+            '<p style="font-size:13px;line-height:1.6;color:#444;margin:0 0 8px;">Mitigation: confirm alternate test slot with vendor or engage fallback partner.</p>'+
+            '<ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.6;color:#444;">'+
+              '<li>Owner: S. Leong · Target 21 Jun</li>'+
+              '<li>Status: Pending vendor confirmation</li>'+
+            '</ul>'+
+          '</div>'+
+          '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:16px;background:#fff;">'+
+            '<div style="font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:6px;">Support readiness training (Medium)</div>'+
+            '<p style="font-size:13px;line-height:1.6;color:#444;margin:0 0 8px;">Mitigation: schedule customer support enablement sessions and publish updated FAQ.</p>'+
+            '<ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.6;color:#444;">'+
+              '<li>Owner: J. Teo · Target 05 Jul</li>'+
+              '<li>Status: Materials drafted, awaiting review</li>'+
+            '</ul>'+
+          '</div>'+
+        '</div>'+
+        '<p style="font-size:12px;color:#666;margin:18px 0 0;">Next update shared in weekly steering meeting.</p>'
+    }
+  ];
+  const DocumentTemplateUI=(function(){
+    const PREVIEW_TOKENS={ date:"Aug 18, 2024", page:"2", total:"6" };
+    function resolveValue(value, inst){
+      if(typeof value==="function") return value(inst)||"";
+      return value||"";
+    }
+    function sanitizeHTML(html){
+      return Sanitizer.clean(html||"");
+    }
+    function replaceTokens(html){
+      let out=html||"";
+      for(const key in PREVIEW_TOKENS){
+        if(Object.prototype.hasOwnProperty.call(PREVIEW_TOKENS, key)){
+          const pattern=new RegExp("\\{\\{\\s*"+key+"\\s*\\}\\}", "gi");
+          out=out.replace(pattern, PREVIEW_TOKENS[key]);
+        }
+      }
+      return out;
+    }
+    function highlight(card, active){
+      if(!card) return;
+      card.setAttribute("data-active", active?"1":"0");
+      card.style.borderColor=active?WCfg.UI.brand:WCfg.UI.borderSubtle;
+      card.style.background=active?"#e8f2fc":"#fafafa";
+      card.style.boxShadow=active?"inset 0 0 0 1px "+WCfg.UI.brand:"none";
+    }
+    function applyTemplate(inst, template){
+      if(!inst || !inst.el || !template) return false;
+      const bodyHTML=sanitizeHTML(resolveValue(template.body, inst));
+      inst.el.innerHTML=bodyHTML;
+      Normalizer.fixStructure(inst.el);
+      Breaks.ensurePlaceholders(inst.el);
+      if(inst.el.querySelectorAll && TableResizer && typeof TableResizer.ensureTable==="function"){
+        const tables=inst.el.querySelectorAll("table");
+        for(let i=0;i<tables.length;i++){ TableResizer.ensureTable(tables[i]); }
+      }
+      const headerMeta=template.header===false?false:(template.header||null);
+      if(headerMeta){
+        const headerHTML=sanitizeHTML(resolveValue(headerMeta.html, inst));
+        inst.headerHTML=headerHTML;
+        inst.headerAlign=HFAlign.normalize(headerMeta.align);
+        const hasHTML=headerHTML && headerHTML.trim().length>0;
+        if(headerMeta.enabled===true) inst.headerEnabled=true;
+        else if(headerMeta.enabled===false) inst.headerEnabled=false;
+        else inst.headerEnabled=hasHTML;
+      } else {
+        inst.headerHTML="";
+        inst.headerAlign=HFAlign.normalize("left");
+        inst.headerEnabled=false;
+      }
+      const footerMeta=template.footer===false?false:(template.footer||null);
+      if(footerMeta){
+        const footerHTML=sanitizeHTML(resolveValue(footerMeta.html, inst));
+        inst.footerHTML=footerHTML;
+        inst.footerAlign=HFAlign.normalize(footerMeta.align);
+        const hasHTML=footerHTML && footerHTML.trim().length>0;
+        if(footerMeta.enabled===true) inst.footerEnabled=true;
+        else if(footerMeta.enabled===false) inst.footerEnabled=false;
+        else inst.footerEnabled=hasHTML;
+      } else {
+        inst.footerHTML="";
+        inst.footerAlign=HFAlign.normalize("left");
+        inst.footerEnabled=false;
+      }
+      inst.el.classList.toggle("weditor--no-header", !inst.headerEnabled);
+      inst.el.classList.toggle("weditor--no-footer", !inst.footerEnabled);
+      HistoryManager.record(inst, inst.el, {
+        label:"Apply Template: "+(template.label || "Document"),
+        repeatable:false
+      });
+      OutputBinding.syncDebounced(inst);
+      if(inst.el.focus){
+        try{ inst.el.focus({ preventScroll:true }); }
+        catch(err){ inst.el.focus(); }
+      }
+      WDom.placeCaretAtEnd(inst.el);
+      return true;
+    }
+    function open(inst){
+      if(!inst || !inst.el) return;
+      const doc=inst.el.ownerDocument || document;
+      const existing=doc.querySelector('[data-weditor-template-modal]');
+      if(existing && existing.__weditorClose){ existing.__weditorClose(); }
+      const bg=doc.createElement("div");
+      applyStyles(bg, WCfg.Style.modalBg);
+      bg.setAttribute("data-weditor-modal","template-library");
+      bg.setAttribute("data-weditor-template-modal","1");
+      bg.style.opacity="0";
+      doc.body.appendChild(bg);
+      const modal=doc.createElement("div"); applyStyles(modal, WCfg.Style.hfModal);
+      const head=doc.createElement("div"); applyStyles(head, WCfg.Style.hfHead);
+      const title=doc.createElement("h2"); applyStyles(title, WCfg.Style.hfTitle); title.textContent="Document Templates";
+      const closeBtn=doc.createElement("button"); applyStyles(closeBtn, WCfg.Style.hfClose); closeBtn.setAttribute("aria-label","Close template library"); closeBtn.textContent="×";
+      head.appendChild(title);
+      head.appendChild(closeBtn);
+      modal.appendChild(head);
+      const body=doc.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
+      const layout=doc.createElement("div"); applyStyles(layout, WCfg.Style.templateLayout);
+      body.appendChild(layout);
+      const listWrap=doc.createElement("div"); applyStyles(listWrap, WCfg.Style.templateList);
+      const intro=doc.createElement("div"); applyStyles(intro, WCfg.Style.templateDescription); intro.textContent="Pick a starting layout with ready-made header, content blocks, and footer.";
+      listWrap.appendChild(intro);
+      const grid=doc.createElement("div"); applyStyles(grid, WCfg.Style.templateGridLarge);
+      listWrap.appendChild(grid);
+      layout.appendChild(listWrap);
+      const detailWrap=doc.createElement("div"); applyStyles(detailWrap, WCfg.Style.templateDetails);
+      const previewBox=doc.createElement("div"); applyStyles(previewBox, WCfg.Style.hfPreviewSection);
+      const previewTitle=doc.createElement("div"); applyStyles(previewTitle, WCfg.Style.hfPreviewTitle); previewTitle.textContent="Preview";
+      const previewHint=doc.createElement("div"); applyStyles(previewHint, WCfg.Style.hfPreviewHint); previewHint.textContent="Header, body, and footer update based on the selected template.";
+      const previewCanvas=doc.createElement("div"); applyStyles(previewCanvas, WCfg.Style.hfPreviewCanvas);
+      const previewPage=doc.createElement("div"); applyStyles(previewPage, WCfg.Style.hfPreviewPage);
+      const previewHeader=doc.createElement("div"); applyStyles(previewHeader, WCfg.Style.hfPreviewHeader);
+      const previewBody=doc.createElement("div"); applyStyles(previewBody, WCfg.Style.hfPreviewBody);
+      const previewFooter=doc.createElement("div"); applyStyles(previewFooter, WCfg.Style.hfPreviewFooter);
+      previewPage.appendChild(previewHeader);
+      previewPage.appendChild(previewBody);
+      previewPage.appendChild(previewFooter);
+      previewCanvas.appendChild(previewPage);
+      previewBox.appendChild(previewTitle);
+      previewBox.appendChild(previewHint);
+      previewBox.appendChild(previewCanvas);
+      const detailSummary=doc.createElement("div"); applyStyles(detailSummary, WCfg.Style.templateDescription); detailSummary.textContent="Select a template to see details.";
+      detailWrap.appendChild(previewBox);
+      detailWrap.appendChild(detailSummary);
+      layout.appendChild(detailWrap);
+      modal.appendChild(body);
+      const footer=doc.createElement("div"); applyStyles(footer, WCfg.Style.hfFooter);
+      const cancelBtn=WDom.btn("Cancel", false);
+      const applyBtn=WDom.btn("Use Template", true);
+      applyBtn.disabled=true;
+      applyBtn.style.opacity="0.55";
+      applyBtn.style.cursor="not-allowed";
+      footer.appendChild(cancelBtn);
+      footer.appendChild(applyBtn);
+      modal.appendChild(footer);
+      bg.appendChild(modal);
+      let selected=null;
+      const cards=[];
+      function setApplyState(state){
+        if(state){
+          applyBtn.disabled=false;
+          applyBtn.style.opacity="1";
+          applyBtn.style.cursor="pointer";
+        } else {
+          applyBtn.disabled=true;
+          applyBtn.style.opacity="0.55";
+          applyBtn.style.cursor="not-allowed";
+        }
+      }
+      function updatePreview(tpl){
+        if(!tpl){
+          previewHeader.innerHTML='<span style="font-size:12px;color:#666;">Header disabled</span>';
+          previewBody.innerHTML='<span style="font-size:12px;color:#666;">Pick a template to preview the content layout.</span>';
+          previewFooter.innerHTML='<span style="font-size:12px;color:#666;">Footer disabled</span>';
+          detailSummary.textContent="Select a template to see details.";
+          setApplyState(false);
+          return;
+        }
+        const headerHTML=tpl.header && tpl.header.html ? replaceTokens(resolveValue(tpl.header.html, inst)) : "";
+        const footerHTML=tpl.footer && tpl.footer.html ? replaceTokens(resolveValue(tpl.footer.html, inst)) : "";
+        const bodyPreview=tpl.preview ? resolveValue(tpl.preview, inst) : resolveValue(tpl.body, inst);
+        previewHeader.innerHTML=Sanitizer.clean(headerHTML || '<span style="font-size:12px;color:#666;">Header disabled</span>');
+        previewBody.innerHTML=Sanitizer.clean(replaceTokens(bodyPreview));
+        previewFooter.innerHTML=Sanitizer.clean(footerHTML ? replaceTokens(footerHTML) : '<span style="font-size:12px;color:#666;">Footer disabled</span>');
+        detailSummary.textContent=tpl.summary || "";
+        setApplyState(true);
+      }
+      const templates=DOCUMENT_TEMPLATES.slice();
+      for(let i=0;i<templates.length;i++){
+        const tpl=templates[i];
+        const card=doc.createElement("button");
+        card.type="button";
+        applyStyles(card, WCfg.Style.hfTemplateCard);
+        card.style.alignItems="flex-start";
+        card.style.textAlign="left";
+        card.setAttribute("data-active","0");
+        const cardTitle=doc.createElement("div"); applyStyles(cardTitle, WCfg.Style.hfTemplateCardTitle); cardTitle.textContent=tpl.label || "Template";
+        const cardPreview=doc.createElement("div"); applyStyles(cardPreview, WCfg.Style.hfTemplateCardPreview);
+        cardPreview.innerHTML=Sanitizer.clean(replaceTokens(resolveValue(tpl.preview || tpl.summary || tpl.label || "", inst)));
+        card.appendChild(cardTitle);
+        card.appendChild(cardPreview);
+        card.addEventListener("mouseenter", function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#f3f2f1"; });
+        card.addEventListener("mouseleave", function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#fafafa"; });
+        card.addEventListener("click", function(){ if(selected===tpl) return; selected=tpl; for(let j=0;j<cards.length;j++){ highlight(cards[j].card, cards[j].template===tpl); } updatePreview(tpl); applyBtn.textContent="Use "+(tpl.label||"Template"); });
+        cards.push({ card, template:tpl });
+        grid.appendChild(card);
+      }
+      if(!templates.length){
+        const empty=doc.createElement("div"); applyStyles(empty, WCfg.Style.templateDescription); empty.textContent="No templates available.";
+        grid.appendChild(empty);
+      }
+      function cleanup(){
+        window.removeEventListener("keydown", onKeyDown);
+        A11y.unlockScroll();
+        bg.style.opacity="0";
+        bg.style.pointerEvents="none";
+        window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
+      }
+      function onKeyDown(ev){
+        if(ev.key==="Escape"){ ev.preventDefault(); cleanup(); }
+      }
+      closeBtn.addEventListener("click", cleanup);
+      cancelBtn.addEventListener("click", cleanup);
+      bg.addEventListener("click", function(ev){ if(ev.target===bg) cleanup(); });
+      applyBtn.addEventListener("click", function(){
+        if(!selected || applyBtn.disabled) return;
+        const hasContent=ContentInspector && typeof ContentInspector.hasEditorContent==="function" ? ContentInspector.hasEditorContent(inst) : false;
+        if(hasContent){
+          const proceed=window.confirm("Applying a template will replace the current content, header, and footer. Continue?");
+          if(!proceed) return;
+        }
+        const applied=applyTemplate(inst, selected);
+        if(applied) cleanup();
+      });
+      window.addEventListener("keydown", onKeyDown);
+      bg.__weditorClose=cleanup;
+      A11y.lockScroll();
+      window.requestAnimationFrame(function(){ bg.style.opacity="1"; });
+      if(cards.length && templates.length){
+        highlight(cards[0].card, true);
+        selected=templates[0];
+        updatePreview(selected);
+        applyBtn.textContent="Use "+(selected.label||"Template");
+      } else {
+        updatePreview(null);
+      }
+    }
+    return { open };
+  })();
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -10294,6 +10919,8 @@
           OutputBinding.syncDebounced(inst);
         }
       } },
+    "template.open":{ label:"Templates", kind:"button", ariaLabel:"Open document templates",
+      run:function(inst){ DocumentTemplateUI.open(inst); } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
@@ -10361,6 +10988,7 @@
     idPrefix:"weditor-page",
     defaultActiveTab:null,
     tabs:[
+      { id:"templates", label:"Templates", items:["template.open"] },
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
@@ -10381,6 +11009,7 @@
     idPrefix:"weditor-fs",
     defaultActiveTab:null,
     tabs:[
+      { id:"templates", label:"Templates", items:["template.open"] },
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
