@@ -155,6 +155,11 @@
       hfPreviewHeader:{ minHeight:"58px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderBottom:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewFooter:{ minHeight:"52px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderTop:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
+      templateLayout:{ display:"grid", gridTemplateColumns:"minmax(0,1.4fr) minmax(0,1fr)", gap:"20px", alignItems:"start" },
+      templateList:{ display:"flex", flexDirection:"column", gap:"12px" },
+      templateGridLarge:{ display:"grid", gap:"12px", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))" },
+      templateDetails:{ display:"flex", flexDirection:"column", gap:"12px" },
+      templateDescription:{ font:"12px/1.6 Segoe UI,system-ui", color:UI.textDim },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,PREVIEW_FRAME_PADDING,Style };
@@ -9907,6 +9912,367 @@
     }
     btn.appendChild(icon);
   }
+  const DocumentTemplates=(function(){
+    function getNodeValue(node){
+      if(!node) return "";
+      if(typeof node.value==="string") return node.value;
+      return node.textContent || "";
+    }
+    function pickString(){
+      for(let i=0;i<arguments.length;i++){
+        const value=arguments[i];
+        if(typeof value==="string"){
+          const trimmed=value.trim();
+          if(trimmed) return trimmed;
+        }
+      }
+      return "";
+    }
+    function toHTMLString(value){
+      return typeof value==="string" ? value : "";
+    }
+    function normalizeBoolean(value){
+      if(typeof value==="boolean") return value;
+      return undefined;
+    }
+    function buildPreviewFromBody(html){
+      const text=String(html||"").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      if(!text){
+        return '<span style="font-size:12px;color:#666;">No preview available</span>';
+      }
+      const snippet=text.length>180 ? text.slice(0,177)+"…" : text;
+      return '<span style="font-size:12px;color:#444;">'+escapeAttribute(snippet)+'</span>';
+    }
+    function createTemplate(node, index){
+      const raw=getNodeValue(node);
+      if(!raw || !raw.trim()) return null;
+      let parsed;
+      try{
+        parsed=JSON.parse(raw);
+      }catch(err){
+        if(typeof console!=="undefined" && console.warn){
+          console.warn("WEditor: Failed to parse template JSON", err, node);
+        }
+        return null;
+      }
+      const dataset=node && node.dataset ? node.dataset : {};
+      const meta=parsed && typeof parsed.meta==="object" && parsed.meta ? parsed.meta : {};
+      const template={
+        id: pickString(dataset.templateId, meta.id, parsed.id, "template_"+(index+1)),
+        label: pickString(dataset.label, meta.label, parsed.label, "Template "+(index+1)),
+        summary: pickString(dataset.summary, meta.summary, parsed.summary),
+        body: toHTMLString(typeof parsed.html==="string" ? parsed.html : parsed.body),
+        preview: toHTMLString(pickString(dataset.previewHtml, dataset.preview, meta.previewHtml, meta.preview, parsed.preview))
+      };
+      if(!template.body) template.body="";
+      const headerData=parsed && typeof parsed.header==="object" ? parsed.header : null;
+      if(headerData){
+        template.header={
+          html: toHTMLString(headerData.html),
+          align: pickString(headerData.align, headerData.alignment, "left"),
+          enabled: normalizeBoolean(headerData.enabled)
+        };
+      } else if(parsed && parsed.header===false){
+        template.header=false;
+      }
+      const footerData=parsed && typeof parsed.footer==="object" ? parsed.footer : null;
+      if(footerData){
+        template.footer={
+          html: toHTMLString(footerData.html),
+          align: pickString(footerData.align, footerData.alignment, "left"),
+          enabled: normalizeBoolean(footerData.enabled)
+        };
+      } else if(parsed && parsed.footer===false){
+        template.footer=false;
+      }
+      if(typeof parsed.outputMode==="string"){
+        template.outputMode=parsed.outputMode;
+      } else if(typeof meta.outputMode==="string"){
+        template.outputMode=meta.outputMode;
+      }
+      template.sourceNode=node;
+      template.state=parsed;
+      return template;
+    }
+    function list(doc){
+      const root=doc || document;
+      if(!root || !root.querySelectorAll) return [];
+      const nodes=root.querySelectorAll("textarea.weditor_template_json");
+      const templates=[];
+      for(let i=0;i<nodes.length;i++){
+        const tpl=createTemplate(nodes[i], i);
+        if(tpl) templates.push(tpl);
+      }
+      return templates;
+    }
+    return { list, buildPreviewFromBody };
+  })();
+  const DocumentTemplateUI=(function(){
+    const PREVIEW_TOKENS={ date:"Aug 18, 2024", page:"2", total:"6" };
+    function resolveValue(value, inst){
+      if(typeof value==="function") return value(inst)||"";
+      return value||"";
+    }
+    function sanitizeHTML(html){
+      return Sanitizer.clean(html||"");
+    }
+    function replaceTokens(html){
+      let out=html||"";
+      for(const key in PREVIEW_TOKENS){
+        if(Object.prototype.hasOwnProperty.call(PREVIEW_TOKENS, key)){
+          const pattern=new RegExp("\\{\\{\\s*"+key+"\\s*\\}\\}", "gi");
+          out=out.replace(pattern, PREVIEW_TOKENS[key]);
+        }
+      }
+      return out;
+    }
+    function highlight(card, active){
+      if(!card) return;
+      card.setAttribute("data-active", active?"1":"0");
+      card.style.borderColor=active?WCfg.UI.brand:WCfg.UI.borderSubtle;
+      card.style.background=active?"#e8f2fc":"#fafafa";
+      card.style.boxShadow=active?"inset 0 0 0 1px "+WCfg.UI.brand:"none";
+    }
+    function applyTemplate(inst, template){
+      if(!inst || !inst.el || !template) return false;
+      let applied=false;
+      if(template.state){
+        applied=StateBinding.apply(inst, template.state);
+        if(applied){
+          Normalizer.fixStructure(inst.el);
+          if(inst.el.querySelectorAll && TableResizer && typeof TableResizer.ensureTable==="function"){
+            const tablesFromState=inst.el.querySelectorAll("table");
+            for(let i=0;i<tablesFromState.length;i++){ TableResizer.ensureTable(tablesFromState[i]); }
+          }
+        }
+      }
+      if(!applied){
+        const bodyHTML=sanitizeHTML(resolveValue(template.body, inst));
+        inst.el.innerHTML=bodyHTML;
+        Normalizer.fixStructure(inst.el);
+        Breaks.ensurePlaceholders(inst.el);
+        if(inst.el.querySelectorAll && TableResizer && typeof TableResizer.ensureTable==="function"){
+          const tables=inst.el.querySelectorAll("table");
+          for(let i=0;i<tables.length;i++){ TableResizer.ensureTable(tables[i]); }
+        }
+        const headerMeta=template.header===false?false:(template.header||null);
+        if(headerMeta){
+          const headerHTML=sanitizeHTML(resolveValue(headerMeta.html, inst));
+          inst.headerHTML=headerHTML;
+          inst.headerAlign=HFAlign.normalize(headerMeta.align);
+          const hasHTML=headerHTML && headerHTML.trim().length>0;
+          if(headerMeta.enabled===true) inst.headerEnabled=true;
+          else if(headerMeta.enabled===false) inst.headerEnabled=false;
+          else inst.headerEnabled=hasHTML;
+        } else {
+          inst.headerHTML="";
+          inst.headerAlign=HFAlign.normalize("left");
+          inst.headerEnabled=false;
+        }
+        const footerMeta=template.footer===false?false:(template.footer||null);
+        if(footerMeta){
+          const footerHTML=sanitizeHTML(resolveValue(footerMeta.html, inst));
+          inst.footerHTML=footerHTML;
+          inst.footerAlign=HFAlign.normalize(footerMeta.align);
+          const hasHTML=footerHTML && footerHTML.trim().length>0;
+          if(footerMeta.enabled===true) inst.footerEnabled=true;
+          else if(footerMeta.enabled===false) inst.footerEnabled=false;
+          else inst.footerEnabled=hasHTML;
+        } else {
+          inst.footerHTML="";
+          inst.footerAlign=HFAlign.normalize("left");
+          inst.footerEnabled=false;
+        }
+        inst.el.classList.toggle("weditor--no-header", !inst.headerEnabled);
+        inst.el.classList.toggle("weditor--no-footer", !inst.footerEnabled);
+      }
+      if(typeof template.outputMode==="string"){
+        const mode=template.outputMode.toLowerCase()==="paged"?"paged":"raw";
+        inst.outputMode=mode;
+        inst.el.classList.toggle("weditor--paged", mode==="paged");
+      }
+      HistoryManager.record(inst, inst.el, {
+        label:"Apply Template: "+(template.label || "Document"),
+        repeatable:false
+      });
+      OutputBinding.syncDebounced(inst);
+      if(inst.el.focus){
+        try{ inst.el.focus({ preventScroll:true }); }
+        catch(err){ inst.el.focus(); }
+      }
+      WDom.placeCaretAtEnd(inst.el);
+      return true;
+    }
+    function open(inst){
+      if(!inst || !inst.el) return;
+      const doc=inst.el.ownerDocument || document;
+      const existing=doc.querySelector('[data-weditor-template-modal]');
+      if(existing && existing.__weditorClose){ existing.__weditorClose(); }
+      const bg=doc.createElement("div");
+      applyStyles(bg, WCfg.Style.modalBg);
+      bg.setAttribute("data-weditor-modal","template-library");
+      bg.setAttribute("data-weditor-template-modal","1");
+      bg.style.opacity="0";
+      doc.body.appendChild(bg);
+      const modal=doc.createElement("div"); applyStyles(modal, WCfg.Style.hfModal);
+      const head=doc.createElement("div"); applyStyles(head, WCfg.Style.hfHead);
+      const title=doc.createElement("h2"); applyStyles(title, WCfg.Style.hfTitle); title.textContent="Document Templates";
+      const closeBtn=doc.createElement("button"); applyStyles(closeBtn, WCfg.Style.hfClose); closeBtn.setAttribute("aria-label","Close template library"); closeBtn.textContent="×";
+      head.appendChild(title);
+      head.appendChild(closeBtn);
+      modal.appendChild(head);
+      const body=doc.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
+      const layout=doc.createElement("div"); applyStyles(layout, WCfg.Style.templateLayout);
+      body.appendChild(layout);
+      const listWrap=doc.createElement("div"); applyStyles(listWrap, WCfg.Style.templateList);
+      const intro=doc.createElement("div"); applyStyles(intro, WCfg.Style.templateDescription); intro.textContent="Pick a starting layout with ready-made header, content blocks, and footer.";
+      listWrap.appendChild(intro);
+      const grid=doc.createElement("div"); applyStyles(grid, WCfg.Style.templateGridLarge);
+      listWrap.appendChild(grid);
+      layout.appendChild(listWrap);
+      const detailWrap=doc.createElement("div"); applyStyles(detailWrap, WCfg.Style.templateDetails);
+      const previewBox=doc.createElement("div"); applyStyles(previewBox, WCfg.Style.hfPreviewSection);
+      const previewTitle=doc.createElement("div"); applyStyles(previewTitle, WCfg.Style.hfPreviewTitle); previewTitle.textContent="Preview";
+      const previewHint=doc.createElement("div"); applyStyles(previewHint, WCfg.Style.hfPreviewHint); previewHint.textContent="Header, body, and footer update based on the selected template.";
+      const previewCanvas=doc.createElement("div"); applyStyles(previewCanvas, WCfg.Style.hfPreviewCanvas);
+      const previewPage=doc.createElement("div"); applyStyles(previewPage, WCfg.Style.hfPreviewPage);
+      const previewHeader=doc.createElement("div"); applyStyles(previewHeader, WCfg.Style.hfPreviewHeader);
+      const previewBody=doc.createElement("div"); applyStyles(previewBody, WCfg.Style.hfPreviewBody);
+      const previewFooter=doc.createElement("div"); applyStyles(previewFooter, WCfg.Style.hfPreviewFooter);
+      previewPage.appendChild(previewHeader);
+      previewPage.appendChild(previewBody);
+      previewPage.appendChild(previewFooter);
+      previewCanvas.appendChild(previewPage);
+      previewBox.appendChild(previewTitle);
+      previewBox.appendChild(previewHint);
+      previewBox.appendChild(previewCanvas);
+      const detailSummary=doc.createElement("div"); applyStyles(detailSummary, WCfg.Style.templateDescription); detailSummary.textContent="Select a template to see details.";
+      detailWrap.appendChild(previewBox);
+      detailWrap.appendChild(detailSummary);
+      layout.appendChild(detailWrap);
+      modal.appendChild(body);
+      const footer=doc.createElement("div"); applyStyles(footer, WCfg.Style.hfFooter);
+      const cancelBtn=WDom.btn("Cancel", false);
+      const applyBtn=WDom.btn("Use Template", true);
+      applyBtn.disabled=true;
+      applyBtn.style.opacity="0.55";
+      applyBtn.style.cursor="not-allowed";
+      footer.appendChild(cancelBtn);
+      footer.appendChild(applyBtn);
+      modal.appendChild(footer);
+      bg.appendChild(modal);
+      let selected=null;
+      const cards=[];
+      function setApplyState(state){
+        if(state){
+          applyBtn.disabled=false;
+          applyBtn.style.opacity="1";
+          applyBtn.style.cursor="pointer";
+        } else {
+          applyBtn.disabled=true;
+          applyBtn.style.opacity="0.55";
+          applyBtn.style.cursor="not-allowed";
+        }
+      }
+    function getCardPreviewHTML(tpl, inst){
+      const resolved=resolveValue(tpl.preview, inst);
+      if(resolved && resolved.trim && resolved.trim()) return resolved;
+      const bodyHTML=resolveValue(tpl.body, inst);
+      if(bodyHTML && bodyHTML.trim && bodyHTML.trim()){
+        return DocumentTemplates.buildPreviewFromBody(bodyHTML);
+      }
+      if(tpl.summary){
+        return '<span style="font-size:12px;color:#666;">'+escapeAttribute(String(tpl.summary))+'</span>';
+      }
+      if(tpl.label){
+        return '<span style="font-size:12px;color:#666;">'+escapeAttribute(String(tpl.label))+'</span>';
+      }
+      return '<span style="font-size:12px;color:#666;">Template</span>';
+    }
+    function updatePreview(tpl){
+      if(!tpl){
+        previewHeader.innerHTML='<span style="font-size:12px;color:#666;">Header disabled</span>';
+        previewBody.innerHTML='<span style="font-size:12px;color:#666;">Pick a template to preview the content layout.</span>';
+        previewFooter.innerHTML='<span style="font-size:12px;color:#666;">Footer disabled</span>';
+        detailSummary.textContent="Select a template to see details.";
+        setApplyState(false);
+        return;
+      }
+      const headerHTML=tpl.header && tpl.header.html ? replaceTokens(resolveValue(tpl.header.html, inst)) : "";
+      const footerHTML=tpl.footer && tpl.footer.html ? replaceTokens(resolveValue(tpl.footer.html, inst)) : "";
+      let bodyPreview=resolveValue(tpl.preview, inst);
+      if(!bodyPreview || (bodyPreview.trim && !bodyPreview.trim())){
+        bodyPreview=resolveValue(tpl.body, inst);
+      }
+      previewHeader.innerHTML=Sanitizer.clean(headerHTML || '<span style="font-size:12px;color:#666;">Header disabled</span>');
+      previewBody.innerHTML=Sanitizer.clean(replaceTokens(bodyPreview));
+      previewFooter.innerHTML=Sanitizer.clean(footerHTML ? replaceTokens(footerHTML) : '<span style="font-size:12px;color:#666;">Footer disabled</span>');
+      detailSummary.textContent=tpl.summary || "";
+      setApplyState(true);
+      }
+      const templates=DocumentTemplates.list(doc);
+      for(let i=0;i<templates.length;i++){
+        const tpl=templates[i];
+        const card=doc.createElement("button");
+        card.type="button";
+        applyStyles(card, WCfg.Style.hfTemplateCard);
+        card.style.alignItems="flex-start";
+        card.style.textAlign="left";
+        card.setAttribute("data-active","0");
+        const cardTitle=doc.createElement("div"); applyStyles(cardTitle, WCfg.Style.hfTemplateCardTitle); cardTitle.textContent=tpl.label || "Template";
+        const cardPreview=doc.createElement("div"); applyStyles(cardPreview, WCfg.Style.hfTemplateCardPreview);
+        const cardPreviewHTML=getCardPreviewHTML(tpl, inst);
+        cardPreview.innerHTML=Sanitizer.clean(replaceTokens(cardPreviewHTML));
+        card.appendChild(cardTitle);
+        card.appendChild(cardPreview);
+        card.addEventListener("mouseenter", function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#f3f2f1"; });
+        card.addEventListener("mouseleave", function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#fafafa"; });
+        card.addEventListener("click", function(){ if(selected===tpl) return; selected=tpl; for(let j=0;j<cards.length;j++){ highlight(cards[j].card, cards[j].template===tpl); } updatePreview(tpl); applyBtn.textContent="Use "+(tpl.label||"Template"); });
+        cards.push({ card, template:tpl });
+        grid.appendChild(card);
+      }
+      if(!templates.length){
+        const empty=doc.createElement("div"); applyStyles(empty, WCfg.Style.templateDescription); empty.textContent="No templates available. Add <textarea class=\"weditor_template_json\"> blocks to expose reusable layouts.";
+        grid.appendChild(empty);
+      }
+      function cleanup(){
+        window.removeEventListener("keydown", onKeyDown);
+        A11y.unlockScroll();
+        bg.style.opacity="0";
+        bg.style.pointerEvents="none";
+        window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
+      }
+      function onKeyDown(ev){
+        if(ev.key==="Escape"){ ev.preventDefault(); cleanup(); }
+      }
+      closeBtn.addEventListener("click", cleanup);
+      cancelBtn.addEventListener("click", cleanup);
+      bg.addEventListener("click", function(ev){ if(ev.target===bg) cleanup(); });
+      applyBtn.addEventListener("click", function(){
+        if(!selected || applyBtn.disabled) return;
+        const hasContent=ContentInspector && typeof ContentInspector.hasEditorContent==="function" ? ContentInspector.hasEditorContent(inst) : false;
+        if(hasContent){
+          const proceed=window.confirm("Applying a template will replace the current content, header, and footer. Continue?");
+          if(!proceed) return;
+        }
+        const applied=applyTemplate(inst, selected);
+        if(applied) cleanup();
+      });
+      window.addEventListener("keydown", onKeyDown);
+      bg.__weditorClose=cleanup;
+      A11y.lockScroll();
+      window.requestAnimationFrame(function(){ bg.style.opacity="1"; });
+      if(cards.length && templates.length){
+        highlight(cards[0].card, true);
+        selected=templates[0];
+        updatePreview(selected);
+        applyBtn.textContent="Use "+(selected.label||"Template");
+      } else {
+        updatePreview(null);
+      }
+    }
+    return { open };
+  })();
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -10294,6 +10660,8 @@
           OutputBinding.syncDebounced(inst);
         }
       } },
+    "template.open":{ label:"Templates", kind:"button", ariaLabel:"Open document templates",
+      run:function(inst){ DocumentTemplateUI.open(inst); } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
@@ -10361,6 +10729,7 @@
     idPrefix:"weditor-page",
     defaultActiveTab:null,
     tabs:[
+      { id:"templates", label:"Templates", items:["template.open"] },
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
@@ -10381,6 +10750,7 @@
     idPrefix:"weditor-fs",
     defaultActiveTab:null,
     tabs:[
+      { id:"templates", label:"Templates", items:["template.open"] },
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
