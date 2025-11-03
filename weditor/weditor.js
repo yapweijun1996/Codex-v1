@@ -155,6 +155,11 @@
       hfPreviewHeader:{ minHeight:"58px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderBottom:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewFooter:{ minHeight:"52px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:"18px", padding:"4px 0", borderTop:"1px dashed "+UI.borderSubtle, width:"100%" },
       hfPreviewBody:{ flex:"1", display:"flex", flexDirection:"column", gap:"10px", justifyContent:"center", font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim, width:"100%" },
+      templateLayout:{ display:"grid", gridTemplateColumns:"minmax(0,1.4fr) minmax(0,1fr)", gap:"20px", alignItems:"start" },
+      templateList:{ display:"flex", flexDirection:"column", gap:"12px" },
+      templateGridLarge:{ display:"grid", gap:"12px", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))" },
+      templateDetails:{ display:"flex", flexDirection:"column", gap:"12px" },
+      templateDescription:{ font:"12px/1.6 Segoe UI,system-ui", color:UI.textDim },
       hfFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px", flexWrap:"wrap" }
     };
     return { UI,A4W,A4H,HDR_H,FTR_H,HDR_MIN,FTR_MIN,PAD,DEBOUNCE_PREVIEW,MOBILE_BP,PREVIEW_MAX_SCALE,PREVIEW_FRAME_PADDING,Style };
@@ -9907,6 +9912,404 @@
     }
     btn.appendChild(icon);
   }
+
+  const TemplateRegistry=(function(){
+    function readValue(el){
+      if(!el) return "";
+      if(typeof el.value==="string") return el.value;
+      return el.textContent || "";
+    }
+    function slugify(value){
+      return String(value||"")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "template";
+    }
+    function normalizeAlign(value){
+      return HFAlign.normalize(value || "left");
+    }
+    function resolvePreview(preview, summary, label, body){
+      const first = preview && preview.trim();
+      if(first) return first;
+      const second = summary && summary.trim();
+      if(second) return second;
+      const third = body && body.trim();
+      if(third) return third;
+      return label || "Template";
+    }
+    function toTemplate(el, index){
+      if(!el || el.tagName!=="TEXTAREA") return null;
+      const raw=readValue(el);
+      if(!raw) return null;
+      const state=StateBinding.parse(raw);
+      if(!state || typeof state!=="object") return null;
+      const labelAttr=el.getAttribute("data-weditor-template-label");
+      const summaryAttr=el.getAttribute("data-weditor-template-summary") || el.getAttribute("title");
+      const previewHTMLAttr=el.getAttribute("data-weditor-template-preview-html") || el.getAttribute("data-weditor-template-preview");
+      const previewTextAttr=el.getAttribute("data-weditor-template-preview-text");
+      const targetAttr=el.getAttribute("data-weditor-template-for");
+      let label=(labelAttr && labelAttr.trim()) || (state.label && String(state.label).trim()) || "Template "+(index+1);
+      if(!label) label="Template "+(index+1);
+      let idAttr=el.getAttribute("data-weditor-template-id") || state.id;
+      if(idAttr) idAttr=String(idAttr).trim();
+      const id=idAttr || (slugify(label)+"-"+(index+1));
+      const summary=(summaryAttr && summaryAttr.trim()) || (state.summary && String(state.summary).trim()) || "";
+      let preview=(previewHTMLAttr && previewHTMLAttr.trim()) || "";
+      if(!preview && previewTextAttr && previewTextAttr.trim()) preview=previewTextAttr.trim();
+      const body=typeof state.html==="string" ? state.html : "";
+      const template={
+        id:id,
+        label:label,
+        summary:summary,
+        preview:resolvePreview(preview, summary, label, body),
+        body:body,
+        header:{},
+        footer:{},
+        state:state,
+        outputMode:state.outputMode,
+        fixPageHeight:Object.prototype.hasOwnProperty.call(state, "fixPageHeight") ? state.fixPageHeight : undefined,
+        targetId:targetAttr && targetAttr.trim() ? targetAttr.trim() : null
+      };
+      const header=state.header && typeof state.header==="object" ? state.header : {};
+      const footer=state.footer && typeof state.footer==="object" ? state.footer : {};
+      const headerHTML=typeof header.html==="string" ? header.html : (typeof state.headerHTML==="string" ? state.headerHTML : "");
+      const footerHTML=typeof footer.html==="string" ? footer.html : (typeof state.footerHTML==="string" ? state.footerHTML : "");
+      let headerEnabled;
+      if(typeof header.enabled==="boolean") headerEnabled=header.enabled;
+      else if(typeof state.headerEnabled==="boolean") headerEnabled=state.headerEnabled;
+      let footerEnabled;
+      if(typeof footer.enabled==="boolean") footerEnabled=footer.enabled;
+      else if(typeof state.footerEnabled==="boolean") footerEnabled=state.footerEnabled;
+      template.header={
+        html:headerHTML,
+        align:normalizeAlign(header.align || state.headerAlign),
+        enabled:headerEnabled
+      };
+      template.footer={
+        html:footerHTML,
+        align:normalizeAlign(footer.align || state.footerAlign),
+        enabled:footerEnabled
+      };
+      return template;
+    }
+    function collectNodes(doc){
+      if(!doc) return [];
+      return doc.querySelectorAll("textarea.weditor_template_json, textarea[data-weditor-template-json], textarea[data-weditor-template]");
+    }
+    function list(inst){
+      const doc=(inst && inst.el && (inst.el.ownerDocument || document)) || document;
+      const nodes=collectNodes(doc);
+      const editorId=inst && inst.el && inst.el.getAttribute && inst.el.getAttribute("id");
+      const templates=[];
+      for(let i=0;i<nodes.length;i++){
+        const tpl=toTemplate(nodes[i], i);
+        if(!tpl) continue;
+        if(tpl.targetId && tpl.targetId!==editorId) continue;
+        templates.push(tpl);
+      }
+      return templates;
+    }
+    function listAll(doc){
+      const nodes=collectNodes(doc || document);
+      const templates=[];
+      for(let i=0;i<nodes.length;i++){
+        const tpl=toTemplate(nodes[i], i);
+        if(tpl) templates.push(tpl);
+      }
+      return templates;
+    }
+    return { list, listAll };
+  })();
+  const DocumentTemplateUI=(function(){
+    const PREVIEW_TOKENS={ date:"Aug 18, 2024", page:"2", total:"6" };
+    function resolveValue(value, inst){
+      if(typeof value==="function") return value(inst)||"";
+      return value||"";
+    }
+    function sanitizeHTML(html){
+      return Sanitizer.clean(html||"");
+    }
+    function replaceTokens(html){
+      let out=html||"";
+      for(const key in PREVIEW_TOKENS){
+        if(Object.prototype.hasOwnProperty.call(PREVIEW_TOKENS, key)){
+          const pattern=new RegExp("\\{\\{\\s*"+key+"\\s*\\}\\}", "gi");
+          out=out.replace(pattern, PREVIEW_TOKENS[key]);
+        }
+      }
+      return out;
+    }
+    function cloneState(state){
+      if(!state) return null;
+      try { return JSON.parse(JSON.stringify(state)); }
+      catch(err){ return null; }
+    }
+    function resolveBlock(tpl, key, inst){
+      const fallback={ html:"", align:HFAlign.normalize("left"), enabled:undefined };
+      if(!tpl) return fallback;
+      let html="";
+      let align="left";
+      let enabled;
+      const meta=tpl[key];
+      if(meta){
+        const raw=resolveValue(meta.html, inst);
+        if(raw) html=raw;
+        if(meta.align) align=meta.align;
+        if(typeof meta.enabled==="boolean") enabled=meta.enabled;
+      }
+      const state=tpl.state;
+      if(state && typeof state==="object"){
+        const block=state[key] && typeof state[key]==="object" ? state[key] : {};
+        if(typeof block.html==="string") html=block.html;
+        else {
+          const legacyKey=key+"HTML";
+          if(typeof state[legacyKey]==="string") html=state[legacyKey];
+        }
+        if(block.align) align=block.align;
+        else {
+          const legacyAlignKey=key+"Align";
+          if(state[legacyAlignKey]) align=state[legacyAlignKey];
+        }
+        if(typeof block.enabled==="boolean") enabled=block.enabled;
+        else {
+          const legacyEnabledKey=key+"Enabled";
+          if(typeof state[legacyEnabledKey]==="boolean") enabled=state[legacyEnabledKey];
+        }
+      }
+      return {
+        html:html || "",
+        align:HFAlign.normalize(align || "left"),
+        enabled:enabled
+      };
+    }
+    function highlight(card, active){
+      if(!card) return;
+      card.setAttribute("data-active", active?"1":"0");
+      card.style.borderColor=active?WCfg.UI.brand:WCfg.UI.borderSubtle;
+      card.style.background=active?"#e8f2fc":"#fafafa";
+      card.style.boxShadow=active?"inset 0 0 0 1px "+WCfg.UI.brand:"none";
+    }
+    function applyTemplate(inst, template){
+      if(!inst || !inst.el || !template) return false;
+      if(template.state){
+        const cloned=cloneState(template.state);
+        if(!cloned) return false;
+        const applied=StateBinding.apply(inst, cloned);
+        if(!applied) return false;
+        Normalizer.fixStructure(inst.el);
+        Breaks.ensurePlaceholders(inst.el);
+        if(inst.el.querySelectorAll && TableResizer && typeof TableResizer.ensureTable==="function"){
+          const tables=inst.el.querySelectorAll("table");
+          for(let i=0;i<tables.length;i++){ TableResizer.ensureTable(tables[i]); }
+        }
+      } else {
+        const bodyHTML=sanitizeHTML(resolveValue(template.body, inst));
+        inst.el.innerHTML=bodyHTML;
+        Normalizer.fixStructure(inst.el);
+        Breaks.ensurePlaceholders(inst.el);
+        if(inst.el.querySelectorAll && TableResizer && typeof TableResizer.ensureTable==="function"){
+          const tables=inst.el.querySelectorAll("table");
+          for(let i=0;i<tables.length;i++){ TableResizer.ensureTable(tables[i]); }
+        }
+        const headerMeta=template.header===false?false:(template.header||null);
+        if(headerMeta){
+          const headerHTML=sanitizeHTML(resolveValue(headerMeta.html, inst));
+          inst.headerHTML=headerHTML;
+          inst.headerAlign=HFAlign.normalize(headerMeta.align);
+          const hasHTML=headerHTML && headerHTML.trim().length>0;
+          if(headerMeta.enabled===true) inst.headerEnabled=true;
+          else if(headerMeta.enabled===false) inst.headerEnabled=false;
+          else inst.headerEnabled=hasHTML;
+        } else {
+          inst.headerHTML="";
+          inst.headerAlign=HFAlign.normalize("left");
+          inst.headerEnabled=false;
+        }
+        const footerMeta=template.footer===false?false:(template.footer||null);
+        if(footerMeta){
+          const footerHTML=sanitizeHTML(resolveValue(footerMeta.html, inst));
+          inst.footerHTML=footerHTML;
+          inst.footerAlign=HFAlign.normalize(footerMeta.align);
+          const hasHTML=footerHTML && footerHTML.trim().length>0;
+          if(footerMeta.enabled===true) inst.footerEnabled=true;
+          else if(footerMeta.enabled===false) inst.footerEnabled=false;
+          else inst.footerEnabled=hasHTML;
+        } else {
+          inst.footerHTML="";
+          inst.footerAlign=HFAlign.normalize("left");
+          inst.footerEnabled=false;
+        }
+        inst.el.classList.toggle("weditor--no-header", !inst.headerEnabled);
+        inst.el.classList.toggle("weditor--no-footer", !inst.footerEnabled);
+      }
+      HistoryManager.record(inst, inst.el, {
+        label:"Apply Template: "+(template.label || "Document"),
+        repeatable:false
+      });
+      OutputBinding.syncDebounced(inst);
+      if(inst.el.focus){
+        try{ inst.el.focus({ preventScroll:true }); }
+        catch(err){ inst.el.focus(); }
+      }
+      WDom.placeCaretAtEnd(inst.el);
+      return true;
+    }
+    function open(inst){
+      if(!inst || !inst.el) return;
+      const doc=inst.el.ownerDocument || document;
+      const existing=doc.querySelector('[data-weditor-template-modal]');
+      if(existing && existing.__weditorClose){ existing.__weditorClose(); }
+      const bg=doc.createElement("div");
+      applyStyles(bg, WCfg.Style.modalBg);
+      bg.setAttribute("data-weditor-modal","template-library");
+      bg.setAttribute("data-weditor-template-modal","1");
+      bg.style.opacity="0";
+      doc.body.appendChild(bg);
+      const modal=doc.createElement("div"); applyStyles(modal, WCfg.Style.hfModal);
+      const head=doc.createElement("div"); applyStyles(head, WCfg.Style.hfHead);
+      const title=doc.createElement("h2"); applyStyles(title, WCfg.Style.hfTitle); title.textContent="Document Templates";
+      const closeBtn=doc.createElement("button"); applyStyles(closeBtn, WCfg.Style.hfClose); closeBtn.setAttribute("aria-label","Close template library"); closeBtn.textContent="×";
+      head.appendChild(title);
+      head.appendChild(closeBtn);
+      modal.appendChild(head);
+      const body=doc.createElement("div"); applyStyles(body, WCfg.Style.hfBody);
+      const layout=doc.createElement("div"); applyStyles(layout, WCfg.Style.templateLayout);
+      body.appendChild(layout);
+      const listWrap=doc.createElement("div"); applyStyles(listWrap, WCfg.Style.templateList);
+      const intro=doc.createElement("div"); applyStyles(intro, WCfg.Style.templateDescription); intro.textContent="Pick a starting layout with ready-made header, content blocks, and footer.";
+      listWrap.appendChild(intro);
+      const grid=doc.createElement("div"); applyStyles(grid, WCfg.Style.templateGridLarge);
+      listWrap.appendChild(grid);
+      layout.appendChild(listWrap);
+      const detailWrap=doc.createElement("div"); applyStyles(detailWrap, WCfg.Style.templateDetails);
+      const previewBox=doc.createElement("div"); applyStyles(previewBox, WCfg.Style.hfPreviewSection);
+      const previewTitle=doc.createElement("div"); applyStyles(previewTitle, WCfg.Style.hfPreviewTitle); previewTitle.textContent="Preview";
+      const previewHint=doc.createElement("div"); applyStyles(previewHint, WCfg.Style.hfPreviewHint); previewHint.textContent="Header, body, and footer update based on the selected template.";
+      const previewCanvas=doc.createElement("div"); applyStyles(previewCanvas, WCfg.Style.hfPreviewCanvas);
+      const previewPage=doc.createElement("div"); applyStyles(previewPage, WCfg.Style.hfPreviewPage);
+      const previewHeader=doc.createElement("div"); applyStyles(previewHeader, WCfg.Style.hfPreviewHeader);
+      const previewBody=doc.createElement("div"); applyStyles(previewBody, WCfg.Style.hfPreviewBody);
+      const previewFooter=doc.createElement("div"); applyStyles(previewFooter, WCfg.Style.hfPreviewFooter);
+      previewPage.appendChild(previewHeader);
+      previewPage.appendChild(previewBody);
+      previewPage.appendChild(previewFooter);
+      previewCanvas.appendChild(previewPage);
+      previewBox.appendChild(previewTitle);
+      previewBox.appendChild(previewHint);
+      previewBox.appendChild(previewCanvas);
+      const detailSummary=doc.createElement("div"); applyStyles(detailSummary, WCfg.Style.templateDescription); detailSummary.textContent="Select a template to see details.";
+      detailWrap.appendChild(previewBox);
+      detailWrap.appendChild(detailSummary);
+      layout.appendChild(detailWrap);
+      modal.appendChild(body);
+      const footer=doc.createElement("div"); applyStyles(footer, WCfg.Style.hfFooter);
+      const cancelBtn=WDom.btn("Cancel", false);
+      const applyBtn=WDom.btn("Use Template", true);
+      applyBtn.disabled=true;
+      applyBtn.style.opacity="0.55";
+      applyBtn.style.cursor="not-allowed";
+      footer.appendChild(cancelBtn);
+      footer.appendChild(applyBtn);
+      modal.appendChild(footer);
+      bg.appendChild(modal);
+      let selected=null;
+      const cards=[];
+      function setApplyState(state){
+        if(state){
+          applyBtn.disabled=false;
+          applyBtn.style.opacity="1";
+          applyBtn.style.cursor="pointer";
+        } else {
+          applyBtn.disabled=true;
+          applyBtn.style.opacity="0.55";
+          applyBtn.style.cursor="not-allowed";
+        }
+      }
+      function updatePreview(tpl){
+        if(!tpl){
+          previewHeader.innerHTML='<span style="font-size:12px;color:#666;">Header disabled</span>';
+          previewBody.innerHTML='<span style="font-size:12px;color:#666;">Pick a template to preview the content layout.</span>';
+          previewFooter.innerHTML='<span style="font-size:12px;color:#666;">Footer disabled</span>';
+          detailSummary.textContent="Select a template to see details.";
+          setApplyState(false);
+          return;
+        }
+        const headerMeta=resolveBlock(tpl, "header", inst);
+        const footerMeta=resolveBlock(tpl, "footer", inst);
+        const headerHTML=headerMeta.html ? replaceTokens(headerMeta.html) : "";
+        const footerHTML=footerMeta.html ? replaceTokens(footerMeta.html) : "";
+        const showHeader=headerMeta.enabled!==false && headerHTML && headerHTML.trim();
+        const showFooter=footerMeta.enabled!==false && footerHTML && footerHTML.trim();
+        const bodyPreview=tpl.preview ? resolveValue(tpl.preview, inst) : resolveValue(tpl.body, inst);
+        previewHeader.innerHTML=Sanitizer.clean(showHeader ? headerHTML : '<span style="font-size:12px;color:#666;">Header disabled</span>');
+        previewBody.innerHTML=Sanitizer.clean(replaceTokens(bodyPreview || ""));
+        previewFooter.innerHTML=Sanitizer.clean(showFooter ? footerHTML : '<span style="font-size:12px;color:#666;">Footer disabled</span>');
+        detailSummary.textContent=resolveValue(tpl.summary || "", inst);
+        setApplyState(true);
+      }
+      const templates=TemplateRegistry.list(inst);
+      for(let i=0;i<templates.length;i++){
+        const tpl=templates[i];
+        const card=doc.createElement("button");
+        card.type="button";
+        applyStyles(card, WCfg.Style.hfTemplateCard);
+        card.style.alignItems="flex-start";
+        card.style.textAlign="left";
+        card.setAttribute("data-active","0");
+        const cardTitle=doc.createElement("div"); applyStyles(cardTitle, WCfg.Style.hfTemplateCardTitle); cardTitle.textContent=tpl.label || "Template";
+        const cardPreview=doc.createElement("div"); applyStyles(cardPreview, WCfg.Style.hfTemplateCardPreview);
+        cardPreview.innerHTML=Sanitizer.clean(replaceTokens(resolveValue(tpl.preview || tpl.summary || tpl.label || "", inst)));
+        card.appendChild(cardTitle);
+        card.appendChild(cardPreview);
+        card.addEventListener("mouseenter", function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#f3f2f1"; });
+        card.addEventListener("mouseleave", function(){ if(card.getAttribute("data-active")!=="1") card.style.background="#fafafa"; });
+        card.addEventListener("click", function(){ if(selected===tpl) return; selected=tpl; for(let j=0;j<cards.length;j++){ highlight(cards[j].card, cards[j].template===tpl); } updatePreview(tpl); applyBtn.textContent="Use "+(tpl.label||"Template"); });
+        cards.push({ card, template:tpl });
+        grid.appendChild(card);
+      }
+      if(!templates.length){
+        intro.textContent="No templates detected. Add <textarea class=\"weditor_template_json\"> blocks with stored JSON to offer templates.";
+        const empty=doc.createElement("div"); applyStyles(empty, WCfg.Style.templateDescription); empty.textContent="No templates available.";
+        grid.appendChild(empty);
+      }
+      function cleanup(){
+        window.removeEventListener("keydown", onKeyDown);
+        A11y.unlockScroll();
+        bg.style.opacity="0";
+        bg.style.pointerEvents="none";
+        window.setTimeout(function(){ if(bg.parentNode){ bg.parentNode.removeChild(bg); } }, 200);
+      }
+      function onKeyDown(ev){
+        if(ev.key==="Escape"){ ev.preventDefault(); cleanup(); }
+      }
+      closeBtn.addEventListener("click", cleanup);
+      cancelBtn.addEventListener("click", cleanup);
+      bg.addEventListener("click", function(ev){ if(ev.target===bg) cleanup(); });
+      applyBtn.addEventListener("click", function(){
+        if(!selected || applyBtn.disabled) return;
+        const hasContent=ContentInspector && typeof ContentInspector.hasEditorContent==="function" ? ContentInspector.hasEditorContent(inst) : false;
+        if(hasContent){
+          const proceed=window.confirm("Applying a template will replace the current content, header, and footer. Continue?");
+          if(!proceed) return;
+        }
+        const applied=applyTemplate(inst, selected);
+        if(applied) cleanup();
+      });
+      window.addEventListener("keydown", onKeyDown);
+      bg.__weditorClose=cleanup;
+      A11y.lockScroll();
+      window.requestAnimationFrame(function(){ bg.style.opacity="1"; });
+      if(cards.length && templates.length){
+        highlight(cards[0].card, true);
+        selected=templates[0];
+        updatePreview(selected);
+        applyBtn.textContent="Use "+(selected.label||"Template");
+      } else {
+        updatePreview(null);
+      }
+    }
+    return { open };
+  })();
   const Commands={
     "history.undo":{
       kind:"custom",
@@ -10294,6 +10697,8 @@
           OutputBinding.syncDebounced(inst);
         }
       } },
+    "template.open":{ label:"Templates", kind:"button", ariaLabel:"Open document templates",
+      run:function(inst){ DocumentTemplateUI.open(inst); } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
@@ -10361,6 +10766,7 @@
     idPrefix:"weditor-page",
     defaultActiveTab:null,
     tabs:[
+      { id:"templates", label:"Templates", items:["template.open"] },
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
@@ -10381,6 +10787,7 @@
     idPrefix:"weditor-fs",
     defaultActiveTab:null,
     tabs:[
+      { id:"templates", label:"Templates", items:["template.open"] },
       { id:"format", label:"Format", items:[
         { label:"Text Style", compact:true, items:["format.fontFamily","format.fontSize","format.blockStyle","format.bold","format.italic","format.underline","format.underlineStyle","format.strike","format.clearFormatting"] },
         { label:"Color & Emphasis", compact:true, items:["format.fontColor","format.highlight","format.shading","format.subscript","format.superscript"] },
