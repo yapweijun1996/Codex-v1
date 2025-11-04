@@ -3102,6 +3102,83 @@
       if(inst.outputEl) return [inst.outputEl];
       return [];
     }
+    function isJSONScript(el){
+      if(!el || el.tagName !== "SCRIPT") return false;
+      const type=(el.getAttribute("type")||"").trim().toLowerCase();
+      return !type || type==="application/json" || type==="text/json";
+    }
+    function markScriptConsumed(script){
+      if(script) script.setAttribute("data-weditor-state-consumed","true");
+    }
+    function parseStateFromScript(script){
+      if(!script) return null;
+      const raw=script.textContent || "";
+      if(!raw || !raw.trim()) return null;
+      return StateBinding.parse(raw);
+    }
+    function scriptMatchesEditor(script, editorEl, editorId){
+      if(!script || script.getAttribute("data-weditor-state-consumed")==="true") return false;
+      if(!isJSONScript(script)) return false;
+      const declaredId=script.getAttribute("data-weditor-for");
+      if(declaredId){
+        if(!editorId || declaredId!==editorId) return false;
+        const formatAttr=(script.getAttribute("data-weditor-output")||"state").toLowerCase();
+        if(formatAttr && formatAttr!=="state" && formatAttr!=="json") return false;
+        return true;
+      }
+      const cls=(script.getAttribute("class")||"");
+      if(/\bweditor_app_json\b/.test(cls)) return true;
+      let prev=script.previousElementSibling;
+      while(prev){
+        if(prev===editorEl) return true;
+        if(isEditorEl(prev)) break;
+        prev=prev.previousElementSibling;
+      }
+      let next=script.nextElementSibling;
+      while(next){
+        if(next===editorEl) return true;
+        if(isEditorEl(next)) break;
+        next=next.nextElementSibling;
+      }
+      const parent=script.parentElement;
+      if(parent && parent===editorEl.parentElement){
+        let node=editorEl.nextElementSibling;
+        while(node){
+          if(node===script) return true;
+          if(isEditorEl(node)) break;
+          node=node.nextElementSibling;
+        }
+      }
+      return false;
+    }
+    function consumeStateFromScripts(inst){
+      const editorEl = inst && inst.el;
+      if(!editorEl) return null;
+      const editorId = editorEl.getAttribute && editorEl.getAttribute("id");
+      const root = editorEl.ownerDocument || document;
+      if(!root || !root.querySelectorAll) return null;
+      const targeted = root.querySelectorAll("script[type='application/json'][data-weditor-for], script[type='text/json'][data-weditor-for]");
+      for(let i=0;i<targeted.length;i++){
+        const script=targeted[i];
+        if(!scriptMatchesEditor(script, editorEl, editorId)) continue;
+        const parsed=parseStateFromScript(script);
+        if(parsed){
+          markScriptConsumed(script);
+          return parsed;
+        }
+      }
+      const scripts = root.querySelectorAll("script[type='application/json'], script[type='text/json'], script.weditor_app_json");
+      for(let i=0;i<scripts.length;i++){
+        const script=scripts[i];
+        if(!scriptMatchesEditor(script, editorEl, editorId)) continue;
+        const parsed=parseStateFromScript(script);
+        if(parsed){
+          markScriptConsumed(script);
+          return parsed;
+        }
+      }
+      return null;
+    }
     function sync(inst){
       const outputs=getOutputs(inst);
       if(!outputs.length) return;
@@ -3175,6 +3252,8 @@
           }
         }
       }
+      const scriptState = consumeStateFromScripts(inst);
+      if(scriptState) return scriptState;
       return null;
     }
     function consumeInitialHTML(inst){
