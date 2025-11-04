@@ -264,6 +264,7 @@
     const BULLET_RE=/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+$/;
     const ORDERED_MARK_RE=/^(\(*([0-9]+|[ivxlcdm]+)\)|([0-9]+|[ivxlcdm]+))[\.|\)]\s*/i;
     const TAB_STOP_RE=/tab-stops?/i;
+    const WORD_POSITION_PROPS={ position:1, left:1, top:1, right:1, bottom:1, "z-index":1 };
     function prepareWordArtifacts(root){
       function walk(node){
         if(!node || node.nodeType!==1) return;
@@ -295,12 +296,19 @@
         if(cls.length){ node.setAttribute("class", cls.join(" ")); } else { node.removeAttribute("class"); }
         const style=node.getAttribute("style");
         if(style){
-          const cleaned=style.split(";").map(function(rule){ return rule.trim(); }).filter(function(rule){
-            if(!rule) return false;
-            if(/^mso-/i.test(rule)) return false;
-            if(TAB_STOP_RE.test(rule)) return false;
-            return true;
-          });
+          const cleaned=[];
+          const parts=style.split(";");
+          for(let i=0;i<parts.length;i++){
+            const raw=parts[i];
+            const rule=(raw||"").trim();
+            if(!rule) continue;
+            if(/^mso-/i.test(rule)) continue;
+            if(TAB_STOP_RE.test(rule)) continue;
+            const colon=rule.indexOf(":");
+            const prop=colon>=0 ? rule.slice(0, colon).trim().toLowerCase() : "";
+            if(prop && Object.prototype.hasOwnProperty.call(WORD_POSITION_PROPS, prop)) continue;
+            cleaned.push(rule);
+          }
           if(cleaned.length){ node.setAttribute("style", cleaned.join("; ")); }
           else { node.removeAttribute("style"); }
         }
