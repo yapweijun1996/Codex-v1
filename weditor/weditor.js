@@ -6,6 +6,7 @@
   const LIST_STYLE_ATTR="data-weditor-list-style";
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
+  const LIST_STYLE_WORD_STYLE_ID="weditor-list-style-word";
   const DEFAULT_LETTERHEAD_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
   const DEFAULT_FOOTER_LOGO_URL=DEFAULT_LETTERHEAD_LOGO_URL;
   function sanitizeImageURL(value){
@@ -46,7 +47,6 @@
       ".w-editor[data-weditor-instance] p,"+
       ".weditor_page-content p,"+
       ".weditor_fullscreen-area p{"+
-        "margin:0;"+
         "margin-block-start:0;"+
         "margin-block-end:0;"+
       "}";
@@ -54,9 +54,10 @@
   }
   function applyZeroMarginToParagraph(node){
     if(!node || !node.style) return;
-    node.style.margin="0";
     node.style.marginBlockStart="0";
     node.style.marginBlockEnd="0";
+    node.style.marginTop="0";
+    node.style.marginBottom="0";
   }
   function enforceZeroMargins(root){
     if(!root) return;
@@ -255,6 +256,54 @@
     }
     return { clean };
   })();
+  const WordListStyleRegistry=(function(){
+    const registry={};
+    let counter=0;
+    function ensureStyleElement(){
+      if(typeof document==="undefined" || !document.head) return null;
+      let style=document.getElementById(LIST_STYLE_WORD_STYLE_ID);
+      if(style) return style;
+      style=document.createElement("style");
+      style.id=LIST_STYLE_WORD_STYLE_ID;
+      document.head.appendChild(style);
+      return style;
+    }
+    function escapeContent(value){
+      return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+    }
+    function register(counterStyle, prefix, suffix){
+      if(!counterStyle && !prefix && !suffix) return null;
+      const key=[counterStyle||"", prefix||"", suffix||""].join("|");
+      if(registry[key]) return registry[key];
+      const id="word-"+(counter++).toString(36);
+      registry[key]=id;
+      const styleEl=ensureStyleElement();
+      if(styleEl){
+        const selector="ol["+LIST_STYLE_ATTR+"=\""+id+"\"]";
+        const safePrefix=prefix?escapeContent(prefix):"";
+        const safeSuffix=suffix?escapeContent(suffix):"";
+        const contentParts=[];
+        if(prefix){ contentParts.push("\""+safePrefix+"\""); }
+        const counterExpr=counterStyle?"counter(list-item, "+counterStyle+")":"counter(list-item)";
+        contentParts.push(counterExpr);
+        if(suffix){ contentParts.push("\""+safeSuffix+"\""); }
+        contentParts.push("\"\\00a0\"");
+        const contentValue=contentParts.join(" ");
+        styleEl.appendChild(document.createTextNode(
+          selector+","+selector+" ol{"+
+            "list-style:none;"+
+            "padding-inline-start:2.5em;"+
+          "}"+
+          selector+" > li::marker,"+selector+" ol > li::marker{"+
+            "content:"+contentValue+";"+
+            "font-variant-numeric:tabular-nums;"+
+          "}"
+        ));
+      }
+      return id;
+    }
+    return { register };
+  })();
   const Normalizer=(function(){
     const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|PRE|HR|IMG)$/i;
     function isBlock(el){ return el && el.nodeType===1 && BLOCK.test(el.tagName); }
@@ -350,6 +399,125 @@
       return false;
     }
     function detectListType(node){ const text=(node.textContent||"").trim(); if(ORDERED_MARK_RE.test(text)) return "ol"; return "ul"; }
+    const DEFAULT_MARKER_SUFFIXES=new Set([".",". ",".\u00a0"]);
+    function parseWordListMetadata(node){
+      if(!node || !node.getAttribute) return null;
+      const styleAttr=node.getAttribute("style")||"";
+      if(!styleAttr) return null;
+      const meta={};
+      const formatMatch=styleAttr.match(/mso-level-number-format:\s*([a-z-]+)/i);
+      if(formatMatch){
+        const fmt=formatMatch[1].toLowerCase();
+        switch(fmt){
+          case "bullet":
+            meta.type="ul";
+            break;
+          case "alpha-lower":
+            meta.type="ol";
+            meta.counter="lower-alpha";
+            meta.counterAttr="a";
+            break;
+          case "alpha-upper":
+            meta.type="ol";
+            meta.counter="upper-alpha";
+            meta.counterAttr="A";
+            break;
+          case "roman-lower":
+            meta.type="ol";
+            meta.counter="lower-roman";
+            meta.counterAttr="i";
+            break;
+          case "roman-upper":
+            meta.type="ol";
+            meta.counter="upper-roman";
+            meta.counterAttr="I";
+            break;
+          case "decimal":
+            meta.type="ol";
+            meta.counter="decimal";
+            meta.counterAttr="1";
+            break;
+          case "decimal-leading-zero":
+          case "arabic-leading-zero":
+            meta.type="ol";
+            meta.counter="decimal";
+            meta.counterAttr="1";
+            meta.styleAttrValue=LIST_STYLE_DECIMAL_ZERO;
+            break;
+          default:
+            meta.type="ol";
+            meta.counter="decimal";
+            meta.counterAttr="1";
+        }
+      }
+      const textMatch=styleAttr.match(/mso-level-text:\s*"([^"]*)"/i);
+      if(textMatch){
+        const template=textMatch[1];
+        const placeholderIndex=template.indexOf("%1");
+        if(placeholderIndex>-1){
+          meta.prefix=template.slice(0, placeholderIndex);
+          meta.suffix=template.slice(placeholderIndex+2);
+        } else {
+          meta.prefix="";
+          meta.suffix=template;
+        }
+      }
+      const startMatch=styleAttr.match(/mso-level-start-at:\s*([0-9]+)/i);
+      if(startMatch){
+        const startValue=parseInt(startMatch[1], 10);
+        if(!isNaN(startValue)){ meta.start=startValue; }
+      }
+      const rawPrefix=meta.prefix||"";
+      const rawSuffix=meta.suffix||"";
+      const trimmedPrefix=rawPrefix.trim();
+      const trimmedSuffix=rawSuffix.replace(/\s+$/, "").trim();
+      meta.prefix=trimmedPrefix ? rawPrefix : "";
+      meta.suffix=rawSuffix;
+      const hasPrefix=trimmedPrefix.length>0;
+      const hasCustomSuffix=trimmedSuffix.length>0 && !DEFAULT_MARKER_SUFFIXES.has(trimmedSuffix);
+      meta.customMarker=hasPrefix || hasCustomSuffix;
+      return meta;
+    }
+    function listMetaEquals(a, b){
+      if(a===b) return true;
+      if(!a || !b) return false;
+      return (a.type||"")===(b.type||"") &&
+        (a.counter||"")===(b.counter||"") &&
+        (a.counterAttr||"")===(b.counterAttr||"") &&
+        (a.styleAttrValue||"")===(b.styleAttrValue||"") &&
+        (a.prefix||"")===(b.prefix||"") &&
+        (a.suffix||"")===(b.suffix||"") &&
+        !!a.customMarker===!!b.customMarker;
+    }
+    function applyWordListMetadata(list, meta){
+      if(!list || !meta) return;
+      if(meta.start && meta.start>1){ list.setAttribute("start", String(meta.start)); }
+      else { list.removeAttribute("start"); }
+      if(meta.counterAttr){ list.setAttribute("type", meta.counterAttr); }
+      else { list.removeAttribute("type"); }
+      if(meta.styleAttrValue===LIST_STYLE_DECIMAL_ZERO){
+        list.setAttribute(LIST_STYLE_ATTR, LIST_STYLE_DECIMAL_ZERO);
+        list.style.removeProperty("list-style-type");
+      } else if(meta.customMarker && meta.counter){
+        const styleId=WordListStyleRegistry.register(meta.counter, meta.prefix||"", meta.suffix||"");
+        if(styleId){
+          list.setAttribute(LIST_STYLE_ATTR, styleId);
+          list.style.listStyleType="none";
+        } else {
+          list.style.listStyleType=meta.counter;
+        }
+      } else {
+        if(list.getAttribute && list.getAttribute(LIST_STYLE_ATTR) && list.getAttribute(LIST_STYLE_ATTR)!==LIST_STYLE_DECIMAL_ZERO){
+          list.removeAttribute(LIST_STYLE_ATTR);
+        }
+      }
+      if(meta.counter && !meta.customMarker && meta.styleAttrValue!==LIST_STYLE_DECIMAL_ZERO){
+        list.style.listStyleType=meta.counter;
+      }
+      if(!meta.counter){
+        list.style.removeProperty("list-style-type");
+      }
+    }
     function stripLeadingBullets(li){
       function pruneEmpty(node){
         while(node && node!==li && node.nodeType===1 && !node.firstChild){
@@ -439,7 +607,7 @@
       return String(node.nodeValue||"").trim().toLowerCase()==="page:break";
     }
     function convertWordLists(container){
-      let node=container.firstChild; let activeList=null; let activeType="";
+      let node=container.firstChild; let activeList=null; let activeType=""; let activeMeta=null;
       while(node){ const next=node.nextSibling;
         if(node.nodeType===8){
           if(isBreakCommentNode(node)){ node=next; continue; }
@@ -447,11 +615,22 @@
         }
         if(node.nodeType===3 && !(node.nodeValue||"").trim()){ container.removeChild(node); node=next; continue; }
         if(node.nodeType===1 && node.tagName==="P" && isWordListPara(node)){
-          const type=detectListType(node);
-          if(!activeList || activeType!==type){
+          const meta=parseWordListMetadata(node);
+          const type=(meta && meta.type) || detectListType(node);
+          if(meta){
+            if(!meta.type) meta.type=type;
+            if(type==="ol" && !meta.counter){
+              meta.counter="decimal";
+              if(!meta.counterAttr) meta.counterAttr="1";
+            }
+          }
+          const shouldReset=!activeList || activeType!==type || !listMetaEquals(activeMeta, meta);
+          if(shouldReset){
             activeList=document.createElement(type);
             container.insertBefore(activeList, node);
             activeType=type;
+            activeMeta=meta||null;
+            if(meta){ applyWordListMetadata(activeList, meta); }
           }
           const li=document.createElement("li");
           while(node.firstChild){ li.appendChild(node.firstChild); }
@@ -461,7 +640,7 @@
           node=next;
           continue;
         }
-        activeList=null; activeType="";
+        activeList=null; activeType=""; activeMeta=null;
         if(node && node.nodeType===1) convertWordLists(node);
         node=next;
       }
