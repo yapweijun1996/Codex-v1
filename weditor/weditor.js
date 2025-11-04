@@ -365,6 +365,7 @@
       if(!node || node.nodeType!==8) return false;
       return String(node.nodeValue||"").trim().toLowerCase()==="page:break";
     }
+    const ENABLE_WORD_LIST_NORMALIZATION=false;
     function convertWordLists(container){
       let node=container.firstChild; let activeList=null; let activeType="";
       while(node){ const next=node.nextSibling;
@@ -396,7 +397,7 @@
     function fixStructure(root){
       if(!root) return;
       prepareWordArtifacts(root);
-      convertWordLists(root);
+      if(ENABLE_WORD_LIST_NORMALIZATION){ convertWordLists(root); }
       cleanWordArtifacts(root);
       const nodes=[]; const cn=root.childNodes;
       for(let i=0;i<cn.length;i++){ const nd=cn[i]; if(nd.nodeType===1 || (nd.nodeType===3 && nd.nodeValue.trim())) nodes.push(nd); }
