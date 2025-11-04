@@ -46,7 +46,8 @@
       ".w-editor[data-weditor-instance] p,"+
       ".weditor_page-content p,"+
       ".weditor_fullscreen-area p{"+
-        "margin:0;"+
+        "margin-top:0;"+
+        "margin-bottom:0;"+
         "margin-block-start:0;"+
         "margin-block-end:0;"+
       "}";
@@ -54,9 +55,10 @@
   }
   function applyZeroMarginToParagraph(node){
     if(!node || !node.style) return;
-    node.style.margin="0";
     node.style.marginBlockStart="0";
     node.style.marginBlockEnd="0";
+    node.style.marginTop="0";
+    node.style.marginBottom="0";
   }
   function enforceZeroMargins(root){
     if(!root) return;
