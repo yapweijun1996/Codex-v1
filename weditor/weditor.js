@@ -240,8 +240,25 @@
   })();
   const Sanitizer=(function(){
     const BAD={"script":1,"style":1,"iframe":1,"object":1,"embed":1,"link":1,"meta":1};
+    const WORD_COMMENT_CONDITIONAL=/\[if\s+[^\]]*(mso|support)/i;
+    const WORD_COMMENT_ENDIF=/\[endif/i;
     function clean(html){
       const c=document.createElement("div"); c.innerHTML=html;
+      if(document.createTreeWalker){
+        const commentWalker=document.createTreeWalker(c, NodeFilter.SHOW_COMMENT, null, false);
+        const toRemove=[];
+        let commentNode;
+        while((commentNode=commentWalker.nextNode())){
+          const value=String(commentNode.nodeValue||"");
+          if(WORD_COMMENT_CONDITIONAL.test(value) || WORD_COMMENT_ENDIF.test(value)){
+            toRemove.push(commentNode);
+          }
+        }
+        for(let i=0;i<toRemove.length;i++){
+          const node=toRemove[i];
+          if(node && node.parentNode) node.parentNode.removeChild(node);
+        }
+      }
       const walker=document.createTreeWalker(c, NodeFilter.SHOW_ELEMENT); let node;
       while((node=walker.nextNode())){
         const tag=(node.tagName||"").toLowerCase();
@@ -375,6 +392,25 @@
       if(!node || node.nodeType!==8) return false;
       return String(node.nodeValue||"").trim().toLowerCase()==="page:break";
     }
+    const WORD_COMMENT_CONDITIONAL=/\[if\s+[^\]]*(mso|support)/i;
+    const WORD_COMMENT_ENDIF=/\[endif/i;
+    function stripWordComments(root){
+      if(!root || !document.createTreeWalker) return;
+      const walker=document.createTreeWalker(root, NodeFilter.SHOW_COMMENT, null, false);
+      const toRemove=[];
+      let node;
+      while((node=walker.nextNode())){
+        if(isBreakCommentNode(node)) continue;
+        const value=String(node.nodeValue||"");
+        if(WORD_COMMENT_CONDITIONAL.test(value) || WORD_COMMENT_ENDIF.test(value)){
+          toRemove.push(node);
+        }
+      }
+      for(let i=0;i<toRemove.length;i++){
+        const n=toRemove[i];
+        if(n && n.parentNode) n.parentNode.removeChild(n);
+      }
+    }
     const ENABLE_WORD_LIST_NORMALIZATION=false;
     function convertWordLists(container){
       let node=container.firstChild; let activeList=null; let activeType="";
@@ -406,6 +442,7 @@
     }
     function fixStructure(root){
       if(!root) return;
+      stripWordComments(root);
       prepareWordArtifacts(root);
       if(ENABLE_WORD_LIST_NORMALIZATION){ convertWordLists(root); }
       cleanWordArtifacts(root);
@@ -2844,6 +2881,73 @@
     return { open };
   })();
   const StateBinding=(function(){
+    function escapeControlCharsWithinStrings(str){
+      if(typeof str!=="string" || !str) return str;
+      let result="";
+      let changed=false;
+      let inString=false;
+      let escaping=false;
+      for(let i=0;i<str.length;i++){
+        const ch=str[i];
+        if(inString){
+          if(escaping){
+            result+=ch;
+            escaping=false;
+            continue;
+          }
+          if(ch==='\\'){
+            result+=ch;
+            escaping=true;
+            continue;
+          }
+          if(ch==='"'){
+            inString=false;
+            result+=ch;
+            continue;
+          }
+          const code=ch.charCodeAt(0);
+          if(code===10){
+            result+="\\n";
+            changed=true;
+            continue;
+          }
+          if(code===13){
+            result+="\\r";
+            changed=true;
+            continue;
+          }
+          if(code===9){
+            result+="\\t";
+            changed=true;
+            continue;
+          }
+          if(code===12){
+            result+="\\f";
+            changed=true;
+            continue;
+          }
+          if(code===0x2028){
+            result+="\\u2028";
+            changed=true;
+            continue;
+          }
+          if(code===0x2029){
+            result+="\\u2029";
+            changed=true;
+            continue;
+          }
+          result+=ch;
+          continue;
+        }
+        if(ch==='"'){
+          inString=true;
+          result+=ch;
+          continue;
+        }
+        result+=ch;
+      }
+      return changed ? result : str;
+    }
     function parse(json){
       if(!json) return null;
       let data=json;
@@ -2851,7 +2955,12 @@
         const trimmed=json.trim();
         if(!trimmed) return null;
         try { data=JSON.parse(trimmed); }
-        catch(err){ return null; }
+        catch(err1){
+          const repaired=escapeControlCharsWithinStrings(trimmed);
+          if(!repaired || repaired===trimmed) return null;
+          try { data=JSON.parse(repaired); }
+          catch(err2){ return null; }
+        }
       }
       if(!data || typeof data!=="object") return null;
       return data;
