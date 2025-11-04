@@ -309,6 +309,32 @@
       }
       walk(root);
     }
+    const SAFE_CONTENTEDITABLE_ATTRS=["data-weditor-break-placeholder","data-weditor-token"];
+    function isProtectedContentEditable(node){
+      if(!node || node.nodeType!==1 || !node.hasAttribute) return false;
+      for(let i=0;i<SAFE_CONTENTEDITABLE_ATTRS.length;i++){
+        if(node.hasAttribute(SAFE_CONTENTEDITABLE_ATTRS[i])) return true;
+      }
+      return false;
+    }
+    function stripBlockedContentEditable(node, skipSelf){
+      if(!node) return;
+      if(node.nodeType===1 && !skipSelf && node.hasAttribute && node.hasAttribute("contenteditable")){
+        const value=(node.getAttribute("contenteditable")||"").toLowerCase();
+        if(value==="false" && !isProtectedContentEditable(node)){
+          node.removeAttribute("contenteditable");
+        }
+      }
+      let child=node.firstChild;
+      while(child){
+        if(child.nodeType===1){
+          stripBlockedContentEditable(child, false);
+        } else if(child.nodeType===11){
+          stripBlockedContentEditable(child, true);
+        }
+        child=child.nextSibling;
+      }
+    }
     function isWordListPara(node){ if(!node || node.nodeType!==1 || node.tagName!=="P") return false;
       const cls=node.getAttribute("class")||"";
       if(WORD_LIST_RE.test(node.getAttribute("style")||"")) return true;
@@ -398,6 +424,7 @@
       prepareWordArtifacts(root);
       convertWordLists(root);
       cleanWordArtifacts(root);
+      stripBlockedContentEditable(root, true);
       const nodes=[]; const cn=root.childNodes;
       for(let i=0;i<cn.length;i++){ const nd=cn[i]; if(nd.nodeType===1 || (nd.nodeType===3 && nd.nodeValue.trim())) nodes.push(nd); }
       if(nodes.length===1 && nodes[0].nodeType===1 && /^H[1-6]$/.test(nodes[0].tagName)){
