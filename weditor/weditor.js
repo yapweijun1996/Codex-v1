@@ -240,8 +240,23 @@
   })();
   const Sanitizer=(function(){
     const BAD={"script":1,"style":1,"iframe":1,"object":1,"embed":1,"link":1,"meta":1};
+    const WORD_CONDITIONAL_COMMENT_RE=/^\s*(?:<!\[)?if\b[^]*?mso/i;
+    const WORD_ENDIF_COMMENT_RE=/^\s*<!?\[endif\]>?/i;
     function clean(html){
       const c=document.createElement("div"); c.innerHTML=html;
+      const commentWalker=document.createTreeWalker(c, NodeFilter.SHOW_COMMENT);
+      const commentsToRemove=[]; let commentNode;
+      while((commentNode=commentWalker.nextNode())){
+        const value=(commentNode.nodeValue||"").trim();
+        if(!value) continue;
+        if(WORD_CONDITIONAL_COMMENT_RE.test(value) || WORD_ENDIF_COMMENT_RE.test(value)){
+          commentsToRemove.push(commentNode);
+        }
+      }
+      for(let i=0;i<commentsToRemove.length;i++){
+        const node=commentsToRemove[i];
+        if(node && node.parentNode) node.parentNode.removeChild(node);
+      }
       const walker=document.createTreeWalker(c, NodeFilter.SHOW_ELEMENT); let node;
       while((node=walker.nextNode())){
         const tag=(node.tagName||"").toLowerCase();
