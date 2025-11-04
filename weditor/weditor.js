@@ -6,6 +6,7 @@
   const LIST_STYLE_ATTR="data-weditor-list-style";
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
+  const LIST_STYLE_WORD_STYLE_ID="weditor-list-style-word";
   const DEFAULT_LETTERHEAD_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
   const DEFAULT_FOOTER_LOGO_URL=DEFAULT_LETTERHEAD_LOGO_URL;
   function sanitizeImageURL(value){
@@ -46,17 +47,35 @@
       ".w-editor[data-weditor-instance] p,"+
       ".weditor_page-content p,"+
       ".weditor_fullscreen-area p{"+
-        "margin:0;"+
         "margin-block-start:0;"+
         "margin-block-end:0;"+
       "}";
     targetDoc.head.appendChild(style);
   }
+  function ensureDecimalZeroListStyle(doc){
+    const targetDoc=doc || document;
+    if(!targetDoc || !targetDoc.head) return;
+    if(targetDoc.getElementById(LIST_STYLE_DECIMAL_ZERO_STYLE_ID)) return;
+    const style=targetDoc.createElement("style");
+    style.id=LIST_STYLE_DECIMAL_ZERO_STYLE_ID;
+    const selector="ol["+LIST_STYLE_ATTR+"=\""+LIST_STYLE_DECIMAL_ZERO+"\"]";
+    style.textContent=
+      selector+","+selector+" ol{"+
+        "list-style:none;"+
+        "padding-inline-start:2.5em;"+
+      "}"+
+      selector+" > li::marker,"+selector+" ol > li::marker{"+
+        "content:counter(list-item, decimal-leading-zero) \".\\00a0\";"+
+        "font-variant-numeric:tabular-nums;"+
+      "}";
+    targetDoc.head.appendChild(style);
+  }
   function applyZeroMarginToParagraph(node){
     if(!node || !node.style) return;
-    node.style.margin="0";
     node.style.marginBlockStart="0";
     node.style.marginBlockEnd="0";
+    node.style.marginTop="0";
+    node.style.marginBottom="0";
   }
   function enforceZeroMargins(root){
     if(!root) return;
@@ -255,6 +274,67 @@
     }
     return { clean };
   })();
+  const WordListStyleRegistry=(function(){
+    const registry={};
+    const docUsage=new WeakMap();
+    let counter=0;
+    function ensureStyleElement(doc){
+      const targetDoc=doc || document;
+      if(!targetDoc || !targetDoc.head) return null;
+      let style=targetDoc.getElementById(LIST_STYLE_WORD_STYLE_ID);
+      if(style) return style;
+      style=targetDoc.createElement("style");
+      style.id=LIST_STYLE_WORD_STYLE_ID;
+      targetDoc.head.appendChild(style);
+      return style;
+    }
+    function escapeContent(value){
+      return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+    }
+    function register(counterStyle, prefix, suffix, doc){
+      if(!counterStyle && !prefix && !suffix) return null;
+      const key=[counterStyle||"", prefix||"", suffix||""].join("|");
+      let entry=registry[key];
+      if(!entry){
+        const id="word-"+(counter++).toString(36);
+        const selector="ol["+LIST_STYLE_ATTR+"=\""+id+"\"]";
+        const safePrefix=prefix?escapeContent(prefix):"";
+        const safeSuffix=suffix?escapeContent(suffix):"";
+        const contentParts=[];
+        if(prefix){ contentParts.push("\""+safePrefix+"\""); }
+        const counterExpr=counterStyle?"counter(list-item, "+counterStyle+")":"counter(list-item)";
+        contentParts.push(counterExpr);
+        if(suffix){ contentParts.push("\""+safeSuffix+"\""); }
+        contentParts.push("\"\\00a0\"");
+        const contentValue=contentParts.join(" ");
+        entry={
+          id:id,
+          cssText:
+            selector+","+selector+" ol{"+
+              "list-style:none;"+
+              "padding-inline-start:2.5em;"+
+            "}"+
+            selector+" > li::marker,"+selector+" ol > li::marker{"+
+              "content:"+contentValue+";"+
+              "font-variant-numeric:tabular-nums;"+
+            "}"
+        };
+        registry[key]=entry;
+      }
+      const targetDoc=doc || document;
+      const styleEl=ensureStyleElement(targetDoc);
+      if(styleEl && entry.cssText){
+        let used=docUsage.get(targetDoc);
+        if(!used){ used=new Set(); docUsage.set(targetDoc, used); }
+        if(!used.has(entry.id)){
+          styleEl.appendChild(targetDoc.createTextNode(entry.cssText));
+          used.add(entry.id);
+        }
+      }
+      return entry.id;
+    }
+    return { register };
+  })();
   const Normalizer=(function(){
     const BLOCK=/^(P|DIV|UL|OL|LI|H1|H2|H3|H4|H5|H6|TABLE|BLOCKQUOTE|PRE|HR|IMG)$/i;
     function isBlock(el){ return el && el.nodeType===1 && BLOCK.test(el.tagName); }
@@ -350,6 +430,134 @@
       return false;
     }
     function detectListType(node){ const text=(node.textContent||"").trim(); if(ORDERED_MARK_RE.test(text)) return "ol"; return "ul"; }
+    const DEFAULT_MARKER_SUFFIXES=new Set([".",". ",".\u00a0"]);
+    function parseWordListMetadata(node){
+      if(!node || !node.getAttribute) return null;
+      const styleAttr=node.getAttribute("style")||"";
+      if(!styleAttr) return null;
+      const meta={};
+      const listMatch=styleAttr.match(/mso-list:\s*l([0-9]+)\s+level([0-9]+)(?:\s+lfo([0-9]+))?/i);
+      if(listMatch){
+        meta.listId="l"+listMatch[1];
+        meta.level=parseInt(listMatch[2],10)||1;
+        if(listMatch[3]!=null){ meta.listOverride="lfo"+listMatch[3]; }
+      }
+      const formatMatch=styleAttr.match(/mso-level-number-format:\s*([a-z-]+)/i);
+      if(formatMatch){
+        const fmt=formatMatch[1].toLowerCase();
+        switch(fmt){
+          case "bullet":
+            meta.type="ul";
+            break;
+          case "alpha-lower":
+            meta.type="ol";
+            meta.counter="lower-alpha";
+            meta.counterAttr="a";
+            break;
+          case "alpha-upper":
+            meta.type="ol";
+            meta.counter="upper-alpha";
+            meta.counterAttr="A";
+            break;
+          case "roman-lower":
+            meta.type="ol";
+            meta.counter="lower-roman";
+            meta.counterAttr="i";
+            break;
+          case "roman-upper":
+            meta.type="ol";
+            meta.counter="upper-roman";
+            meta.counterAttr="I";
+            break;
+          case "decimal":
+            meta.type="ol";
+            meta.counter="decimal";
+            meta.counterAttr="1";
+            break;
+          case "decimal-leading-zero":
+          case "arabic-leading-zero":
+            meta.type="ol";
+            meta.counter="decimal";
+            meta.counterAttr="1";
+            meta.styleAttrValue=LIST_STYLE_DECIMAL_ZERO;
+            break;
+          default:
+            meta.type="ol";
+            meta.counter="decimal";
+            meta.counterAttr="1";
+        }
+      }
+      const textMatch=styleAttr.match(/mso-level-text:\s*"([^"]*)"/i);
+      if(textMatch){
+        const template=textMatch[1];
+        const placeholderIndex=template.indexOf("%1");
+        if(placeholderIndex>-1){
+          meta.prefix=template.slice(0, placeholderIndex);
+          meta.suffix=template.slice(placeholderIndex+2);
+        } else {
+          meta.prefix="";
+          meta.suffix=template;
+        }
+      }
+      const startMatch=styleAttr.match(/mso-level-start-at:\s*([0-9]+)/i);
+      if(startMatch){
+        const startValue=parseInt(startMatch[1], 10);
+        if(!isNaN(startValue)){ meta.start=startValue; }
+      }
+      const rawPrefix=meta.prefix||"";
+      const rawSuffix=meta.suffix||"";
+      const trimmedPrefix=rawPrefix.trim();
+      const trimmedSuffix=rawSuffix.replace(/\s+$/, "").trim();
+      meta.prefix=trimmedPrefix ? rawPrefix : "";
+      meta.suffix=rawSuffix;
+      const hasPrefix=trimmedPrefix.length>0;
+      const hasCustomSuffix=trimmedSuffix.length>0 && !DEFAULT_MARKER_SUFFIXES.has(trimmedSuffix);
+      meta.customMarker=hasPrefix || hasCustomSuffix;
+      return meta;
+    }
+    function listMetaEquals(a, b){
+      if(a===b) return true;
+      if(!a || !b) return false;
+      return (a.type||"")===(b.type||"") &&
+        (a.counter||"")===(b.counter||"") &&
+        (a.counterAttr||"")===(b.counterAttr||"") &&
+        (a.styleAttrValue||"")===(b.styleAttrValue||"") &&
+        (a.prefix||"")===(b.prefix||"") &&
+        (a.suffix||"")===(b.suffix||"") &&
+        !!a.customMarker===!!b.customMarker &&
+        (a.start||1)===(b.start||1);
+    }
+    function applyWordListMetadata(list, meta){
+      if(!list || !meta) return;
+      const ownerDoc=list.ownerDocument || document;
+      if(meta.start && meta.start>1){ list.setAttribute("start", String(meta.start)); }
+      else { list.removeAttribute("start"); }
+      if(meta.counterAttr){ list.setAttribute("type", meta.counterAttr); }
+      else { list.removeAttribute("type"); }
+      if(meta.styleAttrValue===LIST_STYLE_DECIMAL_ZERO){
+        list.setAttribute(LIST_STYLE_ATTR, LIST_STYLE_DECIMAL_ZERO);
+        ensureDecimalZeroListStyle(ownerDoc);
+        list.style.removeProperty("list-style-type");
+      } else if(meta.customMarker && meta.counter){
+        const styleId=WordListStyleRegistry.register(meta.counter, meta.prefix||"", meta.suffix||"", ownerDoc);
+        if(styleId){
+          list.setAttribute(LIST_STYLE_ATTR, styleId);
+          list.style.listStyleType="none";
+        } else {
+          list.style.listStyleType=meta.counter;
+        }
+      } else {
+        if(list.getAttribute && list.getAttribute(LIST_STYLE_ATTR) && list.getAttribute(LIST_STYLE_ATTR)!==LIST_STYLE_DECIMAL_ZERO){
+          list.removeAttribute(LIST_STYLE_ATTR);
+        }
+      }
+      if(meta.counter && !meta.customMarker && meta.styleAttrValue!==LIST_STYLE_DECIMAL_ZERO){
+        list.style.listStyleType=meta.counter;
+      }
+      if(!meta.counter){
+        list.style.removeProperty("list-style-type");
+      }
+    }
     function stripLeadingBullets(li){
       function pruneEmpty(node){
         while(node && node!==li && node.nodeType===1 && !node.firstChild){
@@ -438,30 +646,100 @@
       if(!node || node.nodeType!==8) return false;
       return String(node.nodeValue||"").trim().toLowerCase()==="page:break";
     }
+    function cloneListMeta(meta){
+      if(!meta) return null;
+      return {
+        type:meta.type||"",
+        counter:meta.counter||"",
+        counterAttr:meta.counterAttr||"",
+        styleAttrValue:meta.styleAttrValue||"",
+        prefix:meta.prefix||"",
+        suffix:meta.suffix||"",
+        customMarker:!!meta.customMarker,
+        start:meta.start||1
+      };
+    }
+    function createListElement(type, meta, container, referenceNode, parentEntry){
+      const doc=(container && container.ownerDocument) || document;
+      const list=doc.createElement(type);
+      if(list.style){
+        list.style.marginBlockStart="0";
+        list.style.marginBlockEnd="0";
+        list.style.marginTop="0";
+        list.style.marginBottom="0";
+      }
+      if(meta){ applyWordListMetadata(list, meta); }
+      if(parentEntry){
+        if(!parentEntry.lastItem || parentEntry.lastItem.parentNode!==parentEntry.list){
+          const holder=doc.createElement("li");
+          parentEntry.list.appendChild(holder);
+          parentEntry.lastItem=holder;
+        }
+        parentEntry.lastItem.appendChild(list);
+      } else {
+        container.insertBefore(list, referenceNode);
+      }
+      return list;
+    }
     function convertWordLists(container){
-      let node=container.firstChild; let activeList=null; let activeType="";
-      while(node){ const next=node.nextSibling;
+      let node=container.firstChild;
+      const stack=[];
+      while(node){
+        const next=node.nextSibling;
         if(node.nodeType===8){
           if(isBreakCommentNode(node)){ node=next; continue; }
-          container.removeChild(node); node=next; continue;
-        }
-        if(node.nodeType===3 && !(node.nodeValue||"").trim()){ container.removeChild(node); node=next; continue; }
-        if(node.nodeType===1 && node.tagName==="P" && isWordListPara(node)){
-          const type=detectListType(node);
-          if(!activeList || activeType!==type){
-            activeList=document.createElement(type);
-            container.insertBefore(activeList, node);
-            activeType=type;
-          }
-          const li=document.createElement("li");
-          while(node.firstChild){ li.appendChild(node.firstChild); }
-          stripLeadingBullets(li);
-          activeList.appendChild(li);
           container.removeChild(node);
           node=next;
           continue;
         }
-        activeList=null; activeType="";
+        if(node.nodeType===3 && !(node.nodeValue||"").trim()){
+          container.removeChild(node);
+          node=next;
+          continue;
+        }
+        if(node.nodeType===1 && node.tagName==="P" && isWordListPara(node)){
+          const meta=parseWordListMetadata(node);
+          const type=(meta && meta.type) || detectListType(node);
+          if(meta){
+            if(!meta.type) meta.type=type;
+            if(type==="ol" && !meta.counter){
+              meta.counter="decimal";
+              if(!meta.counterAttr) meta.counterAttr="1";
+            }
+          }
+          let level=0;
+          let listKey="";
+          if(meta){
+            if(typeof meta.level==="number" && meta.level>0){ level=meta.level-1; }
+            const idPart=meta.listId||"";
+            const overridePart=meta.listOverride||"";
+            listKey=idPart+"|"+overridePart;
+          }
+          while(stack.length>level){ stack.pop(); }
+          if(level>stack.length){ level=stack.length; }
+          const parentEntry=level>0 ? stack[level-1] : null;
+          let entry=stack[level];
+          const needsReset=!entry || entry.type!==type || entry.keyId!==listKey || !listMetaEquals(entry.meta, meta);
+          if(needsReset){
+            const list=createListElement(type, meta, container, node, parentEntry);
+            entry={ list:list, type:type, keyId:listKey, meta:cloneListMeta(meta), lastItem:null };
+            stack[level]=entry;
+            stack.length=level+1;
+          } else if(meta){
+            entry.meta=cloneListMeta(meta);
+            entry.keyId=listKey;
+          }
+          const doc=(container && container.ownerDocument) || document;
+          const li=doc.createElement("li");
+          while(node.firstChild){ li.appendChild(node.firstChild); }
+          stripLeadingBullets(li);
+          entry.list.appendChild(li);
+          entry.lastItem=li;
+          container.removeChild(node);
+          node=next;
+          continue;
+        }
+        stack.length=0;
         if(node && node.nodeType===1) convertWordLists(node);
         node=next;
       }
