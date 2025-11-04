@@ -262,12 +262,20 @@
     const WORD_CLASS_RE=/^mso/i;
     const WORD_LIST_CLASS_RE=/^mso(listparagraph|listcontinue)/i;
     const BULLET_RE=/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+$/;
-    const ORDERED_MARK_RE=/^(\(*([0-9]+|[ivxlcdm]+)\)|([0-9]+|[ivxlcdm]+))[\.|\)]\s*/i;
+    const ORDERED_MARK_RE=/^(\(*([0-9]+|[ivxlcdm]+|[a-z])\)|([0-9]+|[ivxlcdm]+|[a-z]))[\.|\)]\s*/i;
+    const ORDERED_MARK_NOSYM_RE=/^([0-9]{1,3}|[ivxlcdm]{1,5}|[a-z])[\s\u00a0]{2,}$/i;
+    const ORDERED_MARK_DECIMAL_RE=/^([0-9]+(?:\.[0-9]+)+)[\s\u00a0\t]+/i;
     const TAB_STOP_RE=/tab-stops?/i;
     function prepareWordArtifacts(root){
       function walk(node){
         if(!node || node.nodeType!==1) return;
-        if(/^(O:P)$/i.test(node.tagName||"")){
+        const tagName=node.tagName||"";
+        if(/^_moz_generated_content_marker$/i.test(tagName)){
+          const parent=node.parentNode;
+          if(parent) parent.removeChild(node);
+          return;
+        }
+        if(/^(O:P)$/i.test(tagName)){
           const parent=node.parentNode; if(parent){
             let child=node.firstChild;
             while(child){ const next=child.nextSibling; if(child.nodeType===1) walk(child); parent.insertBefore(child, node); child=next; }
@@ -351,12 +359,28 @@
           node=parent;
         }
       }
+      function isWhitespaceNode(node){
+        if(!node) return false;
+        if(node.nodeType===3) return !((node.nodeValue||"").replace(/\u00a0/g, " " ).trim());
+        if(node.nodeType!==1) return false;
+        if(node.childNodes && node.childNodes.length){
+          let child=node.firstChild;
+          while(child){
+            if(!isWhitespaceNode(child)) return false;
+            child=child.nextSibling;
+          }
+          return true;
+        }
+        return !((node.textContent||"").replace(/\u00a0/g, " " ).trim());
+      }
       function stripFromText(textNode){
         if(!textNode) return false;
         let value=textNode.nodeValue||"";
         const original=value;
         value=value.replace(/^[\s\u00a0\u2022\u00b7\u25aa\u25cf\-]+/, "");
         value=value.replace(ORDERED_MARK_RE, "");
+        value=value.replace(ORDERED_MARK_NOSYM_RE, "");
+        value=value.replace(ORDERED_MARK_DECIMAL_RE, "");
         if(value===original) return false;
         if(value.length){ textNode.nodeValue=value; }
         else {
@@ -364,6 +388,25 @@
           if(parent) parent.removeChild(textNode);
           pruneEmpty(parent);
         }
+        return true;
+      }
+      function removeNumericLeader(textNode){
+        if(!textNode) return false;
+        const trimmed=(textNode.nodeValue||"").trim();
+        if(!trimmed) return false;
+        if(!/^([0-9]{1,3}(?:\.[0-9]{1,3})*|[ivxlcdm]{1,5}|[a-z])$/i.test(trimmed)) return false;
+        let sibling=textNode.nextSibling;
+        let spacerFound=false;
+        while(sibling && isWhitespaceNode(sibling)){
+          const next=sibling.nextSibling;
+          if(sibling.parentNode) sibling.parentNode.removeChild(sibling);
+          sibling=next;
+          spacerFound=true;
+        }
+        if(!spacerFound) return false;
+        const parent=textNode.parentNode;
+        if(textNode.parentNode) textNode.parentNode.removeChild(textNode);
+        pruneEmpty(parent);
         return true;
       }
       function findFirstText(node){
@@ -379,11 +422,15 @@
         return null;
       }
       while(li.firstChild && li.firstChild.nodeType===3 && BULLET_RE.test(li.firstChild.nodeValue||"")){ li.removeChild(li.firstChild); }
-      if(li.firstChild && li.firstChild.nodeType===3){
-        stripFromText(li.firstChild);
-      } else if(li.firstChild && li.firstChild.nodeType===1){
-        const textNode=findFirstText(li.firstChild);
-        if(textNode) stripFromText(textNode);
+      if(li.firstChild){
+        if(li.firstChild.nodeType===3){
+          if(!stripFromText(li.firstChild)) removeNumericLeader(li.firstChild);
+        } else if(li.firstChild.nodeType===1){
+          const textNode=findFirstText(li.firstChild);
+          if(textNode){
+            if(!stripFromText(textNode)) removeNumericLeader(textNode);
+          }
+        }
       }
       while(li.firstChild && li.firstChild.nodeType===3 && !(li.firstChild.nodeValue||"").trim()){ li.removeChild(li.firstChild); }
     }
@@ -419,10 +466,22 @@
         node=next;
       }
     }
+    function scrubExistingListItems(root){
+      if(!root) return;
+      let scope=root;
+      if(scope.nodeType===1 && scope.tagName==="LI"){
+        stripLeadingBullets(scope);
+      }
+      const query=scope.querySelectorAll ? scope.querySelectorAll("li") : [];
+      for(let i=0;i<query.length;i++){
+        stripLeadingBullets(query[i]);
+      }
+    }
     function fixStructure(root){
       if(!root) return;
       prepareWordArtifacts(root);
       convertWordLists(root);
+      scrubExistingListItems(root);
       cleanWordArtifacts(root);
       stripBlockedContentEditable(root, true);
       const nodes=[]; const cn=root.childNodes;
