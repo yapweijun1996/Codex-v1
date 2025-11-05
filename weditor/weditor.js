@@ -2881,6 +2881,73 @@
     return { open };
   })();
   const StateBinding=(function(){
+    function escapeControlCharsWithinStrings(str){
+      if(typeof str!=="string" || !str) return str;
+      let result="";
+      let changed=false;
+      let inString=false;
+      let escaping=false;
+      for(let i=0;i<str.length;i++){
+        const ch=str[i];
+        if(inString){
+          if(escaping){
+            result+=ch;
+            escaping=false;
+            continue;
+          }
+          if(ch==='\\'){
+            result+=ch;
+            escaping=true;
+            continue;
+          }
+          if(ch==='"'){
+            inString=false;
+            result+=ch;
+            continue;
+          }
+          const code=ch.charCodeAt(0);
+          if(code===10){
+            result+="\\n";
+            changed=true;
+            continue;
+          }
+          if(code===13){
+            result+="\\r";
+            changed=true;
+            continue;
+          }
+          if(code===9){
+            result+="\\t";
+            changed=true;
+            continue;
+          }
+          if(code===12){
+            result+="\\f";
+            changed=true;
+            continue;
+          }
+          if(code===0x2028){
+            result+="\\u2028";
+            changed=true;
+            continue;
+          }
+          if(code===0x2029){
+            result+="\\u2029";
+            changed=true;
+            continue;
+          }
+          result+=ch;
+          continue;
+        }
+        if(ch==='"'){
+          inString=true;
+          result+=ch;
+          continue;
+        }
+        result+=ch;
+      }
+      return changed ? result : str;
+    }
     function parse(json){
       if(!json) return null;
       let data=json;
@@ -2888,7 +2955,12 @@
         const trimmed=json.trim();
         if(!trimmed) return null;
         try { data=JSON.parse(trimmed); }
-        catch(err){ return null; }
+        catch(err1){
+          const repaired=escapeControlCharsWithinStrings(trimmed);
+          if(!repaired || repaired===trimmed) return null;
+          try { data=JSON.parse(repaired); }
+          catch(err2){ return null; }
+        }
       }
       if(!data || typeof data!=="object") return null;
       return data;
