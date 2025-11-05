@@ -2881,6 +2881,42 @@
     return { open };
   })();
   const StateBinding=(function(){
+    function rescueBrokenJSON(text){
+      if(typeof text!=="string" || !text) return text;
+      let result="";
+      let inString=false;
+      for(let i=0;i<text.length;i++){
+        const ch=text[i];
+        if(ch==='\\'){
+          result+=ch;
+          if(i+1<text.length){ result+=text[++i]; }
+          continue;
+        }
+        if(ch==='"'){
+          if(!inString){
+            inString=true;
+            result+=ch;
+            continue;
+          }
+          let j=i+1;
+          while(j<text.length){
+            const next=text[j];
+            if(next===' '||next==='\n'||next==='\r'||next==='\t'){ j++; continue; }
+            break;
+          }
+          const boundary=j>=text.length ? '' : text[j];
+          if(boundary===',' || boundary==='}' || boundary===']' || boundary===':' || boundary===''){ 
+            inString=false;
+            result+=ch;
+          } else {
+            result+="\\\"";
+          }
+          continue;
+        }
+        result+=ch;
+      }
+      return result;
+    }
     function parse(json){
       if(!json) return null;
       let data=json;
@@ -2888,7 +2924,15 @@
         const trimmed=json.trim();
         if(!trimmed) return null;
         try { data=JSON.parse(trimmed); }
-        catch(err){ return null; }
+        catch(err){
+          const rescued=rescueBrokenJSON(trimmed);
+          if(rescued && rescued!==trimmed){
+            try { data=JSON.parse(rescued); }
+            catch(err2){ return null; }
+          } else {
+            return null;
+          }
+        }
       }
       if(!data || typeof data!=="object") return null;
       return data;
