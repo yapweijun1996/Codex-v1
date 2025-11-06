@@ -50,6 +50,14 @@
         "margin-bottom:0;"+
         "margin-block-start:0;"+
         "margin-block-end:0;"+
+      "}"+
+      ".weditor[data-weditor-instance] li::marker,"+
+      ".w-editor[data-weditor-instance] li::marker,"+
+      ".weditor_page-content li::marker,"+
+      ".weditor_fullscreen-area li::marker{"+
+        "font-weight:inherit;"+
+        "font-family:inherit;"+
+        "color:inherit;"+
       "}";
     targetDoc.head.appendChild(style);
   }
@@ -4514,10 +4522,73 @@
     function applySimple(inst, ctx, command){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       focusTarget(target);
-      const runCommand=function(){ return execCommand(target, command, null, true); };
+      const runCommand=function(){
+        const ok=execCommand(target, command, null, true);
+        if(!ok) return false;
+        const lowerCmd=command ? String(command).toLowerCase() : "";
+        const doc=target.ownerDocument || document;
+        const commandStateMap={ strikethrough:"strikeThrough" };
+        const stateName=commandStateMap[lowerCmd] || lowerCmd;
+        const state=(doc.queryCommandState && stateName) ? doc.queryCommandState(stateName) : null;
+        if(lowerCmd==="bold"){
+          promoteListFormatting(target, "fontWeight", "bold", !!state);
+        } else if(lowerCmd==="italic"){
+          promoteListFormatting(target, "fontStyle", "italic", !!state);
+        } else if(lowerCmd==="strikethrough"){
+          promoteListFormatting(target, "textDecoration", "line-through", !!state);
+        } else if(lowerCmd==="underline"){
+          promoteListFormatting(target, "textDecoration", "underline", !!state);
+        }
+        return true;
+      };
       const multi=applyAcrossTableSelection(inst, ctx, target, runCommand);
       if(multi.handled){ return multi.changed; }
       return runCommand();
+    }
+    function collectListItemsInRange(target){
+      const doc=target.ownerDocument || document;
+      const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+      if(!sel || sel.rangeCount===0) return [];
+      const items=new Set();
+      function addNode(node){
+        while(node && node!==target){
+          if(node.nodeType===1 && (node.tagName||"").toLowerCase()==="li"){
+            items.add(node);
+            break;
+          }
+          node=node.parentNode;
+        }
+      }
+      for(let r=0;r<sel.rangeCount;r++){
+        const range=sel.getRangeAt(r);
+        if(!range) continue;
+        const container=range.commonAncestorContainer || range.startContainer;
+        if(!container || !target.contains(container)) continue;
+        addNode(range.startContainer);
+        addNode(range.endContainer);
+        if(!range.collapsed && doc.createTreeWalker){
+          const walker=doc.createTreeWalker(container.nodeType===1?container:container.parentNode||target, NodeFilter.SHOW_ELEMENT, null, false);
+          let node;
+          while((node=walker.nextNode())){
+            if(range.intersectsNode && !range.intersectsNode(node)) continue;
+            addNode(node);
+          }
+        }
+      }
+      return Array.from(items);
+    }
+    function promoteListFormatting(target, prop, value, shouldApply){
+      const liNodes=collectListItemsInRange(target);
+      if(!liNodes.length) return;
+      for(let i=0;i<liNodes.length;i++){
+        const li=liNodes[i];
+        if(!li || !li.style) continue;
+        if(shouldApply){
+          li.style[prop]=value;
+        } else {
+          li.style.removeProperty(prop);
+        }
+      }
     }
     function applyAlign(inst, ctx, align){
       const target=resolveTarget(inst, ctx); if(!target) return false;
@@ -7661,6 +7732,9 @@
           "text-align:right;"+
           "font-variant-numeric:tabular-nums;"+
           "white-space:nowrap;"+
+          "font-weight:inherit;"+
+          "font-family:inherit;"+
+          "color:inherit;"+
         "}"+
         selector+" > li::before{"+
           "content:counter(item) '.0\\00a0';"+
