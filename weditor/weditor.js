@@ -6,6 +6,36 @@
   const LIST_STYLE_ATTR="data-weditor-list-style";
   const LIST_STYLE_DECIMAL_ZERO="decimal-dot-zero";
   const LIST_STYLE_DECIMAL_ZERO_STYLE_ID="weditor-list-style-decimal-dot-zero";
+  const LIST_STYLE_DECIMAL_ZERO_SELECTOR="ol["+LIST_STYLE_ATTR+"=\""+LIST_STYLE_DECIMAL_ZERO+"\"]";
+  const LIST_STYLE_DECIMAL_ZERO_CSS=
+    LIST_STYLE_DECIMAL_ZERO_SELECTOR+","+LIST_STYLE_DECIMAL_ZERO_SELECTOR+" ol{"+
+      "list-style:none;"+
+      "padding-left:3em;"+
+      "counter-reset:item;"+
+    "}"+
+    LIST_STYLE_DECIMAL_ZERO_SELECTOR+" > li,"+LIST_STYLE_DECIMAL_ZERO_SELECTOR+" ol > li{"+
+      "position:relative;"+
+      "margin:0.25em 0;"+
+      "padding-left:0.6em;"+
+      "counter-increment:item;"+
+    "}"+
+    LIST_STYLE_DECIMAL_ZERO_SELECTOR+" > li::before,"+LIST_STYLE_DECIMAL_ZERO_SELECTOR+" ol > li::before{"+
+      "position:absolute;"+
+      "left:-3em;"+
+      "width:2.6em;"+
+      "text-align:right;"+
+      "font-variant-numeric:tabular-nums;"+
+      "white-space:nowrap;"+
+      "font-weight:inherit;"+
+      "font-family:inherit;"+
+      "color:inherit;"+
+    "}"+
+    LIST_STYLE_DECIMAL_ZERO_SELECTOR+" > li::before{"+
+      "content:counter(item) '.0\\00a0';"+
+    "}"+
+    LIST_STYLE_DECIMAL_ZERO_SELECTOR+" ol > li::before{"+
+      "content:counters(item,'.') '\\00a0';"+
+    "}";
   const DEFAULT_LETTERHEAD_LOGO_URL="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png";
   const DEFAULT_FOOTER_LOGO_URL=DEFAULT_LETTERHEAD_LOGO_URL;
   function sanitizeImageURL(value){
@@ -1469,7 +1499,8 @@
     ".weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}"+
     ".weditor_page-header{border-bottom:0!important;}"+
     ".weditor_page-footer{border-top:0!important;}"+
-    ".weditor_page-content p{margin:0;margin-block-start:0;margin-block-end:0;}";
+    ".weditor_page-content p{margin:0;margin-block-start:0;margin-block-end:0;}"+
+    LIST_STYLE_DECIMAL_ZERO_CSS;
   const PAGED_PRINT_STYLE_BLOCK = "<div style=\"display:none;\"><style>"+PAGED_PRINT_STYLES+"</style></div>";
   const PrintUI=(function(){
     function render(w, pagedHTML){
@@ -7712,36 +7743,7 @@
       if(document.getElementById(LIST_STYLE_DECIMAL_ZERO_STYLE_ID)) return;
       const style=document.createElement("style");
       style.id=LIST_STYLE_DECIMAL_ZERO_STYLE_ID;
-      const selector="ol["+LIST_STYLE_ATTR+"=\""+LIST_STYLE_DECIMAL_ZERO+"\"]";
-      style.textContent=
-        selector+","+selector+" ol{"+
-          "list-style:none;"+
-          "padding-left:3em;"+
-          "counter-reset:item;"+
-        "}"+
-        selector+" > li,"+selector+" ol > li{"+
-          "position:relative;"+
-          "margin:0.25em 0;"+
-          "padding-left:0.6em;"+
-          "counter-increment:item;"+
-        "}"+
-        selector+" > li::before,"+selector+" ol > li::before{"+
-          "position:absolute;"+
-          "left:-3em;"+
-          "width:2.6em;"+
-          "text-align:right;"+
-          "font-variant-numeric:tabular-nums;"+
-          "white-space:nowrap;"+
-          "font-weight:inherit;"+
-          "font-family:inherit;"+
-          "color:inherit;"+
-        "}"+
-        selector+" > li::before{"+
-          "content:counter(item) '.0\\00a0';"+
-        "}"+
-        selector+" ol > li::before{"+
-          "content:counters(item,'.') '\\00a0';"+
-        "}";
+      style.textContent=LIST_STYLE_DECIMAL_ZERO_CSS;
       document.head.appendChild(style);
     }
     ensureListStyles();
