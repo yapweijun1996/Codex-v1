@@ -461,6 +461,15 @@
         }
         return null;
       }
+      function wrapWithListItem(listNode){
+        const parent=listNode && listNode.parentNode;
+        if(!parent) return null;
+        const doc=listNode.ownerDocument || document;
+        const wrapper=doc.createElement("li");
+        parent.insertBefore(wrapper, listNode);
+        wrapper.appendChild(listNode);
+        return wrapper;
+      }
       function walk(container){
         if(!container || container.nodeType!==1) return;
         let child=container.firstChild;
@@ -473,6 +482,8 @@
                 const prevEl=previousRelevantElement(child);
                 if(isListItem(prevEl)){
                   prevEl.appendChild(child);
+                } else if(isList(parent)){
+                  wrapWithListItem(child);
                 }
               }
             }
