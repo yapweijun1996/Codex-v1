@@ -411,7 +411,7 @@
         if(n && n.parentNode) n.parentNode.removeChild(n);
       }
     }
-    const ENABLE_WORD_LIST_NORMALIZATION=false;
+    const ENABLE_WORD_LIST_NORMALIZATION=true;
     function convertWordLists(container){
       let node=container.firstChild; let activeList=null; let activeType="";
       while(node){ const next=node.nextSibling;
@@ -440,12 +440,56 @@
         node=next;
       }
     }
+    function rebalanceOrphanLists(root){
+      function isList(node){
+        if(!node || node.nodeType!==1) return false;
+        const tag=(node.tagName||"").toUpperCase();
+        return tag==="OL" || tag==="UL";
+      }
+      function isListItem(node){
+        return !!(node && node.nodeType===1 && (node.tagName||"").toUpperCase()==="LI");
+      }
+      function previousRelevantElement(node){
+        let prev=node ? node.previousSibling : null;
+        while(prev){
+          if(prev.nodeType===1) return prev;
+          if(prev.nodeType===3 && !(prev.nodeValue||"").trim()){
+            prev=prev.previousSibling;
+            continue;
+          }
+          break;
+        }
+        return null;
+      }
+      function walk(container){
+        if(!container || container.nodeType!==1) return;
+        let child=container.firstChild;
+        while(child){
+          const next=child.nextSibling;
+          if(child.nodeType===1){
+            if(isList(child)){
+              const parent=child.parentNode;
+              if(parent && (parent.tagName||"").toUpperCase()!=="LI"){
+                const prevEl=previousRelevantElement(child);
+                if(isListItem(prevEl)){
+                  prevEl.appendChild(child);
+                }
+              }
+            }
+            walk(child);
+          }
+          child=next;
+        }
+      }
+      walk(root);
+    }
     function fixStructure(root){
       if(!root) return;
       stripWordComments(root);
       prepareWordArtifacts(root);
       if(ENABLE_WORD_LIST_NORMALIZATION){ convertWordLists(root); }
       cleanWordArtifacts(root);
+      rebalanceOrphanLists(root);
       const nodes=[]; const cn=root.childNodes;
       for(let i=0;i<cn.length;i++){ const nd=cn[i]; if(nd.nodeType===1 || (nd.nodeType===3 && nd.nodeValue.trim())) nodes.push(nd); }
       if(nodes.length===1 && nodes[0].nodeType===1 && /^H[1-6]$/.test(nodes[0].tagName)){
@@ -3575,6 +3619,7 @@
       area.addEventListener("paste", function(){ window.setTimeout(function(){ Normalizer.fixStructure(area); Breaks.ensurePlaceholders(area); }, 0); });
       let t=null; area.addEventListener("input", function(ev){ Breaks.ensurePlaceholders(area); HistoryManager.handleInput(inst, area, ev); if(t) window.clearTimeout(t); t=window.setTimeout(render, WCfg.DEBOUNCE_PREVIEW); });
       area.addEventListener("keydown", function(ev){
+        if(handleListIndentHotkey(inst, area, ev, ctx)) return;
         if(Breaks.handleKeydown(area, ev)){
           HistoryManager.record(inst, area, { label:"Remove Page Break", repeatable:false });
           if(ctx && ctx.refreshPreview) ctx.refreshPreview();
@@ -5445,6 +5490,47 @@
     }
     return { resolveTarget, init, detach, record, undo, redo, repeat, handleInput, handleKeydown, registerUndo, registerRedo, toggleUndoMenu, getUndoHistory };
   })();
+  function handleListIndentHotkey(inst, target, ev, ctx){
+    if(!ev || ev.defaultPrevented) return false;
+    if(ev.ctrlKey || ev.metaKey || ev.altKey) return false;
+    const key=typeof ev.key==="string" ? ev.key : "";
+    const keyCode=typeof ev.keyCode==="number" ? ev.keyCode : null;
+    const isTab=(key && key.toLowerCase()==="tab") || keyCode===9;
+    if(!isTab) return false;
+    if(!target) return false;
+    const doc=target.ownerDocument || document;
+    const selection=doc && doc.getSelection ? doc.getSelection() : (window.getSelection ? window.getSelection() : null);
+    let anchor=selection && selection.anchorNode ? selection.anchorNode : (selection && selection.focusNode ? selection.focusNode : null);
+    if(!anchor) return false;
+    if(!target.contains(anchor.nodeType===1?anchor:anchor.parentNode)) return false;
+    let node=anchor.nodeType===1 ? anchor : anchor.parentNode;
+    while(node && node!==target){
+      const tag=node.nodeName ? node.nodeName.toLowerCase() : "";
+      if(tag==="table") return false;
+      node=node.parentNode;
+    }
+    ev.preventDefault();
+    if(typeof ev.stopPropagation==="function") ev.stopPropagation();
+    if(typeof ev.stopImmediatePropagation==="function") ev.stopImmediatePropagation();
+    const handler=ev.shiftKey ? (Formatting && Formatting.outdentList) : (Formatting && Formatting.indentList);
+    if(!handler || typeof handler!=="function") return true;
+    const changed=handler(inst, ctx||null);
+    const historyTarget=(HistoryManager && typeof HistoryManager.resolveTarget==="function") ? HistoryManager.resolveTarget(inst, ctx||null) : target;
+    if(changed && HistoryManager && typeof HistoryManager.record==="function" && historyTarget){
+      const meta=ev.shiftKey ?
+        { label:"Decrease Indent", repeatable:true, repeatId:"outdent", repeatLabel:"Decrease Indent" } :
+        { label:"Increase Indent", repeatable:true, repeatId:"indent", repeatLabel:"Increase Indent" };
+      HistoryManager.record(inst, historyTarget, meta);
+    }
+    const isFullscreenContext = ctx && typeof ctx==='object' && ctx.area && ctx.area===target;
+    if(changed && !isFullscreenContext && OutputBinding && typeof OutputBinding.syncDebounced==="function" && inst){
+      OutputBinding.syncDebounced(inst);
+    }
+    if(changed && isFullscreenContext && ctx && typeof ctx.refreshPreview==="function"){
+      ctx.refreshPreview();
+    }
+    return true;
+  }
   const HistoryUI=(function(){
     function createUndo(inst, ctx){
       const target=HistoryManager.resolveTarget(inst, ctx);
@@ -10603,6 +10689,7 @@
     this.el.addEventListener("input", (function(self){ return function(ev){ Breaks.ensurePlaceholders(self.el); HistoryManager.handleInput(self, self.el, ev); OutputBinding.syncDebounced(self); }; })(this));
     this.el.addEventListener("keydown", (function(self){
       return function(ev){
+        if(handleListIndentHotkey(self, self.el, ev, null)) return;
         if(Breaks.handleKeydown(self.el, ev)){
           HistoryManager.record(self, self.el, { label:"Remove Page Break", repeatable:false });
           OutputBinding.syncDebounced(self);

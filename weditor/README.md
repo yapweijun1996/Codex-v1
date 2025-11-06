@@ -39,6 +39,26 @@ Matched scripts are read once, sanitized, and marked with `data-weditor-state-co
 </script>
 ```
 
+## Nested List Tips
+
+When you need multi-level numbered lists, keep every child `<ol>` or `<ul>` inside the parent `<li>`. Example:
+
+```html
+<ol data-weditor-list-style="decimal-dot-zero">
+  <li>Parent item
+    <ol>
+      <li>Child item
+        <ol>
+          <li>Grandchild item</li>
+        </ol>
+      </li>
+    </ol>
+  </li>
+</ol>
+```
+
+Inside the editor you can rebuild the same structure without touching HTML: place the caret on a list item and press `Tab` to indent (create child level) or `Shift+Tab` to outdent. This guarantees clean numbering such as `1.0 → 1.1 → 1.1.1`.
+
 Once the editor initializes it will populate the textarea with the state (keeping script untouched). Engineers can copy, persist, or tweak the JSON and simply refresh to preview the result.
 
 ## Notes
