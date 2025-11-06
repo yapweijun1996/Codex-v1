@@ -4851,14 +4851,19 @@
       }
       return current;
     }
+    function clearInlineListStyle(list){
+      if(list && list.style){ list.style.removeProperty("list-style-type"); }
+    }
     function applyDecimalDotZeroStyle(list){
       const root=findRootOrderedList(list);
       if(!root) return false;
+      clearInlineListStyle(root);
       root.setAttribute(LIST_STYLE_ATTR, LIST_STYLE_DECIMAL_ZERO);
       const descendants=root.querySelectorAll("ol");
       for(let i=0;i<descendants.length;i++){
         const item=descendants[i];
         if(item!==root){ item.removeAttribute(LIST_STYLE_ATTR); }
+        clearInlineListStyle(item);
       }
       return true;
     }
@@ -4871,12 +4876,12 @@
         if(item.getAttribute && item.getAttribute(LIST_STYLE_ATTR)===LIST_STYLE_DECIMAL_ZERO){
           item.removeAttribute(LIST_STYLE_ATTR);
         }
-        if(item.style && item.style.listStyleType==="none"){ item.style.removeProperty("list-style-type"); }
+        clearInlineListStyle(item);
       }
       if(root.getAttribute && root.getAttribute(LIST_STYLE_ATTR)===LIST_STYLE_DECIMAL_ZERO){
         root.removeAttribute(LIST_STYLE_ATTR);
       }
-      if(root.style && root.style.listStyleType==="none"){ root.style.removeProperty("list-style-type"); }
+      clearInlineListStyle(root);
     }
     function applyListStyle(inst, ctx, style, type, skipCreate){
       const target=resolveTarget(inst, ctx); if(!target) return false;
@@ -4890,12 +4895,13 @@
         list=findListFromSelection(target);
       }
       if(list){
+        clearInlineListStyle(list);
         if(style && type==="ordered" && style===LIST_STYLE_DECIMAL_ZERO){
           return applyDecimalDotZeroStyle(list);
         }
         if(type==="ordered"){ clearDecimalDotZeroStyle(list); }
         if(style){ list.style.listStyleType=style; }
-        else { list.style.removeProperty("list-style-type"); }
+        else { clearInlineListStyle(list); }
         return true;
       }
       return false;
