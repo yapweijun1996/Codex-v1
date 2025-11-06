@@ -494,13 +494,14 @@
       }
       walk(root);
     }
-    function fixStructure(root){
+    function fixStructure(root, options){
       if(!root) return;
+      const shouldRebalance = !(options && options.rebalance===false);
       stripWordComments(root);
       prepareWordArtifacts(root);
       if(ENABLE_WORD_LIST_NORMALIZATION){ convertWordLists(root); }
       cleanWordArtifacts(root);
-      rebalanceOrphanLists(root);
+      if(shouldRebalance){ rebalanceOrphanLists(root); }
       const nodes=[]; const cn=root.childNodes;
       for(let i=0;i<cn.length;i++){ const nd=cn[i]; if(nd.nodeType===1 || (nd.nodeType===3 && nd.nodeValue.trim())) nodes.push(nd); }
       if(nodes.length===1 && nodes[0].nodeType===1 && /^H[1-6]$/.test(nodes[0].tagName)){
@@ -4909,13 +4910,13 @@
     function indentList(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       const ok=execCommand(target, "indent", null, true);
-      if(ok){ Normalizer.fixStructure(target); }
+      if(ok){ Normalizer.fixStructure(target, { rebalance:false }); }
       return ok;
     }
     function outdentList(inst, ctx){
       const target=resolveTarget(inst, ctx); if(!target) return false;
       const ok=execCommand(target, "outdent", null, true);
-      if(ok){ Normalizer.fixStructure(target); }
+      if(ok){ Normalizer.fixStructure(target, { rebalance:false }); }
       return ok;
     }
     return {
