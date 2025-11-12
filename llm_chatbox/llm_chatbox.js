@@ -582,6 +582,15 @@ body.chat-fullscreen-active {
     return keywords.some((keyword) => lowered.includes(keyword));
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function toTitleCase(text) {
     return String(text || '')
       .replace(/_/g, ' ')
@@ -1450,15 +1459,6 @@ body.chat-fullscreen-active {
         };
 
         setActiveSqlAgent(resolveWidgetSqlAgent() || state.sqlAgentKey, "startup");
-
-        function escapeHtml(value) {
-          return String(value ?? "")
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-        }
 
         function extractSqlFromMessage(message) {
           if (!message) return "";
