@@ -1469,6 +1469,11 @@
     function render(w, pagedHTML, rawHTML){
       if(!w) return;
       function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+      const printableHTML="<!DOCTYPE html><html><head><meta charset='utf-8'>"+
+        "<style>div[data-page]{border-radius:0!important;box-shadow:none!important;border:none!important;outline:none!important;}div[data-page]:not([data-page=\"1\"]){page-break-before:always;break-before:page;}div[data-page=\"1\"]{page-break-before:auto;break-before:auto;}.weditor_page-header,.weditor_page-footer{border:none!important;box-shadow:none!important;}.weditor_page-header{border-bottom:0!important;}.weditor_page-footer{border-top:0!important;}</style>"+
+        "</head><body style='margin:0;background:#fff;font-family:Segoe UI,system-ui,-apple-system,Arial'>"+
+        pagedHTML+
+        "</body></html>";
       const html="<!DOCTYPE html><meta charset='utf-8'>"+
         "<body style='margin:0;font-family:Segoe UI,system-ui,-apple-system,Arial'>"+
         "<div style='display:flex;gap:12px;padding:12px;align-items:center;border-bottom:1px solid #c8c6c4;background:#fafafa'>"+
@@ -1480,9 +1485,13 @@
             "<div style='padding:8px 12px;font:12px Segoe UI;color:#605e5c;background:#fff;border-bottom:1px solid #e1dfdd'>Paged HTML</div>"+
             "<textarea style='flex:1;border:0;outline:none;padding:12px;font:12px/1.4 ui-monospace,monospace'>"+esc(pagedHTML)+"</textarea>"+
           "</div>"+
-          "<div style='flex:1;display:flex;flex-direction:column'>"+
+          "<div style='flex:1;display:flex;flex-direction:column;border-right:1px solid #e1dfdd'>"+
             "<div style='padding:8px 12px;font:12px Segoe UI;color:#605e5c;background:#fff;border-bottom:1px solid #e1dfdd'>Raw HTML</div>"+
             "<textarea style='flex:1;border:0;outline:none;padding:12px;font:12px/1.4 ui-monospace,monospace'>"+esc(rawHTML)+"</textarea>"+
+          "</div>"+
+          "<div style='flex:1;display:flex;flex-direction:column'>"+
+            "<div style='padding:8px 12px;font:12px Segoe UI;color:#605e5c;background:#fff;border-bottom:1px solid #e1dfdd'>Printable HTML</div>"+
+            "<textarea style='flex:1;border:0;outline:none;padding:12px;font:12px/1.4 ui-monospace,monospace'>"+esc(printableHTML)+"</textarea>"+
           "</div>"+
         "</div>"+
         "</body>";
