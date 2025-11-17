@@ -7737,6 +7737,387 @@
     }
     return { merge };
   })();
+  const TableSelection=(function(){
+    const CELL_CLASS="weditor-table-cell-selected";
+    const STYLE_ID="weditor-table-selection-style";
+    const states=new WeakMap();
+    function ensureStyles(doc){
+      if(!doc || !doc.head) return;
+      if(doc.getElementById(STYLE_ID)) return;
+      const style=doc.createElement("style");
+      style.id=STYLE_ID;
+      style.textContent=
+        "."+CELL_CLASS+"{"+
+          "position:relative;"+
+          "background-color:rgba(15,108,189,0.12);"+
+        "}";
+      doc.head.appendChild(style);
+    }
+    function closestCell(root, node){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="td" || tag==="th") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current && current.nodeType===1){
+        const tag=(current.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th") return current;
+      }
+      return null;
+    }
+    function closestRow(cell){
+      if(!cell) return null;
+      let current=cell;
+      while(current){
+        if(current.nodeType===1 && (current.tagName||"").toLowerCase()==="tr") return current;
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function tableFromCell(cell){
+      if(!cell || !cell.closest) return null;
+      return cell.closest("table");
+    }
+    function cellPosition(cell){
+      if(!cell) return null;
+      const row=closestRow(cell);
+      if(!row) return null;
+      const rowIndex=typeof row.rowIndex==="number" ? row.rowIndex : null;
+      const colIndex=typeof cell.cellIndex==="number" ? cell.cellIndex : null;
+      if(rowIndex===null || colIndex===null) return null;
+      return { row:rowIndex, col:colIndex };
+    }
+    function clearSelection(state){
+      if(!state) return;
+      state.cells.forEach(function(cell){ if(cell && cell.classList) cell.classList.remove(CELL_CLASS); });
+      state.cells.clear();
+      state.table=null;
+    }
+    function isValidAnchor(state){
+      if(!state.anchor) return null;
+      if(!state.anchor.isConnected || !state.root.contains(state.anchor)){
+        state.anchor=null;
+        return null;
+      }
+      return state.anchor;
+    }
+    function addCell(state, cell){
+      if(!state || !cell) return;
+      const table=tableFromCell(cell);
+      if(!table) return;
+      if(state.table && state.table!==table){
+        clearSelection(state);
+      }
+      ensureStyles(table.ownerDocument || document);
+      if(!state.cells.has(cell)){
+        cell.classList.add(CELL_CLASS);
+        state.cells.add(cell);
+      }
+      state.table=table;
+    }
+    function removeCell(state, cell){
+      if(!state || !cell) return;
+      if(state.cells.has(cell)){
+        cell.classList.remove(CELL_CLASS);
+        state.cells.delete(cell);
+      }
+      if(!state.cells.size){ state.table=null; }
+    }
+    function selectRange(state, anchorCell, focusCell){
+      if(!state || !anchorCell || !focusCell) return;
+      const anchorTable=tableFromCell(anchorCell);
+      const focusTable=tableFromCell(focusCell);
+      if(!anchorTable || anchorTable!==focusTable){
+        clearSelection(state);
+        addCell(state, focusCell);
+        state.anchor=focusCell;
+        return;
+      }
+      const anchorPos=cellPosition(anchorCell);
+      const focusPos=cellPosition(focusCell);
+      if(!anchorPos || !focusPos){
+        clearSelection(state);
+        addCell(state, focusCell);
+        state.anchor=focusCell;
+        return;
+      }
+      const rowStart=Math.min(anchorPos.row, focusPos.row);
+      const rowEnd=Math.max(anchorPos.row, focusPos.row);
+      const colStart=Math.min(anchorPos.col, focusPos.col);
+      const colEnd=Math.max(anchorPos.col, focusPos.col);
+      clearSelection(state);
+      for(let r=rowStart;r<=rowEnd;r++){
+        const row=anchorTable.rows && anchorTable.rows[r];
+        if(!row || !row.cells) continue;
+        for(let c=colStart;c<=colEnd;c++){
+          if(c<0) continue;
+          if(row.cells.length>c){
+            const candidate=row.cells[c];
+            if(candidate) addCell(state, candidate);
+          }
+        }
+      }
+      state.table=anchorTable;
+    }
+    function focusCell(cell){
+      if(!cell) return;
+      const doc=cell.ownerDocument || document;
+      if(!doc || !doc.createRange) return;
+      try{
+        const range=doc.createRange();
+        range.selectNodeContents(cell);
+        range.collapse(true);
+        const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+        if(sel){
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }catch(err){}
+    }
+    function deleteSelection(state){
+      if(!state || !state.cells.size) return false;
+      const table=state.table;
+      if(!table || !table.isConnected || !state.root.contains(table)){
+        clearSelection(state);
+        return false;
+      }
+      const validCells=Array.from(state.cells).filter(function(cell){ return cell && cell.isConnected && table.contains(cell); });
+      if(!validCells.length){
+        clearSelection(state);
+        return false;
+      }
+      const beforeRows=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      const rowInfo=new Map();
+      const columnInfo=new Map();
+      beforeRows.forEach(function(row){
+        if(!row) return;
+        const cellCount=row && row.cells ? row.cells.length : 0;
+        rowInfo.set(row, { total:cellCount, selected:new Set() });
+        for(let j=0;j<cellCount;j++){
+          if(!columnInfo.has(j)){
+            columnInfo.set(j, { total:0, selected:new Set() });
+          }
+          columnInfo.get(j).total+=1;
+        }
+      });
+      validCells.forEach(function(cell){
+        const row=closestRow(cell);
+        if(row && rowInfo.has(row)){
+          rowInfo.get(row).selected.add(cell);
+        }
+        const colIndex=typeof cell.cellIndex==="number" ? cell.cellIndex : null;
+        if(colIndex!==null && columnInfo.has(colIndex)){
+          columnInfo.get(colIndex).selected.add(cell);
+        }
+      });
+      const rowsToDelete=[];
+      rowInfo.forEach(function(info, row){
+        if(info.selected.size && info.total>0 && info.selected.size>=info.total){
+          rowsToDelete.push(row);
+        }
+      });
+      const columnsToDelete=[];
+      columnInfo.forEach(function(info, index){
+        if(info.selected.size && info.total>0 && info.selected.size>=info.total){
+          columnsToDelete.push(index);
+        }
+      });
+      columnsToDelete.sort(function(a,b){ return a-b; });
+      const rowsToDeleteSet=new Set(rowsToDelete);
+      const columnsToDeleteSet=new Set(columnsToDelete);
+      const cellsToClear=validCells.filter(function(cell){
+        const row=closestRow(cell);
+        if(row && rowsToDeleteSet.has(row)) return false;
+        const colIndex=typeof cell.cellIndex==="number" ? cell.cellIndex : null;
+        if(colIndex!==null && columnsToDeleteSet.has(colIndex)) return false;
+        return true;
+      });
+      let focusTarget=null;
+      let tableRemoved=false;
+      if(rowsToDelete.length){
+        const removedIndices=rowsToDelete.map(function(row){ return beforeRows.indexOf(row); }).filter(function(idx){ return idx>=0; }).sort(function(a,b){ return a-b; });
+        const removedSet=new Set(removedIndices);
+        rowsToDelete.forEach(function(row){ if(row && row.parentNode){ row.parentNode.removeChild(row); } });
+        if(!table.rows || table.rows.length===0){
+          tableRemoved=true;
+          const parent=table.parentNode;
+          if(parent){ parent.removeChild(table); focusTarget=parent; }
+        } else {
+          TableResizer.ensureTable(table);
+          let focusRow=null;
+          if(removedIndices.length){
+            for(let i=removedIndices[removedIndices.length-1]+1;i<beforeRows.length;i++){
+              if(removedSet.has(i)) continue;
+              const candidate=beforeRows[i];
+              if(candidate && candidate.isConnected && table.contains(candidate) && candidate.cells && candidate.cells.length){ focusRow=candidate; break; }
+            }
+            if(!focusRow){
+              for(let i=removedIndices[0]-1;i>=0;i--){
+                if(removedSet.has(i)) continue;
+                const candidate=beforeRows[i];
+                if(candidate && candidate.isConnected && table.contains(candidate) && candidate.cells && candidate.cells.length){ focusRow=candidate; break; }
+              }
+            }
+          }
+          if(!focusRow && table.rows.length){ focusRow=table.rows[0]; }
+          if(focusRow && focusRow.cells && focusRow.cells.length){ focusTarget=focusRow.cells[0]; }
+        }
+      }
+      let columnsRemoved=false;
+      if(columnsToDelete.length && !tableRemoved && table.rows){
+        columnsRemoved=true;
+        for(let i=columnsToDelete.length-1;i>=0;i--){
+          const colIndex=columnsToDelete[i];
+          for(let r=0;r<table.rows.length;r++){
+            const row=table.rows[r];
+            if(row && row.cells && row.cells.length>colIndex){
+              row.deleteCell(colIndex);
+            }
+          }
+        }
+        let hasCells=false;
+        for(let r=0;r<table.rows.length && !hasCells;r++){
+          const row=table.rows[r];
+          if(row && row.cells && row.cells.length){ hasCells=true; }
+        }
+        if(!hasCells){
+          tableRemoved=true;
+          const parent=table.parentNode;
+          if(parent){ parent.removeChild(table); focusTarget=parent; }
+        }
+      }
+      if(!tableRemoved && (rowsToDelete.length || columnsRemoved)){
+        TableResizer.ensureTable(table);
+      }
+      if(!tableRemoved && columnsRemoved){
+        if(focusTarget && (!focusTarget.isConnected || !table.contains(focusTarget))){
+          focusTarget=null;
+        }
+        if(!focusTarget){
+          const preferredColumn=columnsToDelete.length ? Math.max(0, Math.min.apply(Math, columnsToDelete)) : 0;
+          outer: for(let r=0;r<table.rows.length;r++){
+            const row=table.rows[r];
+            if(!row || !row.cells || !row.cells.length) continue;
+            const colIndex=Math.min(preferredColumn, row.cells.length-1);
+            const candidate=row.cells[colIndex] || row.cells[row.cells.length-1];
+            if(candidate){
+              focusTarget=candidate;
+              break outer;
+            }
+          }
+        }
+      }
+      const uniqueClear=new Set(cellsToClear);
+      uniqueClear.forEach(function(cell){
+        if(!cell || !table.contains(cell)) return;
+        while(cell.firstChild){ cell.removeChild(cell.firstChild); }
+        const doc=cell.ownerDocument||document;
+        cell.appendChild(doc.createElement("br"));
+      });
+      Breaks.ensurePlaceholders(state.root);
+      clearSelection(state);
+      if(focusTarget){
+        const tag=(focusTarget.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th"){
+          focusCell(focusTarget);
+          state.anchor=focusTarget;
+        } else if(focusTarget.nodeType===1){
+          WDom.placeCaretAtEnd(focusTarget);
+          state.anchor=null;
+        }
+      } else if(uniqueClear.size){
+        const lastCell=Array.from(uniqueClear).pop();
+        focusCell(lastCell);
+        state.anchor=lastCell;
+      } else {
+        state.anchor=null;
+      }
+      const target=state.getRecordTarget ? state.getRecordTarget(state.inst) : (state.inst ? state.inst.el : state.root);
+      let label="Clear Table Cells";
+      if(rowsToDelete.length && columnsRemoved){
+        label="Delete Table Rows and Columns";
+      } else if(rowsToDelete.length){
+        label="Delete Table Rows";
+      } else if(columnsRemoved){
+        label="Delete Table Columns";
+      } else if(!uniqueClear.size){
+        label="Modify Table";
+      }
+      HistoryManager.record(state.inst, target, { label, repeatable:false });
+      if(state.onChange) state.onChange(state.inst, target, { tableRemoved, clearedCells:!rowsToDelete.length && !columnsRemoved && uniqueClear.size>0, deletedRows:rowsToDelete.length, deletedColumns:columnsRemoved ? columnsToDelete.length : 0 });
+      if(state.inst && OutputBinding && typeof OutputBinding.syncDebounced==="function"){
+        OutputBinding.syncDebounced(state.inst);
+      }
+      return true;
+    }
+    function handleMouseDown(state, event){
+      if(!state || event.button!==0) return;
+      const cell=closestCell(state.root, event.target);
+      if(event.shiftKey && cell){
+        event.preventDefault();
+        const anchorCell=isValidAnchor(state) || cell;
+        if(anchorCell){
+          selectRange(state, anchorCell, cell);
+          state.anchor=anchorCell;
+        } else {
+          clearSelection(state);
+          addCell(state, cell);
+          state.anchor=cell;
+        }
+        focusCell(cell);
+        return;
+      }
+      clearSelection(state);
+      if(cell){
+        state.anchor=cell;
+        focusCell(cell);
+      } else {
+        state.anchor=null;
+      }
+    }
+    function handleKeyDown(state, event){
+      if(!state || !event) return;
+      const key=String(event.key||"");
+      if(key==="Escape"){ if(state.cells && state.cells.size){ clearSelection(state); event.preventDefault(); } return; }
+      if(key!=="Backspace" && key!=="Delete") return;
+      if(!state.cells.size) return;
+      event.preventDefault();
+      deleteSelection(state);
+    }
+    function handleFocusIn(state, event){
+      if(!state || !event) return;
+      const cell=closestCell(state.root, event.target);
+      if(cell){ state.anchor=cell; }
+    }
+    function attach(inst, options){
+      options=options||{};
+      const root=options.root || (inst && inst.el) || null;
+      if(!root) return;
+      if(states.has(root)) return;
+      const doc=root.ownerDocument || document;
+      ensureStyles(doc);
+      const state={
+        inst:inst||null,
+        root,
+        anchor:null,
+        cells:new Set(),
+        table:null,
+        getRecordTarget:typeof options.getRecordTarget==="function" ? options.getRecordTarget : function(){ return inst ? inst.el : root; },
+        onChange:typeof options.onChange==="function" ? options.onChange : null
+      };
+      const onMouseDown=function(ev){ handleMouseDown(state, ev); };
+      const onKeyDown=function(ev){ handleKeyDown(state, ev); };
+      const onFocusIn=function(ev){ handleFocusIn(state, ev); };
+      root.addEventListener("mousedown", onMouseDown);
+      root.addEventListener("keydown", onKeyDown);
+      root.addEventListener("focusin", onFocusIn);
+      states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
+    }
+    return { attach };
+  })();
   const ListUI=(function(){
     function ensureListStyles(){
       if(typeof document==="undefined" || !document.head) return;
