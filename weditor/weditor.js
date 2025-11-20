@@ -188,6 +188,21 @@
       hfTemplateCardTitle:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
       hfTemplateCardPreview:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim, display:"flex", flexDirection:"column", gap:"2px" },
       hfPreviewSection:{ display:"flex", flexDirection:"column", gap:"12px", border:"1px solid "+UI.borderSubtle, borderRadius:"12px", padding:"16px", background:"#fff" },
+      docTemplateModal:{ width:"100%", maxWidth:"720px", background:"#fff", borderRadius:"14px", boxShadow:"0 20px 44px rgba(0,0,0,.18)", display:"flex", flexDirection:"column", maxHeight:"92vh", overflow:"hidden" },
+      docTemplateHead:{ padding:"20px 24px", borderBottom:"1px solid "+UI.border, display:"flex", flexDirection:"column", gap:"10px" },
+      docTemplateTitle:{ font:"20px/1.3 Segoe UI,system-ui", color:UI.text, margin:"0" },
+      docTemplateLead:{ font:"13px/1.6 Segoe UI,system-ui", color:UI.textDim },
+      docTemplateBody:{ padding:"22px", display:"flex", flexDirection:"column", gap:"18px", overflowY:"auto", minHeight:"0" },
+      docTemplateNotice:{ padding:"14px 16px", borderRadius:"10px", border:"1px solid "+UI.borderSubtle, background:"#f8fbff", color:UI.textDim, font:"12px/1.5 Segoe UI,system-ui" },
+      docTemplateSection:{ display:"flex", flexDirection:"column", gap:"12px" },
+      docTemplateSectionTitle:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text, textTransform:"uppercase", letterSpacing:".08em" },
+      docTemplateSectionHint:{ font:"11px/1.5 Segoe UI,system-ui", color:UI.textDim },
+      docTemplateGrid:{ display:"grid", gap:"12px", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))" },
+      docTemplateCard:{ borderRadius:"12px", border:"1px solid "+UI.borderSubtle, background:"#fafafa", padding:"16px", display:"flex", flexDirection:"column", gap:"10px", textAlign:"left", cursor:"pointer", transition:"all .18s ease" },
+      docTemplateCardTitle:{ font:"14px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
+      docTemplateCardPreview:{ font:"12px/1.5 Segoe UI,system-ui", color:UI.textDim, display:"flex", flexDirection:"column", gap:"4px" },
+      docTemplateCardHint:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim },
+      docTemplateFooter:{ padding:"16px 22px", borderTop:"1px solid "+UI.border, display:"flex", justifyContent:"flex-end", gap:"12px" },
       hfPreviewTitle:{ font:"12px/1.4 Segoe UI,system-ui", fontWeight:"600", color:UI.text },
       hfPreviewHint:{ font:"11px/1.4 Segoe UI,system-ui", color:UI.textDim },
       hfPreviewCanvas:{ position:"relative", width:"100%", display:"flex", justifyContent:"center" },
@@ -2975,6 +2990,637 @@
     }
     return { open };
   })();
+  const DOCUMENT_TEMPLATE_GROUPS=[
+    {
+      id:"finance",
+      title:"Business & Finance",
+      hint:"Itemised billing layouts ready for invoicing.",
+      templates:[
+        {
+          id:"sales_invoice",
+          label:"Sales Invoice",
+          description:"Includes billing summary, payment instructions, GST breakdown, and a terms page.",
+          preview:'<strong>Sales Invoice</strong><span>Line items, totals, payment notes.</span>',
+          html:function(inst){
+            return [
+              '<section style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:24px;">',
+                '<header style="display:flex;align-items:flex-start;justify-content:space-between;gap:18px;border-bottom:2px solid #0f6cbd;padding-bottom:16px;">',
+                  '<div style="display:flex;flex-direction:column;gap:6px;">',
+                    '<div style="font-size:24px;font-weight:700;color:#0f6cbd;">Sales Invoice</div>',
+                    '<div style="font-size:13px;color:#605e5c;">Invoice No. INV-001</div>',
+                    '<div style="font-size:12px;color:#605e5c;">Issue Date: {{date}}</div>',
+                  '</div>',
+                  '<div style="text-align:right;font-size:12px;color:#605e5c;">',
+                    '<div><strong>Acme Corporation</strong></div>',
+                    '<div>123 Market Street</div>',
+                    '<div>Singapore 048946</div>',
+                    '<div>accounts@acme.com</div>',
+                    '<div>+65 6000 0000</div>',
+                  '</div>',
+                '</header>',
+                '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;">',
+                    '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Bill To</div>',
+                    '<div style="font-size:15px;font-weight:600;">Client Name</div>',
+                    '<div style="font-size:12px;color:#605e5c;line-height:1.6;">Client Company<br>45 River Valley Road<br>Singapore 179074</div>',
+                  '</div>',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;">',
+                    '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Payment Terms</div>',
+                    '<ul style="margin:0;padding-left:18px;font-size:12px;color:#605e5c;line-height:1.6;">',
+                      '<li>Due within 30 days</li>',
+                      '<li>Bank transfer to UOB 123-456-789</li>',
+                      '<li>Please quote invoice number on payment</li>',
+                    '</ul>',
+                  '</div>',
+                '</section>',
+                '<table style="width:100%;border-collapse:collapse;border:1px solid #e1dfdd;font-size:12px;">',
+                  '<thead style="background:#f3f2f1;text-transform:uppercase;letter-spacing:.06em;color:#323130;">',
+                    '<tr>',
+                      '<th style="text-align:left;padding:10px;border:1px solid #e1dfdd;width:42%;">Description</th>',
+                      '<th style="text-align:center;padding:10px;border:1px solid #e1dfdd;width:12%;">Qty</th>',
+                      '<th style="text-align:right;padding:10px;border:1px solid #e1dfdd;width:18%;">Unit Price</th>',
+                      '<th style="text-align:right;padding:10px;border:1px solid #e1dfdd;width:18%;">Amount</th>',
+                    '</tr>',
+                  '</thead>',
+                  '<tbody>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Consulting services - discovery and planning</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">20</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$150.00</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$3,000.00</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Implementation sprint - system integration</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">10</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$200.00</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$2,000.00</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Managed services retainer (first month)</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">1</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$400.00</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$400.00</td>',
+                    '</tr>',
+                  '</tbody>',
+                  '<tfoot>',
+                    '<tr>',
+                      '<td colspan="3" style="padding:10px;border:1px solid #e1dfdd;text-align:right;">Subtotal</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$5,400.00</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td colspan="3" style="padding:10px;border:1px solid #e1dfdd;text-align:right;">GST (8%)</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:right;">$432.00</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td colspan="3" style="padding:12px;border:1px solid #e1dfdd;text-align:right;font-size:14px;font-weight:600;">Total Due</td>',
+                      '<td style="padding:12px;border:1px solid #e1dfdd;text-align:right;font-size:14px;font-weight:700;color:#0f6cbd;">$5,832.00</td>',
+                    '</tr>',
+                  '</tfoot>',
+                '</table>',
+                '<section style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#605e5c;">',
+                  '<div style="font-weight:600;color:#323130;">Notes</div>',
+                  '<p style="margin:0;">Transfer proof can be emailed to finance@acme.com. Late payment will incur 1.5% interest per month.</p>',
+                '</section>',
+              '</section>',
+              '<div class="weditor_page-break" style="page-break-before: always;"></div>',
+              '<section style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">',
+                '<h3 style="font-size:16px;color:#323130;margin:0;">Terms &amp; Conditions</h3>',
+                '<ol style="margin:0;padding-left:18px;font-size:12px;color:#605e5c;line-height:1.7;">',
+                  '<li>Payment is due within thirty (30) calendar days from the invoice date.</li>',
+                  '<li>Services are governed by the Master Service Agreement signed on {{date}}.</li>',
+                  '<li>Warranty support covers defect fixes within 14 days after project handover.</li>',
+                '</ol>',
+                '<h3 style="font-size:16px;color:#323130;margin:0;">Bank Details</h3>',
+                '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;font-size:12px;color:#605e5c;">',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:12px;">',
+                    '<div style="font-weight:600;color:#323130;">Bank</div>',
+                    '<div>United Overseas Bank (UOB)</div>',
+                  '</div>',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:12px;">',
+                    '<div style="font-weight:600;color:#323130;">Account Number</div>',
+                    '<div>123-456-789-0</div>',
+                  '</div>',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:12px;">',
+                    '<div style="font-weight:600;color:#323130;">Swift Code</div>',
+                    '<div>UOVBSGSG</div>',
+                  '</div>',
+                '</div>',
+              '</section>'
+            ].join('');
+          },
+          header:function(inst){
+            const logo=sanitizeImageURL(inst && inst.customLetterheadLogoURL)||DEFAULT_LETTERHEAD_LOGO_URL;
+            const logoAttr=escapeAttribute(logo);
+            return {
+              enabled:true,
+              align:"left",
+              html:[
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">',
+                  '<div style="display:flex;align-items:center;gap:12px;">',
+                    '<img src="'+logoAttr+'" alt="Company logo" style="width:52px;height:52px;border-radius:10px;object-fit:cover;">',
+                    '<div>',
+                      '<div style="font-size:17px;font-weight:600;">Acme Corporation</div>',
+                      '<div style="font-size:12px;color:#666;">123 Market Street · Singapore</div>',
+                    '</div>',
+                  '</div>',
+                  '<div style="text-align:right;font-size:12px;color:#666;">',
+                    '<div>Sales Invoice</div>',
+                    '<div>{{date}}</div>',
+                    '<div>accounts@acme.com</div>',
+                  '</div>',
+                '</div>'
+              ].join('')
+            };
+          },
+          footer:function(){
+            return {
+              enabled:true,
+              align:"right",
+              html:[
+                '<div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:11px;color:#605e5c;">',
+                  '<div>Bank transfer · UOB 123-456-789</div>',
+                  '<div style="text-align:right;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></div>',
+                '</div>'
+              ].join('')
+            };
+          }
+        }
+      ]
+    },
+    {
+      id:"operations",
+      title:"Operations & Logistics",
+      hint:"Delivery and fulfilment templates with sign-off blocks.",
+      templates:[
+        {
+          id:"delivery_order",
+          label:"Delivery Order",
+          description:"Dispatch summary with checklist and acknowledgement panel.",
+          preview:'<strong>Delivery Order</strong><span>Shipment details and checklist.</span>',
+          html:function(inst){
+            return [
+              '<section style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:20px;">',
+                '<header style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;border-bottom:2px solid #605e5c;padding-bottom:14px;">',
+                  '<div>',
+                    '<div style="font-size:22px;font-weight:700;color:#0b5aa1;">Delivery Order</div>',
+                    '<div style="font-size:12px;color:#605e5c;">DO No. DO-2024-018 · {{date}}</div>',
+                  '</div>',
+                  '<div style="text-align:right;font-size:12px;color:#605e5c;">',
+                    '<div><strong>Dispatch Warehouse</strong></div>',
+                    '<div>9 Tuas South Ave 4</div>',
+                    '<div>Singapore 637611</div>',
+                    '<div>hotline@acme-shipping.com</div>',
+                    '<div>+65 6100 1234</div>',
+                  '</div>',
+                '</header>',
+                '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;">',
+                    '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Ship To</div>',
+                    '<div style="font-size:15px;font-weight:600;">Customer Operations</div>',
+                    '<div style="font-size:12px;color:#605e5c;line-height:1.6;">20 Collyer Quay<br>#15-01<br>Singapore 049319</div>',
+                  '</div>',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;">',
+                    '<div style="font-size:12px;color:#605e5c;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">Delivery Window</div>',
+                    '<p style="margin:0;font-size:12px;color:#605e5c;">Between 9:00 AM and 12:00 PM<br>Contact: Jamie · +65 9000 1234</p>',
+                  '</div>',
+                '</section>',
+                '<table style="width:100%;border-collapse:collapse;border:1px solid #e1dfdd;font-size:12px;">',
+                  '<thead style="background:#f3f2f1;text-transform:uppercase;letter-spacing:.06em;color:#323130;">',
+                    '<tr>',
+                      '<th style="text-align:left;padding:10px;border:1px solid #e1dfdd;width:42%;">Item</th>',
+                      '<th style="text-align:center;padding:10px;border:1px solid #e1dfdd;width:12%;">Qty</th>',
+                      '<th style="text-align:center;padding:10px;border:1px solid #e1dfdd;width:18%;">Unit</th>',
+                      '<th style="text-align:left;padding:10px;border:1px solid #e1dfdd;width:28%;">Remarks</th>',
+                    '</tr>',
+                  '</thead>',
+                  '<tbody>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">ZX-900 Label Printer</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">6</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Unit</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Serials recorded on packing list</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Thermal Labels 100mm × 150mm</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">12</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Roll</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">50 rolls backordered · ship next week</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Maintenance Kit</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">1</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Set</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Install during on-site support</td>',
+                    '</tr>',
+                  '</tbody>',
+                '</table>',
+                '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;font-size:12px;color:#605e5c;">',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px;">',
+                    '<strong style="color:#323130;">Checklist</strong>',
+                    '<ul style="margin:0;padding-left:18px;line-height:1.6;">',
+                      '<li>Packing photos sent to customer</li>',
+                      '<li>Insurance coverage confirmed</li>',
+                      '<li>On-site engineer assigned</li>',
+                    '</ul>',
+                  '</div>',
+                  '<div style="border:1px solid #e1dfdd;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px;">',
+                    '<strong style="color:#323130;">Acknowledgement</strong>',
+                    '<p style="margin:0;">Received in good condition by:</p>',
+                    '<div style="height:48px;border-bottom:1px dashed #c8c6c4;"></div>',
+                    '<p style="margin:0;font-size:11px;color:#a19f9d;">Name · Signature · Date</p>',
+                  '</div>',
+                '</section>',
+              '</section>'
+            ].join('');
+          },
+          header:function(inst){
+            const logo=sanitizeImageURL(inst && inst.customLetterheadLogoURL)||DEFAULT_LETTERHEAD_LOGO_URL;
+            const logoAttr=escapeAttribute(logo);
+            return {
+              enabled:true,
+              align:"left",
+              html:[
+                '<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;">',
+                  '<div style="display:flex;align-items:center;gap:12px;">',
+                    '<img src="'+logoAttr+'" alt="Company logo" style="width:52px;height:52px;border-radius:10px;object-fit:cover;">',
+                    '<div>',
+                      '<div style="font-size:16px;font-weight:600;">Acme Logistics</div>',
+                      '<div style="font-size:12px;color:#666;">Delivery Order · {{date}}</div>',
+                    '</div>',
+                  '</div>',
+                  '<div style="text-align:right;font-size:12px;color:#666;">',
+                    '<div>DO #DO-2024-018</div>',
+                    '<div>Hotline +65 6100 1234</div>',
+                  '</div>',
+                '</div>'
+              ].join('')
+            };
+          },
+          footer:function(inst){
+            const logo=sanitizeImageURL(inst && inst.customFooterLogoURL)||DEFAULT_FOOTER_LOGO_URL;
+            const logoAttr=escapeAttribute(logo);
+            return {
+              enabled:true,
+              align:"center",
+              html:[
+                '<div style="width:100%;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;font-size:11px;color:#605e5c;">',
+                  '<img src="'+logoAttr+'" alt="Company seal" style="width:44px;height:44px;border-radius:50%;object-fit:cover;">',
+                  '<div style="text-align:center;">',
+                    '<div>Dispatch verified by Warehouse Control</div>',
+                    '<div>Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></div>',
+                  '</div>',
+                  '<div style="text-align:right;">www.acme-shipping.com</div>',
+                '</div>'
+              ].join('')
+            };
+          }
+        }
+      ]
+    },
+    {
+      id:"reports",
+      title:"Reports & Letters",
+      hint:"Polished summary for leadership updates and follow ups.",
+      templates:[
+        {
+          id:"project_report",
+          label:"Project Update Report",
+          description:"Two-page sprint update with highlights, risks, timeline, and action items.",
+          preview:'<strong>Project Update</strong><span>Sprint summary with next actions.</span>',
+          html:function(inst){
+            return [
+              '<section style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:20px;">',
+                '<div style="padding:28px;border:1px solid #e1dfdd;border-radius:16px;background:linear-gradient(135deg,#f8fbff 0%,#eef1ff 100%);display:flex;flex-direction:column;gap:10px;">',
+                  '<div style="font-size:22px;font-weight:700;color:#0f6cbd;">Project Phoenix · Sprint Update</div>',
+                  '<div style="font-size:13px;color:#605e5c;">Sprint 12 · {{date}}</div>',
+                  '<p style="margin:0;font-size:13px;color:#323130;line-height:1.6;">Highlights from this sprint covering deliverables, blockers, and next actions for leadership review.</p>',
+                '</div>',
+                '<section style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">',
+                  '<div style="border:1px solid #e1dfdd;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;">',
+                    '<strong style="color:#323130;">Goals Completed</strong>',
+                    '<ul style="margin:0;padding-left:18px;font-size:12px;color:#605e5c;line-height:1.6;">',
+                      '<li>Inventory sync API live for pilot customers</li>',
+                      '<li>Training portal translated to Bahasa</li>',
+                      '<li>Signed off user acceptance for warehouse app</li>',
+                    '</ul>',
+                  '</div>',
+                  '<div style="border:1px solid #e1dfdd;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;">',
+                    '<strong style="color:#323130;">Risks &amp; Watchlist</strong>',
+                    '<ul style="margin:0;padding-left:18px;font-size:12px;color:#605e5c;line-height:1.6;">',
+                      '<li>Supplier change request pending legal review</li>',
+                      '<li>Data migration for branch offices requires extra QA</li>',
+                    '</ul>',
+                  '</div>',
+                '</section>',
+                '<table style="width:100%;border-collapse:collapse;border:1px solid #e1dfdd;font-size:12px;">',
+                  '<thead style="background:#f3f2f1;text-transform:uppercase;letter-spacing:.06em;color:#323130;">',
+                    '<tr>',
+                      '<th style="text-align:left;padding:10px;border:1px solid #e1dfdd;width:30%;">Workstream</th>',
+                      '<th style="text-align:left;padding:10px;border:1px solid #e1dfdd;width:40%;">Key Updates</th>',
+                      '<th style="text-align:center;padding:10px;border:1px solid #e1dfdd;width:15%;">Owner</th>',
+                      '<th style="text-align:center;padding:10px;border:1px solid #e1dfdd;width:15%;">Status</th>',
+                    '</tr>',
+                  '</thead>',
+                  '<tbody>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Platform Engineering</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Completed load tests, scaling plan ready for go-live.</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Kai</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">On Track</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Operations Enablement</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Conducted 3 warehouse dry runs with updated SOP.</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Nurul</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Slight Risk</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Change Management</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Internal newsletter prepared, town hall scheduled.</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Jerome</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">On Track</td>',
+                    '</tr>',
+                  '</tbody>',
+                '</table>',
+                '<section style="display:flex;flex-direction:column;gap:8px;font-size:12px;color:#605e5c;">',
+                  '<strong style="color:#323130;">Callouts for Leadership</strong>',
+                  '<p style="margin:0;">1. Approve revised budget for additional QA resources by Friday.</p>',
+                  '<p style="margin:0;">2. Confirm launch event venue before marketing campaign kickoff.</p>',
+                '</section>',
+              '</section>',
+              '<div class="weditor_page-break" style="page-break-before: always;"></div>',
+              '<section style="max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:18px;">',
+                '<h3 style="font-size:16px;color:#323130;margin:0;">Upcoming Timeline</h3>',
+                '<table style="width:100%;border-collapse:collapse;border:1px solid #e1dfdd;font-size:12px;">',
+                  '<thead style="background:#f3f2f1;text-transform:uppercase;letter-spacing:.06em;color:#323130;">',
+                    '<tr>',
+                      '<th style="text-align:left;padding:10px;border:1px solid #e1dfdd;width:25%;">Milestone</th>',
+                      '<th style="text-align:left;padding:10px;border:1px solid #e1dfdd;width:35%;">Deliverable</th>',
+                      '<th style="text-align:center;padding:10px;border:1px solid #e1dfdd;width:20%;">Target Date</th>',
+                      '<th style="text-align:center;padding:10px;border:1px solid #e1dfdd;width:20%;">Status</th>',
+                    '</tr>',
+                  '</thead>',
+                  '<tbody>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Sprint 13</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Finalize mobile scanning workflow</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">20 Sep</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Planned</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Pilot Handover</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Signed acceptance from 3 pilot branches</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">04 Oct</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">On Track</td>',
+                    '</tr>',
+                    '<tr>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Nationwide Launch</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;">Rollout to 18 distribution centres</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">28 Oct</td>',
+                      '<td style="padding:10px;border:1px solid #e1dfdd;text-align:center;">Pending</td>',
+                    '</tr>',
+                  '</tbody>',
+                '</table>',
+                '<section style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:#605e5c;">',
+                  '<strong style="color:#323130;">Follow Ups</strong>',
+                  '<ul style="margin:0;padding-left:18px;line-height:1.6;">',
+                    '<li>Schedule sprint review with stakeholders on Monday.</li>',
+                    '<li>Prepare enablement kit for regional trainers.</li>',
+                    '<li>Confirm data migration rehearsal support window.</li>',
+                  '</ul>',
+                '</section>',
+              '</section>'
+            ].join('');
+          },
+          header:function(inst){
+            const logo=sanitizeImageURL(inst && inst.customLetterheadLogoURL)||DEFAULT_LETTERHEAD_LOGO_URL;
+            const logoAttr=escapeAttribute(logo);
+            return {
+              enabled:true,
+              align:"center",
+              html:[
+                '<div style="width:100%;display:flex;flex-direction:column;align-items:center;gap:6px;">',
+                  '<img src="'+logoAttr+'" alt="Company logo" style="width:48px;height:48px;border-radius:12px;object-fit:cover;">',
+                  '<div style="font-size:15px;font-weight:600;color:#0f6cbd;">Project Phoenix Status Update</div>',
+                  '<div style="font-size:11px;color:#666;">Prepared {{date}} · Confidential</div>',
+                '</div>'
+              ].join('')
+            };
+          },
+          footer:function(){
+            return {
+              enabled:true,
+              align:"center",
+              html:[
+                '<div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:11px;color:#605e5c;">',
+                  '<div>Prepared by PMO · pmo@acme.com</div>',
+                  '<div style="text-align:center;">Page <span class="weditor_footer_page_num">{{page}}</span> of <span class="weditor_footer_page_num_total">{{total}}</span></div>',
+                  '<div style="text-align:right;">Next review: {{date}}</div>',
+                '</div>'
+              ].join('')
+            };
+          }
+        }
+      ]
+    }
+  ];
+  const DocumentTemplates=(function(){
+    function resolveValue(value, inst){
+      if(typeof value==="function") return value(inst)||null;
+      return value;
+    }
+    function sanitizeValue(html){ return Sanitizer.clean(html||""); }
+    function stripPlaceholders(root){
+      if(!root || !root.querySelectorAll) return;
+      const placeholders=root.querySelectorAll('[data-weditor-break-placeholder]');
+      for(let i=0;i<placeholders.length;i++){
+        const node=placeholders[i];
+        if(node && node.parentNode) node.parentNode.removeChild(node);
+      }
+      const breaks=root.querySelectorAll('.weditor_page-break');
+      for(let j=0;j<breaks.length;j++){
+        const node=breaks[j];
+        if(node && node.parentNode) node.parentNode.removeChild(node);
+      }
+    }
+    function hasExistingContent(inst){
+      if(!inst || !inst.el) return false;
+      const clone=inst.el.cloneNode(true);
+      stripPlaceholders(clone);
+      const text=(clone.textContent||"").replace(/\u200B/g,"").trim();
+      if(text) return true;
+      if(clone.querySelector && clone.querySelector('img,table,ul,ol,blockquote,figure,section,article,aside,video,canvas')) return true;
+      const html=(clone.innerHTML||"").replace(/\s+/g,"").replace(/&nbsp;/gi,"");
+      return html.length>0;
+    }
+    function confirmOverwrite(inst){
+      if(!hasExistingContent(inst)) return true;
+      if(typeof window!=="undefined" && window.confirm){
+        return window.confirm('Applying a template will replace the current document content. Continue?');
+      }
+      return true;
+    }
+    function applyTemplate(inst, tpl, close){
+      if(!inst || !inst.el || !tpl) return;
+      const htmlRaw=resolveValue(tpl.html, inst) || "";
+      inst.el.innerHTML=sanitizeValue(htmlRaw);
+      Normalizer.fixStructure(inst.el);
+      Breaks.ensurePlaceholders(inst.el);
+      if(Object.prototype.hasOwnProperty.call(tpl, "header")){
+        const headerDef=resolveValue(tpl.header, inst);
+        if(headerDef){
+          const headerHTML=resolveValue(headerDef.html, inst) || "";
+          inst.headerHTML=sanitizeValue(headerHTML);
+          inst.headerEnabled=typeof headerDef.enabled==="boolean" ? headerDef.enabled : !!(inst.headerHTML && inst.headerHTML.trim());
+          const align=resolveValue(headerDef.align, inst) || inst.headerAlign || "left";
+          inst.headerAlign=HFAlign.normalize(align) || "left";
+        } else {
+          inst.headerHTML="";
+          inst.headerEnabled=false;
+          inst.headerAlign=HFAlign.normalize("left");
+        }
+      }
+      if(Object.prototype.hasOwnProperty.call(tpl, "footer")){
+        const footerDef=resolveValue(tpl.footer, inst);
+        if(footerDef){
+          const footerHTML=resolveValue(footerDef.html, inst) || "";
+          inst.footerHTML=sanitizeValue(footerHTML);
+          inst.footerEnabled=typeof footerDef.enabled==="boolean" ? footerDef.enabled : !!(inst.footerHTML && inst.footerHTML.trim());
+          const align=resolveValue(footerDef.align, inst) || inst.footerAlign || "left";
+          inst.footerAlign=HFAlign.normalize(align) || "left";
+        } else {
+          inst.footerHTML="";
+          inst.footerEnabled=false;
+          inst.footerAlign=HFAlign.normalize("left");
+        }
+      }
+      inst.el.classList.toggle("weditor--no-header", !inst.headerEnabled);
+      inst.el.classList.toggle("weditor--no-footer", !inst.footerEnabled);
+      WDom.placeCaretAtEnd(inst.el);
+      HistoryManager.record(inst, inst ? inst.el : null, { label:"Apply Template · "+(tpl.label||"Document"), repeatable:false });
+      OutputBinding.syncDebounced(inst);
+      if(close) close();
+    }
+    function buildCard(tpl, inst, close){
+      const card=document.createElement("button"); card.type="button"; applyStyles(card, WCfg.Style.docTemplateCard);
+      card.setAttribute("data-weditor-template-id", tpl.id || "");
+      const title=document.createElement("div"); applyStyles(title, WCfg.Style.docTemplateCardTitle); title.textContent=tpl.label || "Template";
+      const preview=document.createElement("div"); applyStyles(preview, WCfg.Style.docTemplateCardPreview);
+      preview.innerHTML=Sanitizer.clean(resolveValue(tpl.preview, inst) || resolveValue(tpl.html, inst) || "");
+      card.appendChild(title);
+      card.appendChild(preview);
+      if(tpl.description){ const hint=document.createElement("div"); applyStyles(hint, WCfg.Style.docTemplateCardHint); hint.textContent=tpl.description; card.appendChild(hint); }
+      function setHover(on){ card.style.background = on ? "#f3f2f1" : "#fafafa"; }
+      card.addEventListener("mouseenter", function(){ setHover(true); });
+      card.addEventListener("mouseleave", function(){ setHover(false); });
+      card.addEventListener("focus", function(){ setHover(true); });
+      card.addEventListener("blur", function(){ setHover(false); });
+      card.addEventListener("click", function(){ if(!confirmOverwrite(inst)) return; applyTemplate(inst, tpl, close); });
+      return card;
+    }
+    function open(inst){
+      if(!inst || !inst.el) return;
+      const existing=document.querySelector('[data-weditor-modal="templates"]');
+      if(existing && typeof existing.__weditorClose==="function"){ existing.__weditorClose(); }
+      A11y.lockScroll();
+      const bg=document.createElement("div"); applyStyles(bg, WCfg.Style.modalBg);
+      bg.setAttribute("data-weditor-modal","templates");
+      if(inst && typeof inst.uid!=="undefined") bg.setAttribute("data-weditor-owner", String(inst.uid));
+      const modal=document.createElement("div"); applyStyles(modal, WCfg.Style.docTemplateModal);
+      modal.setAttribute("role","dialog"); modal.setAttribute("aria-modal","true"); modal.setAttribute("tabindex","-1");
+      modal.setAttribute("aria-labelledby","weditor-doc-template-title");
+      const head=document.createElement("div"); applyStyles(head, WCfg.Style.docTemplateHead);
+      const headTop=document.createElement("div"); headTop.style.display="flex"; headTop.style.alignItems="center"; headTop.style.justifyContent="space-between"; headTop.style.gap="12px";
+      const title=document.createElement("h2"); applyStyles(title, WCfg.Style.docTemplateTitle); title.id="weditor-doc-template-title"; title.textContent="Document Templates";
+      const closeBtn=document.createElement("button"); closeBtn.type="button"; closeBtn.innerHTML="&times;"; closeBtn.setAttribute("aria-label","Close templates dialog"); applyStyles(closeBtn, WCfg.Style.hfClose);
+      closeBtn.onmouseenter=function(){ closeBtn.style.background="#f3f2f1"; };
+      closeBtn.onmouseleave=function(){ closeBtn.style.background="transparent"; };
+      headTop.appendChild(title);
+      headTop.appendChild(closeBtn);
+      const lead=document.createElement("p"); applyStyles(lead, WCfg.Style.docTemplateLead); lead.textContent="Kickstart your document with pre-built layouts for the most common business flows.";
+      head.appendChild(headTop);
+      head.appendChild(lead);
+      const body=document.createElement("div"); applyStyles(body, WCfg.Style.docTemplateBody);
+      const notice=document.createElement("div"); applyStyles(notice, WCfg.Style.docTemplateNotice); notice.innerHTML="<strong>Heads up:</strong> Applying a template replaces the current editor content. You can undo anytime with Ctrl/Cmd+Z.";
+      body.appendChild(notice);
+      for(let g=0; g<DOCUMENT_TEMPLATE_GROUPS.length; g++){
+        const group=DOCUMENT_TEMPLATE_GROUPS[g];
+        if(!group || !group.templates || !group.templates.length) continue;
+        const section=document.createElement("section"); applyStyles(section, WCfg.Style.docTemplateSection);
+        const sectionTitle=document.createElement("div"); applyStyles(sectionTitle, WCfg.Style.docTemplateSectionTitle); sectionTitle.textContent=group.title || "Templates";
+        const sectionHint=document.createElement("div"); applyStyles(sectionHint, WCfg.Style.docTemplateSectionHint); sectionHint.textContent=group.hint || "";
+        const grid=document.createElement("div"); applyStyles(grid, WCfg.Style.docTemplateGrid);
+        for(let t=0; t<group.templates.length; t++){
+          const tpl=group.templates[t];
+          if(!tpl) continue;
+          const card=buildCard(tpl, inst, close);
+          grid.appendChild(card);
+        }
+        section.appendChild(sectionTitle);
+        if(group.hint) section.appendChild(sectionHint);
+        section.appendChild(grid);
+        body.appendChild(section);
+      }
+      const footer=document.createElement("div"); applyStyles(footer, WCfg.Style.docTemplateFooter);
+      const cancel=WDom.btn("Close", false, "Dismiss template selector");
+      footer.appendChild(cancel);
+      modal.appendChild(head);
+      modal.appendChild(body);
+      modal.appendChild(footer);
+      bg.appendChild(modal);
+      document.body.appendChild(bg);
+      function applyLayout(){
+        const compact=window.innerWidth < WCfg.MOBILE_BP;
+        if(compact){
+          bg.style.alignItems="stretch";
+          bg.style.justifyContent="flex-start";
+          bg.style.padding="0";
+          modal.style.maxWidth="none";
+          modal.style.width="100%";
+          modal.style.maxHeight="none";
+          modal.style.height="100%";
+          modal.style.borderRadius="0";
+          modal.style.boxShadow="none";
+        } else {
+          bg.style.alignItems="center";
+          bg.style.justifyContent="center";
+          bg.style.padding="32px 16px";
+          modal.style.maxWidth="720px";
+          modal.style.width="100%";
+          modal.style.maxHeight="92vh";
+          modal.style.height="auto";
+          modal.style.borderRadius=WCfg.Style.docTemplateModal.borderRadius || "14px";
+          modal.style.boxShadow=WCfg.Style.docTemplateModal.boxShadow || "0 20px 44px rgba(0,0,0,.18)";
+        }
+      }
+      applyLayout();
+      const onResize=function(){ applyLayout(); };
+      window.addEventListener("resize", onResize);
+      let closing=false;
+      function close(){
+        if(closing) return;
+        closing=true;
+        bg.style.pointerEvents="none";
+        bg.style.opacity="0";
+        window.setTimeout(function(){ if(bg.parentNode) bg.parentNode.removeChild(bg); }, 200);
+        A11y.unlockScroll();
+        document.removeEventListener("keydown", onKey);
+        window.removeEventListener("resize", onResize);
+        bg.removeAttribute("data-weditor-modal");
+        bg.removeAttribute("data-weditor-owner");
+        bg.__weditorClose=null;
+      }
+      function onKey(ev){ if(ev.key==="Escape"){ ev.preventDefault(); close(); } }
+      document.addEventListener("keydown", onKey);
+      closeBtn.onclick=function(){ close(); };
+      cancel.onclick=function(){ close(); };
+      bg.addEventListener("click", function(ev){ if(ev.target===bg) close(); });
+      window.requestAnimationFrame(function(){ bg.style.opacity="1"; modal.focus(); });
+      bg.__weditorClose=close;
+    }
+    return { open };
+  })();
+
   const StateBinding=(function(){
     function parse(json){
       if(!json) return null;
@@ -10603,6 +11249,8 @@
       } },
     "hf.edit":{ label:"Header & Footer", kind:"button", ariaLabel:"Edit header and footer",
       run:function(inst, arg){ HFEditor.open(inst, arg && arg.ctx); } },
+    "document.templates":{ label:"Templates", kind:"button", ariaLabel:"Choose a document template", title:"Browse document templates",
+      run:function(inst){ DocumentTemplates.open(inst); } },
     "toggle.header":{ label:"Header", kind:"toggle", ariaLabel:"Toggle header", getActive:function(inst){ return !!inst.headerEnabled; },
       run:function(inst){
         inst.headerEnabled = !inst.headerEnabled;
@@ -10677,12 +11325,12 @@
         { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
+      { id:"insert", label:"Insert", items:["document.templates","insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
     ],
-    quickActions:["fullscreen.open"]
+    quickActions:["document.templates","fullscreen.open"]
   };
   const TOOLBAR_FS={
     idPrefix:"weditor-fs",
@@ -10697,11 +11345,12 @@
         { label:"Table", compact:true, items:["insert.table","table.mergeCells","table.borderColor","table.cellVerticalAlign"] },
         { compact:true, items:["table.cellPadding"] }
       ] },
-      { id:"insert", label:"Insert", items:["insert.image","insert.table"] },
+      { id:"insert", label:"Insert", items:["document.templates","insert.image","insert.table"] },
       { id:"editing", label:"Editing", items:["history.undo","history.redo","hf.edit","break.insert","break.remove","reflow"] },
       { id:"layout", label:"Layout", items:["toggle.header","toggle.footer","layout.fixPageHeight"] },
       { id:"output", label:"Output", items:OUTPUT_ITEMS }
-    ]
+    ],
+    quickActions:["document.templates"]
   };
   function readBooleanAttribute(el, name){
     if(!el) return null;
