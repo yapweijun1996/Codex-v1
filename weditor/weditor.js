@@ -7737,6 +7737,268 @@
     }
     return { merge };
   })();
+  const TableSelection=(function(){
+    const CELL_CLASS="weditor-table-cell-selected";
+    const STYLE_ID="weditor-table-selection-style";
+    const states=new WeakMap();
+    function ensureStyles(doc){
+      if(!doc || !doc.head) return;
+      if(doc.getElementById(STYLE_ID)) return;
+      const style=doc.createElement("style");
+      style.id=STYLE_ID;
+      style.textContent=
+        "."+CELL_CLASS+"{"+
+          "background-color:rgba(15,108,189,0.12);"+
+        "}";
+      doc.head.appendChild(style);
+    }
+    function closestCell(root, node){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="td" || tag==="th") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current && current.nodeType===1){
+        const tag=(current.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th") return current;
+      }
+      return null;
+    }
+    function closestRow(cell){
+      if(!cell) return null;
+      let current=cell;
+      while(current){
+        if(current.nodeType===1 && (current.tagName||"").toLowerCase()==="tr") return current;
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function tableFromCell(cell){
+      if(!cell || !cell.closest) return null;
+      return cell.closest("table");
+    }
+    function clearSelection(state){
+      if(!state) return;
+      state.cells.forEach(function(cell){ if(cell && cell.classList) cell.classList.remove(CELL_CLASS); });
+      state.cells.clear();
+      state.table=null;
+    }
+    function ensureTableState(state, table){
+      if(!state) return false;
+      if(!table){
+        clearSelection(state);
+        return false;
+      }
+      if(state.table && state.table!==table){
+        clearSelection(state);
+      }
+      state.table=table;
+      return true;
+    }
+    function toggleCell(state, cell){
+      if(!state || !cell || !cell.classList) return;
+      ensureStyles(cell.ownerDocument || document);
+      if(state.cells.has(cell)){
+        cell.classList.remove(CELL_CLASS);
+        state.cells.delete(cell);
+        if(!state.cells.size){ state.table=null; }
+      } else {
+        cell.classList.add(CELL_CLASS);
+        state.cells.add(cell);
+      }
+    }
+    function focusCell(cell){
+      if(!cell) return;
+      const doc=cell.ownerDocument || document;
+      if(!doc || !doc.createRange) return;
+      try{
+        const range=doc.createRange();
+        range.selectNodeContents(cell);
+        range.collapse(true);
+        const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+        if(sel){
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }catch(err){}
+    }
+    function tableRowOrder(table, rows){
+      if(!table || !rows || !rows.length) return { rows:[], min:null, max:null };
+      const ordered=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      const map=new Map();
+      for(let i=0;i<ordered.length;i++){ map.set(ordered[i], i); }
+      const filtered=[];
+      let minIndex=null, maxIndex=null;
+      for(let j=0;j<rows.length;j++){
+        const row=rows[j];
+        const idx=map.get(row);
+        if(typeof idx!=="number") continue;
+        filtered.push({ row, idx });
+        if(minIndex===null || idx<minIndex) minIndex=idx;
+        if(maxIndex===null || idx>maxIndex) maxIndex=idx;
+      }
+      filtered.sort(function(a,b){ return a.idx-b.idx; });
+      return {
+        rows:filtered.map(function(entry){ return entry.row; }),
+        min:minIndex,
+        max:maxIndex
+      };
+    }
+    function deleteSelection(state){
+      if(!state || !state.cells.size) return false;
+      const table=state.table;
+      if(!table || !table.isConnected || !state.root.contains(table)){
+        clearSelection(state);
+        return false;
+      }
+      const uniqueRows=[];
+      const seen=new Set();
+      state.cells.forEach(function(cell){
+        const row=closestRow(cell);
+        if(row && row.isConnected && table.contains(row) && !seen.has(row)){
+          seen.add(row);
+          uniqueRows.push(row);
+        }
+      });
+      const order=tableRowOrder(table, uniqueRows);
+      const orderedRows=order.rows;
+      if(!orderedRows.length){
+        clearSelection(state);
+        return false;
+      }
+      const allRowsBefore=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      const indices=new Set();
+      for(let i=0;i<orderedRows.length;i++){
+        const idx=allRowsBefore.indexOf(orderedRows[i]);
+        if(idx>=0) indices.add(idx);
+      }
+      let focusTarget=null;
+      if(allRowsBefore.length && order.max!=null){
+        for(let i=order.max+1;i<allRowsBefore.length;i++){
+          const candidate=allRowsBefore[i];
+          if(indices.has(i)) continue;
+          if(candidate && candidate.cells && candidate.cells.length){
+            focusTarget=candidate.cells[0];
+            break;
+          }
+        }
+        if(!focusTarget && order.min!=null){
+          for(let i=order.min-1;i>=0;i--){
+            const candidate=allRowsBefore[i];
+            if(indices.has(i)) continue;
+            if(candidate && candidate.cells && candidate.cells.length){
+              focusTarget=candidate.cells[0];
+              break;
+            }
+          }
+        }
+      }
+      for(let i=0;i<orderedRows.length;i++){
+        const row=orderedRows[i];
+        if(row && row.parentNode){ row.parentNode.removeChild(row); }
+      }
+      let tableRemoved=false;
+      if(!table.rows || table.rows.length===0){
+        tableRemoved=true;
+        const parent=table.parentNode;
+        if(parent){ parent.removeChild(table); focusTarget=parent; }
+      } else {
+        TableResizer.ensureTable(table);
+      }
+      Breaks.ensurePlaceholders(state.root);
+      clearSelection(state);
+      if(focusTarget){
+        const tag=(focusTarget.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th"){
+          focusCell(focusTarget);
+          state.anchor=focusTarget;
+        } else if(focusTarget.nodeType===1){
+          WDom.placeCaretAtEnd(focusTarget);
+          state.anchor=null;
+        }
+      } else {
+        state.anchor=null;
+      }
+      const target=state.getRecordTarget ? state.getRecordTarget(state.inst) : (state.inst ? state.inst.el : state.root);
+      HistoryManager.record(state.inst, target, { label:"Delete Table Rows", repeatable:false });
+      if(state.onChange) state.onChange(state.inst, target, { tableRemoved });
+      if(state.inst && OutputBinding && typeof OutputBinding.syncDebounced==="function"){
+        OutputBinding.syncDebounced(state.inst);
+      }
+      return true;
+    }
+    function handleMouseDown(state, event){
+      if(!state || event.button!==0) return;
+      const cell=closestCell(state.root, event.target);
+      if(event.shiftKey){
+        if(!cell) return;
+        const table=tableFromCell(cell);
+        if(!ensureTableState(state, table)) return;
+        event.preventDefault();
+        toggleCell(state, cell);
+        state.anchor=cell;
+        focusCell(cell);
+        return;
+      }
+      if(cell){
+        const table=tableFromCell(cell);
+        clearSelection(state);
+        if(!table){
+          state.anchor=null;
+          return;
+        }
+        state.table=table;
+        toggleCell(state, cell);
+        state.anchor=cell;
+        focusCell(cell);
+      } else {
+        state.anchor=null;
+        clearSelection(state);
+      }
+    }
+    function handleKeyDown(state, event){
+      if(!state || !event) return;
+      const key=String(event.key||"");
+      if(key==="Escape"){ if(state.cells.size){ clearSelection(state); event.preventDefault(); } return; }
+      if(key!=="Backspace" && key!=="Delete") return;
+      if(!state.cells.size) return;
+      event.preventDefault();
+      deleteSelection(state);
+    }
+    function handleFocusIn(state, event){
+      if(!state || !event) return;
+      const cell=closestCell(state.root, event.target);
+      if(cell){ state.anchor=cell; }
+    }
+    function attach(inst, options){
+      options=options||{};
+      const root=options.root || (inst && inst.el) || null;
+      if(!root) return;
+      if(states.has(root)) return;
+      const doc=root.ownerDocument || document;
+      ensureStyles(doc);
+      const state={
+        inst:inst||null,
+        root,
+        anchor:null,
+        cells:new Set(),
+        table:null,
+        getRecordTarget:typeof options.getRecordTarget==="function" ? options.getRecordTarget : function(){ return inst ? inst.el : root; },
+        onChange:typeof options.onChange==="function" ? options.onChange : null
+      };
+      const onMouseDown=function(ev){ handleMouseDown(state, ev); };
+      const onKeyDown=function(ev){ handleKeyDown(state, ev); };
+      const onFocusIn=function(ev){ handleFocusIn(state, ev); };
+      root.addEventListener("mousedown", onMouseDown);
+      root.addEventListener("keydown", onKeyDown);
+      root.addEventListener("focusin", onFocusIn);
+      states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
+    }
+    return { attach };
+  })();
   const ListUI=(function(){
     function ensureListStyles(){
       if(typeof document==="undefined" || !document.head) return;
