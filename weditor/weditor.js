@@ -2282,6 +2282,15 @@
           align:"left"
         },
         {
+          id:"logo_only",
+          label:"🖼️ Logo Only Header",
+          preview:'<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="max-height:48px;object-fit:contain;">',
+          html:'<div style="width:100%;display:flex;justify-content:center;align-items:center;padding:8px 0;">'+
+            '<img src="https://raw.githubusercontent.com/yapweijuntno/Test001/refs/heads/main/sample_letterhead_logo.png" alt="Letterhead logo" style="max-height:72px;width:auto;object-fit:contain;">'+
+          '</div>',
+          align:"center"
+        },
+        {
           id:"report",
           label:"📊 Company Report",
           preview:'<span>Q4 Business Review</span><span>Confidential · {{date}}</span>',
