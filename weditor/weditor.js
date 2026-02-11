@@ -3662,6 +3662,8 @@
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
         split.style.flexDirection = isColumn ? "column" : "row";
         rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
+        left.style.padding = isColumn ? "24px 18px" : "48px 36px";
+        left.dataset.layout = isColumn ? "column" : "row";
       }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); modal.appendChild(saveCloseWrap); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
@@ -3704,6 +3706,11 @@
         const totalFrameWidth=scaledWidth + previewPadding*2;
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
+        if(left.dataset.layout==="column"){
+          stage.style.gap = "24px";
+          stage.style.padding = "8px 0 36px";
+          stage.style.maxWidth = "100%";
+        }
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
           if(!page) continue;
