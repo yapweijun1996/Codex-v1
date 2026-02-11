@@ -3600,6 +3600,13 @@
     return { build };
   })();
   const Fullscreen=(function(){
+    const BASE_LEFT_PADDING=(WCfg.Style.left&&WCfg.Style.left.padding)||"";
+    const BASE_LEFT_GAP=(WCfg.Style.left&&WCfg.Style.left.gap)||"";
+    const BASE_RIGHT_MIN_WIDTH=(WCfg.Style.rightWrap&&WCfg.Style.rightWrap.minWidth)||"";
+    const BASE_RIGHT_MAX_WIDTH=(WCfg.Style.rightWrap&&WCfg.Style.rightWrap.maxWidth)||"";
+    const BASE_RIGHT_WIDTH=(WCfg.Style.rightWrap&&WCfg.Style.rightWrap.width)||"";
+    const BASE_STAGE_GAP=(WCfg.Style.previewStage&&WCfg.Style.previewStage.gap)||"";
+    const BASE_STAGE_PADDING=(WCfg.Style.previewStage&&WCfg.Style.previewStage.padding)||"";
     function open(inst){
       A11y.lockScroll();
       const bg=document.createElement("div"); applyStyles(bg, WCfg.Style.modalBg); bg.setAttribute("role","dialog"); bg.setAttribute("aria-modal","true");
@@ -3661,7 +3668,11 @@
       function layout(){
         const isColumn = window.innerWidth < WCfg.MOBILE_BP;
         split.style.flexDirection = isColumn ? "column" : "row";
-        rightWrap.style.width = isColumn ? "100%" : "min(46vw, 720px)";
+        rightWrap.style.width = isColumn ? "100%" : (BASE_RIGHT_WIDTH||"min(46vw, 720px)");
+        rightWrap.style.maxWidth = isColumn ? "100%" : (BASE_RIGHT_MAX_WIDTH||"720px");
+        rightWrap.style.minWidth = isColumn ? "0" : (BASE_RIGHT_MIN_WIDTH||"360px");
+        left.style.padding = isColumn ? "28px 18px 40px" : BASE_LEFT_PADDING;
+        left.style.gap = isColumn ? "22px" : BASE_LEFT_GAP;
       }
       modal.appendChild(cmdBarWrap); modal.appendChild(split); modal.appendChild(saveCloseWrap); split.appendChild(left); split.appendChild(rightWrap); bg.appendChild(modal); document.body.appendChild(bg);
       window.requestAnimationFrame(function(){ bg.style.opacity = "1"; });
@@ -3704,6 +3715,15 @@
         const totalFrameWidth=scaledWidth + previewPadding*2;
         const stage=document.createElement("div");
         applyStyles(stage, WCfg.Style.previewStage);
+        if(window.innerWidth < WCfg.MOBILE_BP){
+          stage.style.gap = "24px";
+          stage.style.padding = "8px 0 32px";
+          stage.style.maxWidth = "100%";
+        } else {
+          stage.style.gap = BASE_STAGE_GAP;
+          stage.style.padding = BASE_STAGE_PADDING;
+          stage.style.maxWidth = (WCfg.Style.previewStage&&WCfg.Style.previewStage.maxWidth)||"";
+        }
         for(let i=0;i<out.pages.length;i++){
           const page=out.pages[i];
           if(!page) continue;
