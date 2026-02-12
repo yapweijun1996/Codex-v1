@@ -7737,6 +7737,275 @@
     }
     return { merge };
   })();
+  const TableSelection=(function(){
+    const ROW_CLASS="weditor-table-row-selected";
+    const STYLE_ID="weditor-table-selection-style";
+    const states=new WeakMap();
+    function ensureStyles(doc){
+      if(!doc || !doc.head) return;
+      if(doc.getElementById(STYLE_ID)) return;
+      const style=doc.createElement("style");
+      style.id=STYLE_ID;
+      style.textContent=
+        "."+ROW_CLASS+">td,."+ROW_CLASS+">th{"+
+          "background-color:rgba(15,108,189,0.12);"+
+        "}";
+      doc.head.appendChild(style);
+    }
+    function closestCell(root, node){
+      let current=node;
+      while(current && current!==root){
+        if(current.nodeType===1){
+          const tag=(current.tagName||"").toLowerCase();
+          if(tag==="td" || tag==="th") return current;
+        }
+        current=current.parentNode;
+      }
+      if(current && current.nodeType===1){
+        const tag=(current.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th") return current;
+      }
+      return null;
+    }
+    function closestRow(cell){
+      if(!cell) return null;
+      let current=cell;
+      while(current){
+        if(current.nodeType===1 && (current.tagName||"").toLowerCase()==="tr") return current;
+        current=current.parentNode;
+      }
+      return null;
+    }
+    function tableFromCell(cell){
+      if(!cell || !cell.closest) return null;
+      return cell.closest("table");
+    }
+    function clearSelection(state){
+      if(!state) return;
+      state.rows.forEach(function(row){ if(row && row.classList) row.classList.remove(ROW_CLASS); });
+      state.rows.clear();
+      state.table=null;
+    }
+    function isValidAnchor(state){
+      if(!state.anchor) return null;
+      if(!state.anchor.isConnected || !state.root.contains(state.anchor)){
+        state.anchor=null;
+        return null;
+      }
+      return state.anchor;
+    }
+    function collectRowsBetween(table, anchorRow, focusRow){
+      if(!table || !anchorRow || !focusRow) return [];
+      const allRows=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      if(!allRows.length) return [];
+      const anchorIndex=allRows.indexOf(anchorRow);
+      const focusIndex=allRows.indexOf(focusRow);
+      if(anchorIndex<0 || focusIndex<0) return [];
+      const start=Math.min(anchorIndex, focusIndex);
+      const end=Math.max(anchorIndex, focusIndex);
+      const selected=[];
+      for(let i=start;i<=end;i++){ selected.push(allRows[i]); }
+      return selected;
+    }
+    function applySelection(state, table, rows){
+      clearSelection(state);
+      if(!table || !rows || !rows.length) return;
+      ensureStyles(table.ownerDocument || document);
+      for(let i=0;i<rows.length;i++){
+        const row=rows[i];
+        if(!row || !row.classList) continue;
+        row.classList.add(ROW_CLASS);
+        state.rows.add(row);
+      }
+      state.table=table;
+    }
+    function focusCell(cell){
+      if(!cell) return;
+      const doc=cell.ownerDocument || document;
+      if(!doc || !doc.createRange) return;
+      try{
+        const range=doc.createRange();
+        range.selectNodeContents(cell);
+        range.collapse(true);
+        const sel=doc.getSelection ? doc.getSelection() : window.getSelection();
+        if(sel){
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }catch(err){}
+    }
+    function tableRowOrder(table, rows){
+      if(!table || !rows || !rows.length) return { rows:[], min:null, max:null };
+      const ordered=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      const map=new Map();
+      for(let i=0;i<ordered.length;i++){ map.set(ordered[i], i); }
+      const filtered=[];
+      let minIndex=null, maxIndex=null;
+      for(let j=0;j<rows.length;j++){
+        const row=rows[j];
+        const idx=map.get(row);
+        if(typeof idx!=="number") continue;
+        filtered.push({ row, idx });
+        if(minIndex===null || idx<minIndex) minIndex=idx;
+        if(maxIndex===null || idx>maxIndex) maxIndex=idx;
+      }
+      filtered.sort(function(a,b){ return a.idx-b.idx; });
+      return {
+        rows:filtered.map(function(entry){ return entry.row; }),
+        min:minIndex,
+        max:maxIndex
+      };
+    }
+    function deleteSelection(state){
+      if(!state || !state.rows.size) return false;
+      const table=state.table;
+      if(!table || !table.isConnected || !state.root.contains(table)){
+        clearSelection(state);
+        return false;
+      }
+      const selectedRows=Array.from(state.rows).filter(function(row){ return row && row.isConnected && table.contains(row); });
+      if(!selectedRows.length){
+        clearSelection(state);
+        return false;
+      }
+      const order=tableRowOrder(table, selectedRows);
+      const orderedRows=order.rows;
+      if(!orderedRows.length){
+        clearSelection(state);
+        return false;
+      }
+      const allRowsBefore=table.rows ? Array.prototype.slice.call(table.rows) : [];
+      const indices=new Set();
+      for(let i=0;i<orderedRows.length;i++){
+        const idx=allRowsBefore.indexOf(orderedRows[i]);
+        if(idx>=0) indices.add(idx);
+      }
+      let focusTarget=null;
+      if(allRowsBefore.length && order.max!=null){
+        for(let i=order.max+1;i<allRowsBefore.length;i++){
+          const candidate=allRowsBefore[i];
+          if(indices.has(i)) continue;
+          if(candidate && candidate.cells && candidate.cells.length){
+            focusTarget=candidate.cells[0];
+            break;
+          }
+        }
+        if(!focusTarget && order.min!=null){
+          for(let i=order.min-1;i>=0;i--){
+            const candidate=allRowsBefore[i];
+            if(indices.has(i)) continue;
+            if(candidate && candidate.cells && candidate.cells.length){
+              focusTarget=candidate.cells[0];
+              break;
+            }
+          }
+        }
+      }
+      for(let i=0;i<orderedRows.length;i++){
+        const row=orderedRows[i];
+        if(row && row.parentNode){ row.parentNode.removeChild(row); }
+      }
+      let tableRemoved=false;
+      if(!table.rows || table.rows.length===0){
+        tableRemoved=true;
+        const parent=table.parentNode;
+        if(parent){ parent.removeChild(table); focusTarget=parent; }
+      } else {
+        TableResizer.ensureTable(table);
+      }
+      Breaks.ensurePlaceholders(state.root);
+      clearSelection(state);
+      if(focusTarget){
+        const tag=(focusTarget.tagName||"").toLowerCase();
+        if(tag==="td" || tag==="th"){
+          focusCell(focusTarget);
+          state.anchor=focusTarget;
+        } else if(focusTarget.nodeType===1){
+          WDom.placeCaretAtEnd(focusTarget);
+          state.anchor=null;
+        }
+      } else {
+        state.anchor=null;
+      }
+      const target=state.getRecordTarget ? state.getRecordTarget(state.inst) : (state.inst ? state.inst.el : state.root);
+      HistoryManager.record(state.inst, target, { label:"Delete Table Rows", repeatable:false });
+      if(state.onChange) state.onChange(state.inst, target, { tableRemoved });
+      if(state.inst && OutputBinding && typeof OutputBinding.syncDebounced==="function"){
+        OutputBinding.syncDebounced(state.inst);
+      }
+      return true;
+    }
+    function handleMouseDown(state, event){
+      if(!state || event.button!==0) return;
+      const cell=closestCell(state.root, event.target);
+      if(event.shiftKey){
+        const anchorCell=isValidAnchor(state);
+        if(!anchorCell || !cell){ return; }
+        const anchorTable=tableFromCell(anchorCell);
+        const targetTable=tableFromCell(cell);
+        if(!anchorTable || anchorTable!==targetTable){
+          state.anchor=cell;
+          clearSelection(state);
+          return;
+        }
+        const anchorRow=closestRow(anchorCell);
+        const focusRow=closestRow(cell);
+        if(!anchorRow || !focusRow){ return; }
+        const rows=collectRowsBetween(anchorTable, anchorRow, focusRow);
+        if(rows.length){
+          event.preventDefault();
+          applySelection(state, anchorTable, rows);
+          focusCell(cell);
+        }
+        return;
+      }
+      if(cell){
+        state.anchor=cell;
+      } else {
+        state.anchor=null;
+      }
+      clearSelection(state);
+    }
+    function handleKeyDown(state, event){
+      if(!state || !event) return;
+      const key=String(event.key||"");
+      if(key==="Escape"){ if(state.rows.size){ clearSelection(state); event.preventDefault(); } return; }
+      if(key!=="Backspace" && key!=="Delete") return;
+      if(!state.rows.size) return;
+      event.preventDefault();
+      deleteSelection(state);
+    }
+    function handleFocusIn(state, event){
+      if(!state || !event) return;
+      const cell=closestCell(state.root, event.target);
+      if(cell){ state.anchor=cell; }
+    }
+    function attach(inst, options){
+      options=options||{};
+      const root=options.root || (inst && inst.el) || null;
+      if(!root) return;
+      if(states.has(root)) return;
+      const doc=root.ownerDocument || document;
+      ensureStyles(doc);
+      const state={
+        inst:inst||null,
+        root,
+        anchor:null,
+        rows:new Set(),
+        table:null,
+        getRecordTarget:typeof options.getRecordTarget==="function" ? options.getRecordTarget : function(){ return inst ? inst.el : root; },
+        onChange:typeof options.onChange==="function" ? options.onChange : null
+      };
+      const onMouseDown=function(ev){ handleMouseDown(state, ev); };
+      const onKeyDown=function(ev){ handleKeyDown(state, ev); };
+      const onFocusIn=function(ev){ handleFocusIn(state, ev); };
+      root.addEventListener("mousedown", onMouseDown);
+      root.addEventListener("keydown", onKeyDown);
+      root.addEventListener("focusin", onFocusIn);
+      states.set(root, { state, handlers:{ onMouseDown, onKeyDown, onFocusIn } });
+    }
+    return { attach };
+  })();
   const ListUI=(function(){
     function ensureListStyles(){
       if(typeof document==="undefined" || !document.head) return;
