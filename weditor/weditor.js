@@ -4497,12 +4497,80 @@
       const style = inst && inst.underlineStyle ? inst.underlineStyle : null;
       const applyUnderlineForSelection=function(){
         const ok=execCommand(target, "underline", null, true);
-        if(style && ok && selectionHasUnderline(target)){ applyDecorationStyle(inst, ctx, style); }
+        if(!ok){ return ok; }
+        const hasUnderline=selectionHasUnderline(target);
+        if(style && hasUnderline){
+          applyDecorationStyle(inst, ctx, style);
+        } else if(!hasUnderline){
+          clearUnderlineStylesInSelection(target);
+        }
         return ok;
       };
       const multi=applyAcrossTableSelection(inst, ctx, target, applyUnderlineForSelection);
       if(multi.handled){ return multi.changed; }
       return applyUnderlineForSelection();
+    }
+    function unwrapNode(node){
+      if(!node || !node.parentNode) return;
+      const parent=node.parentNode;
+      while(node.firstChild){ parent.insertBefore(node.firstChild, node); }
+      parent.removeChild(node);
+    }
+    function clearUnderlineStylesInSelection(target){
+      if(!target) return false;
+      const sel=window.getSelection ? window.getSelection() : null;
+      if(!sel || sel.rangeCount===0){ return false; }
+      const range=sel.getRangeAt(0);
+      if(!range || !target.contains(range.commonAncestorContainer)){ return false; }
+      const doc=target.ownerDocument || document;
+      const nodes=[];
+      if(doc && typeof doc.createTreeWalker==="function"){
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(node){
+            if(node===target) return NodeFilter.FILTER_SKIP;
+            return intersectsRange(range, node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        let current;
+        while((current=walker.nextNode())){ nodes.push(current); }
+      } else {
+        let container=range.commonAncestorContainer;
+        if(container && container.nodeType===3){ container=container.parentNode; }
+        if(container && container.nodeType===1){ nodes.push(container); }
+      }
+      let changed=false;
+      for(let i=0;i<nodes.length;i++){
+        const node=nodes[i];
+        if(!node || !node.isConnected) continue;
+        const tag=(node.tagName||"").toLowerCase();
+        if(tag==="u"){ unwrapNode(node); changed=true; continue; }
+        const style=node.style;
+        if(style){
+          let styleChanged=false;
+          if(style.textDecorationLine && style.textDecorationLine.indexOf("underline")>-1){
+            style.removeProperty("text-decoration-line");
+            styleChanged=true;
+          }
+          if(style.textDecoration && /underline/i.test(style.textDecoration)){
+            const cleaned=style.textDecoration.replace(/underline/gi, "").replace(/\s{2,}/g, " ").trim();
+            if(cleaned){ style.textDecoration=cleaned; }
+            else { style.removeProperty("text-decoration"); }
+            styleChanged=true;
+          }
+          if(style.textDecorationStyle){ style.removeProperty("text-decoration-style"); styleChanged=true; }
+          if(style.textDecorationThickness){ style.removeProperty("text-decoration-thickness"); styleChanged=true; }
+          if(styleChanged){
+            changed=true;
+            const styleAttr=node.getAttribute("style");
+            if(!styleAttr || !styleAttr.trim()){ node.removeAttribute("style"); }
+          }
+        }
+        if(tag==="span" && node.attributes && node.attributes.length===0){
+          unwrapNode(node);
+          changed=true;
+        }
+      }
+      return changed;
     }
     function applyDecorationStyle(inst, ctx, style){
       if(!style){ return false; }
