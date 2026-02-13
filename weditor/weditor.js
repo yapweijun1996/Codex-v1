@@ -4497,7 +4497,13 @@
       const style = inst && inst.underlineStyle ? inst.underlineStyle : null;
       const applyUnderlineForSelection=function(){
         const ok=execCommand(target, "underline", null, true);
-        if(style && ok && selectionHasUnderline(target)){ applyDecorationStyle(inst, ctx, style); }
+        if(!ok){ return ok; }
+        const hasUnderline=selectionHasUnderline(target);
+        if(style && hasUnderline){
+          applyDecorationStyle(inst, ctx, style);
+        } else if(!hasUnderline){
+          clearUnderlineDecoration(inst, ctx);
+        }
         return ok;
       };
       const multi=applyAcrossTableSelection(inst, ctx, target, applyUnderlineForSelection);
@@ -4549,6 +4555,78 @@
       const multi=applyAcrossTableSelection(inst, ctx, target, applyStyleForSelection);
       if(multi.handled){ return multi.changed; }
       return applyStyleForSelection();
+    }
+    function clearUnderlineDecoration(inst, ctx){
+      const target=resolveTarget(inst, ctx); if(!target) return false;
+      focusTarget(target);
+      const cleanupSelection=function(){
+        const sel=window.getSelection();
+        if(!sel || sel.rangeCount===0){ return false; }
+        const range=sel.getRangeAt(0);
+        if(!target.contains(range.commonAncestorContainer)){ return false; }
+        const doc=target.ownerDocument || document;
+        const walker=doc.createTreeWalker(target, NodeFilter.SHOW_ELEMENT, {
+          acceptNode:function(node){
+            if(node===target){ return NodeFilter.FILTER_SKIP; }
+            return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+          }
+        });
+        let changed=false; let node;
+        while((node=walker.nextNode())){
+          if(removeUnderlineStylesFromElement(node)){ changed=true; }
+        }
+        return changed;
+      };
+      const multi=applyAcrossTableSelection(inst, ctx, target, cleanupSelection);
+      if(multi.handled){ return multi.changed; }
+      return cleanupSelection();
+    }
+    function removeUnderlineStylesFromElement(el){
+      if(!el || el.nodeType!==1 || !el.style){ return false; }
+      let changed=false;
+      const style=el.style;
+      const stripValue=function(value){
+        if(!value){ return ""; }
+        const parts=value.split(/\s+/).filter(Boolean).filter(function(part){ return part.toLowerCase()!=="underline"; });
+        return parts.join(" ");
+      };
+      const lineValue=style.textDecorationLine;
+      if(lineValue){
+        const updated=stripValue(lineValue);
+        if(updated!==lineValue){
+          if(updated){ style.textDecorationLine=updated; }
+          else { style.removeProperty("text-decoration-line"); }
+          changed=true;
+        }
+      }
+      const decoValue=style.textDecoration;
+      if(decoValue){
+        const updatedDeco=stripValue(decoValue);
+        if(updatedDeco!==decoValue){
+          if(updatedDeco){ style.textDecoration=updatedDeco; }
+          else { style.removeProperty("text-decoration"); }
+          changed=true;
+        }
+      }
+      if(style.textDecorationStyle){ style.removeProperty("text-decoration-style"); changed=true; }
+      if(style.textDecorationColor){
+        style.removeProperty("text-decoration-color");
+        changed=true;
+      }
+      if(style.textDecorationThickness){
+        style.removeProperty("text-decoration-thickness");
+        changed=true;
+      }
+      if(style.length===0){ el.removeAttribute("style"); }
+      if(el.tagName && el.tagName.toLowerCase()==="span" && el.attributes.length===0){
+        const parent=el.parentNode;
+        if(parent){
+          while(el.firstChild){ parent.insertBefore(el.firstChild, el); }
+          parent.removeChild(el);
+          changed=true;
+        }
+      }
+      return changed;
     }
     function applySimple(inst, ctx, command){
       const target=resolveTarget(inst, ctx); if(!target) return false;
