@@ -1,0 +1,19 @@
+.afw-chat {
+  overflow-x: hidden;
+}
+
+.afw-chat-msg,
+.afw-chat-msg-text,
+.afw-chat-meta {
+  min-width: 0;
+}
+
+.afw-chat-msg-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.afw-chat-meta {
+  overflow-wrap: anywhere;
+}

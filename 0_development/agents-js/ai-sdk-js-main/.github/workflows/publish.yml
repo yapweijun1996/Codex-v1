@@ -1,0 +1,30 @@
+# For trusted publishing releases, it is required to start all releases from a single workflow file.
+# This workflow delegates to the appropriate release workflow based on the event that triggered it.
+
+on:
+  # Triggers for canary releases
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Dist tag for the release. If you chose something different than "canary", make sure to delete it once it is not needed anymore.'
+        type: string
+        required: false
+        default: 'canary'
+  # Triggers for official releases
+  release:
+    types: [published] # Trigger when a GitHub Release is published
+
+jobs:
+  delegate_to_release_job:
+    if: ${{ github.event_name == 'release' }}
+    uses: ./.github/workflows/publish-release.yml
+    secrets: inherit
+
+  delegate_to_canary_job:
+    if: ${{ github.event_name != 'release' }}
+    uses: ./.github/workflows/publish-canary.yml
+    secrets: inherit
+    with:
+      tag: ${{ github.event_name == 'schedule' && github.event.inputs.tag || 'canary' }}

@@ -1,0 +1,201 @@
+.modal-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: var(--bg-muted);
+    color: var(--text-muted);
+}
+
+.modal-button.primary:disabled {
+    border-color: var(--border);
+}
+
+.approval-batch {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.approval-batch-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.approval-batch-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.approval-mini-btn {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.approval-mini-btn:hover {
+    background: var(--bg-muted);
+}
+
+.approval-mini-btn:active {
+    transform: scale(0.98);
+}
+
+.approval-batch-summaryline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+}
+
+.approval-batch-intent-preview {
+    flex: 1;
+    min-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.approval-batch-risk-counts {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.approval-batch-risk-summary {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.approval-batch-risk {
+    white-space: nowrap;
+}
+
+.approval-batch-list {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: auto;
+    max-height: 320px;
+    background: var(--bg);
+}
+
+.approval-batch-item {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    gap: 10px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    align-items: flex-start;
+}
+
+.approval-batch-item:last-child {
+    border-bottom: 0;
+}
+
+.approval-batch-item:hover {
+    background: var(--bg-muted);
+}
+
+.approval-batch-item input[type="checkbox"] {
+    margin-top: 3px;
+}
+
+.approval-batch-main {
+    min-width: 0;
+}
+
+.approval-batch-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.approval-batch-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.approval-batch-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    overflow-wrap: anywhere;
+}
+
+.approval-batch-sub {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.approval-batch-meta {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.approval-batch-intent {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.approval-batch-summary {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+}
+
+.approval-details-toggle {
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 4px;
+    flex-shrink: 0;
+}
+
+.approval-details-toggle:hover {
+    text-decoration: underline;
+}
+
+.approval-batch-id {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.approval-batch-details {
+    display: none;
+    margin: 8px 0 0;
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12px;
+    color: var(--text);
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+.approval-batch-item.details-open .approval-batch-details {
+    display: block;
+}

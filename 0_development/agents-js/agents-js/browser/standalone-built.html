@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>agents-js - Browser Edition (Built 2026-02-14T23:32:29.847Z)</title>
+    <meta name="description" content="Pure browser-based AI agent powered by Gemini">
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./ui-base.css">
+    <link rel="stylesheet" href="./ui-sidebar.css">
+    <link rel="stylesheet" href="./ui-chat.css">
+    <link rel="stylesheet" href="./ui-chat-extras.css">
+    <link rel="stylesheet" href="./ui-knowledge-references.css">
+    <link rel="stylesheet" href="./ui-modal.css">
+    <link rel="stylesheet" href="./ui-approval-modal.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        if (!globalThis.AGENTS_CONFIG) {
+            globalThis.AGENTS_CONFIG = { agent: { maxTurns: 50, debug: true }, llm: { enableStreaming: true }, ui: { decisionTrace: true } };
+        }
+    </script>
+</head>
+
+<body class="sidebar-collapsed">
+    <div class="app">
+        <header class="header">
+            <div class="header-spacer" aria-hidden="true"></div>
+            <div class="header-content header-content-min">
+                <div class="header-left">
+                    <button class="icon-button" id="sidebarToggle" aria-label="Toggle sidebar">☰</button>
+                </div>
+                <div class="header-right">
+                    <button class="icon-button" id="newChatTopButton" aria-label="New chat">+</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="layout">
+            <aside class="sidebar collapsed" id="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>Settings</span>
+                        <span class="count">UI</span>
+                    </div>
+                    <select id="modelSelect" class="select sidebar-input">
+                        <option value="gemini-2.5-flash">gemini-2.5-flash (Default)</option>
+                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                        <option value="gemini-3-flash-preview">gemini-3-flash-preview</option>
+                        <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
+                    </select>
+                    <input type="password" id="apiKeyInput" class="input sidebar-input"
+                        placeholder="Enter your Gemini API Key..." autocomplete="off">
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>Sessions</span>
+                        <span class="count" id="sessionCount">0</span>
+                    </div>
+                    <input class="input session-search" id="sessionSearch" placeholder="Search sessions">
+                    <div class="sidebar-actions">
+                        <button class="ghost-button" id="newChatButton">New chat</button>
+                        <button class="ghost-button" id="clearChatsButton">Clear all</button>
+                    </div>
+                    <div class="list" id="sessionList">
+                        <div class="list-empty">No sessions.</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>My Skills</span>
+                        <span class="count" id="skillCount">0</span>
+                    </div>
+                    <div class="list" id="skillList">
+                        <div class="list-empty">Loading skills...</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>MCP Tools</span>
+                        <span class="count" id="mcpToolCount">0</span>
+                    </div>
+                    <div class="list" id="mcpToolList">
+                        <div class="list-empty">No MCP config.</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>Tool Calls</span>
+                        <span class="count" id="toolCallCount">0</span>
+                    </div>
+                    <div class="trace-list" id="toolCallList">
+                        <div class="list-empty">No tool calls yet.</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>Decision Trace</span>
+                        <span class="count" id="decisionTraceCount">0</span>
+                    </div>
+                    <div class="trace-list" id="decisionTraceList">
+                        <div class="list-empty">No trace yet.</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>Plan</span>
+                        <div class="sidebar-header-right">
+                            <button class="mini-button" id="planViewToggle" type="button">Active</button>
+                            <button class="mini-button" id="planCopyButton" type="button">Copy</button>
+                            <span class="count" id="planCount">0</span>
+                        </div>
+                    </div>
+                    <div class="trace-list" id="planList">
+                        <div class="list-empty">No plan yet.</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>Audit Trace</span>
+                        <div class="sidebar-header-right">
+                            <button class="mini-button" id="auditTraceCopy" type="button">Copy</button>
+                            <button class="mini-button" id="auditTraceExport" type="button">Export</button>
+                            <span class="count" id="auditTraceCount">0</span>
+                        </div>
+                    </div>
+                    <div class="trace-list" id="auditTraceList">
+                        <div class="list-empty">No audit yet.</div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-header">
+                        <span>Transparency &amp; Safety</span>
+                        <span class="count">Info</span>
+                    </div>
+                    <div class="notice-card" id="transparencyNotice"></div>
+                </div>
+            </aside>
+
+            <main class="chat">
+                <div class="status-bar" id="statusBar" aria-live="polite">
+                    <span class="status-dot warning" id="statusDot"></span>
+                    <span id="statusText">No API Key</span>
+                </div>
+                <div class="messages" id="messagesArea">
+                    <div class="empty-state">
+                        <div class="empty-title">Pure Browser Agent</div>
+                        <div class="empty-subtitle">
+                            Enter your Gemini API Key above to start. Everything runs in your browser.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="composer">
+                    <div class="composer-inner">
+                        <textarea id="messageInput" placeholder="Ask me anything... (Shift+Enter for new line)" rows="1"
+                            disabled></textarea>
+                        <button id="sendButton" class="send" disabled aria-label="Send">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                        </button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="skillDetailPanel" class="panel" aria-hidden="true">
+        <div class="panel-header">
+            <h3 id="panelTitle">Skill Details</h3>
+            <button class="icon-button" id="panelClose" aria-label="Close">✕</button>
+        </div>
+        <div class="panel-content" id="panelContent"></div>
+    </div>
+
+    <div class="modal-backdrop" id="confirmModal" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true">
+            <div class="modal-title" id="confirmTitle">Confirm</div>
+            <div class="modal-message" id="confirmMessage">Are you sure?</div>
+            <div class="modal-actions">
+                <button class="modal-button" id="confirmCancel">Cancel</button>
+                <button class="modal-button primary" id="confirmOk">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./ui.js"></script>
+</body>
+
+</html>

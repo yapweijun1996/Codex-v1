@@ -1,0 +1,343 @@
+## 当前上下文（自动维护）
+
+### 目标（近 1-2 周）
+- S64：Browser Thought Timeline（可读、低负载、可审计）。
+- S55：Replay-from-Trace PoC（从 trace JSON 生成可读摘要/回放）。
+- S57：与 codex-main / opencode-main 对齐差距清单。
+- S72：Agentic RAG 全量落地（Node + Browser，JSONL 不变）已完成并进入回归稳定阶段。
+
+### 系统现状（必须知道）
+- 审批语义：approval 必须先于 `tool_call_begin`；Tier2/Tier3 工具默认必须审批（控制面工具豁免避免死锁）。
+- 执行策略（新增）：支持 `agent.approvalPolicy` + `agent.trustedTools`。`unless_trusted` 可对受信工具跳过审批，并发出 `approval.skipped` 事件用于审计；Tier3 默认不允许通过 `unless_trusted` 自动跳过。
+- S54 Context Guard：工具输出进入 history/trace/UI 前会结构化截断；阈值可由 `AGENTS_CONFIG.agent.toolOutputLimits` / `AGENTS_TOOL_OUTPUT_LIMITS_JSON` 调整。
+- 遥测闭环：`tool_result` 覆盖 normal/special/failure（tool_not_found/abort/exception、run_command、request_user_input），UI timeline/trace 回放不缺洞。
+- CLI/TUI：Esc kill switch 仅在“无活跃 prompt”时触发；审批/输入阶段按 Esc 只取消当前 prompt，不再强制中止整轮。
+- CLI/TUI：新增 `--app-never` 启动参数，等价于本次进程设置 `AGENTS_APPROVAL_POLICY=never`，用于快速关闭审批。
+- CLI/TUI：`cli.js` 已完成模块化拆分（参数解析/kill-switch/prompt guard/trace helper/user_input handler），主入口降到 160 行，功能保持不变。
+- Agentic RAG（S72）：
+  - 新增本地工具：`memory_search`、`kb_search`、`memory_save`、`memory_read_graph`。
+  - 保留兼容别名：`memory__search_nodes`、`memory__read_graph`。
+  - Node：fixed 从 `skills/**/knowledge/*.jsonl` 读取；episodic 走 `memory/episodic-memory.jsonl` append-only。
+  - Node 默认 episodic 路径已去除本机绝对路径，改为仓库相对路径 `memory/episodic-memory.jsonl`（避免上传 GitHub 后泄露本机路径并提升跨机可移植性）。
+  - Browser：fixed 从构建产物 `browser/skills/**/knowledge/*.jsonl` 读取；episodic 持久化到 IndexedDB（`agents_memory_v1`）。
+  - 向量策略：仅 query embedding；记录向量读取 `embedding.vector`，并严格校验 MiniLM 384 维。
+  - fixed memory 严格只读，写入请求返回结构化拒绝。
+  - `memory_save` 风险级别为 LOW，保留审批与审计链路。
+  - 流程策略更新（新增）：默认改为 agent 自主决策（不再默认自动 memory 预检，不再默认 memory-first 拦截）。
+    - 若要恢复旧行为：显式设置 `rag.autoMemoryPrecheck=true` 与/或 `rag.memoryFirst=true`。
+
+### Browser UI 状态（S64）
+- Thought logs：结构化 tag + kind class；覆盖 `turn.started/context.truncated/tool.result/tool.error/exec_command.*`；`exec_command.output` 采样避免刷屏。
+- 低负载渲染：logs 增量 append；draft/final 在 source 未变时跳过 re-render（减少 marked.parse 与 innerHTML churn）。
+- 多工具事件：`tool.call`/`approval.required` 支持可折叠 group（summary + children）；args 使用 tool-aware 摘要（query/url/path/cmd/codeChars…）。
+- 风险可读性：group summary 展示 `max Tier` + `Tier2/Tier3` 计数；tool.call 的 risk 来自 Tool Registry（LLM 工具调用事件已补齐每个 tool 的 risk）。
+- Sidebar 可用性：新增每个 `sidebar-section` 的 `Show/Hide` 折叠开关，状态持久化到 localStorage（降低长侧栏阅读压力，保留整栏 `☰` 收起能力）。
+- 默认策略：首次进入页面时 sidebar sections 默认全隐藏（通过 state key 升级到 `agents_sidebar_section_state_v2` 生效）。
+- Chat Markdown 可读性：已增强 assistant 气泡中的标题/列表/blockquote/inline code 排版，改善长文步骤与嵌套列表阅读。
+- Preview 端口策略：`npm run preview` 现在固定占用 `5500`；若端口被占用会先释放再启动。
+- Knowledge 图片参考（新增）：当 `memory_search` / `kb_search` / `memory__search_nodes` 命中知识 ID 时，UI 会从 JSONL `images` 字段解析并在 assistant 消息下方渲染 `References` 图片卡片；图片不会发送给 agent 作为上下文。
+- Memory-first（新增）：已加运行时守卫，默认要求先 `kb_search/memory_search`，再允许 `searxng_query/read_url`；自动预检顺序改为 `kb_search` 优先（fixed）再 `memory_search`，并提高自动检索最小分数阈值。
+- 图片相关性（新增）：知识图片提取增加 `score` 过滤（默认 >= 0.35），降低低相关命中的错图展示。
+- References 展示边界（新增）：仅当本轮出现模型显式 `tool.call` 后，才收集知识命中 ID；自动预检阶段命中不再直接触发图片展示，避免“未使用知识也显示 references”。
+- References 交互（新增）：知识图片支持点击打开简易 modal gallery（Prev/Next、Esc 关闭、点击背景关闭、caption + counter）。
+- Knowledge 选择可观测（新增）：后端在知识工具结果后发出 `knowledge_selected` 事件，包含 `selectedIds/newSelectedIds/tool/query`，并进入 trace + UI thought/audit。
+- Auto 预检选择可观测（新增）：`maybeAutoMemoryLookup` 的 `kb_search/memory_search/memory__search_nodes` 结果也会进入 `knowledge_selected`，避免“仅自动命中但引用后无 References 图”的断链。
+- Citation 硬规则（新增）：若本轮已选择知识但最终答案未包含 `[source:#id p.n]` citation，guard 会注入强提醒并要求重答（最多 2 次）。
+- References 硬过滤（新增）：前端仅展示 `knowledge.selected` 与最终答案 citation 的交集图片；未引用则不显示 References。
+- Gallery 交互增强（新增）：modal 图片支持滚轮缩放（1x~4x）与缩放后鼠标拖拽平移；并支持点击缩放切换（有 zoom-in 光标时点击可放大）；切图/关闭时重置视图，避免状态污染下一张图。
+
+### Agent Frontend Worker（AFW）专项状态（新增）
+- 右侧面板低高度布局已修复：`afw-right` 改为稳定分区（Head/Chat/Controls/Runbar/Composer），chat 与底部输入不再互相覆盖（含 DevTools 打开场景）。
+- AFW Chat 已切换到 Browser `agents.mjs` 主链路：
+  - 新增 `browser/ui-afw-agent-runtime.js`，统一走 `Agent.runAsyncIterator`。
+  - Gemini 复用 `createBrowserAgent`；OpenAI 使用同 Agent 内核适配 LLM。
+  - 重试统一复用 `retry.mjs` 的 `executeWithRetry`。
+  - 失败会回显到 Chat + Log，便于定位配置问题。
+  - Gemini 400 稳定性修复（新增）：browser retry 已按状态码区分可重试错误（不再对 400 盲重试）；`generateContentStream` 命中 400 时会自动回退非流式 `chat`。
+  - AFW Gemini 错误可读性（新增）：`ui-afw-agent-runtime.js` 对 Gemini 400 输出可读提示（模型权限/参数校验/建议切换 `gemini-2.5-pro`）。
+  - Gemini schema 防回归（新增）：`run_ui_journey` 的 `steps/assertions` 数组参数已补齐 `items`，并在 Node+Browser `sanitizeGeminiSchema` 增加 `array.items` 自动兜底，防止再次触发 `INVALID_ARGUMENT`（missing field items）。
+  - 文件规模治理（新增）：`bootstrap.mjs` 已拆出 MCP HTTP loader 至 `mcp-http-tools.mjs`，主文件降至 247 行，满足单文件 <300 约束。
+- AFW settings 仍由 `browser/ui-afw-settings.js` 统一提供配置来源（provider/model/baseUrl/apiKey/persist）。
+- AFW Preview Driver 已落地（S3 Done）：
+  - 预览页面注入 `window.__AFDW_DRIVER__`，支持 click/type/scroll/getDOM/screenshot/console/runtime/perf。
+  - 宿主暴露 `globalThis.__AFW_PREVIEW_API__`，后续 patch-loop 可直接调用证据采集能力。
+  - 核心文件：`browser/ui-afw-preview-driver.js`、`browser/ui-afw-automation.js`。
+- AFW Agent Ability（新增）：
+  - 已新增 AFW 专用工具集（list/read/write + preview 操作/证据采集）。
+  - Gemini/OpenAI 都经 `agents.mjs` 的 `Agent.runAsyncIterator` 执行工具，AFW 可以直接改 workspace 文件并触发 preview 验证。
+  - 核心文件：`browser/ui-afw-agent-tools.js`、`browser/ui-afw-agent-runtime.js`。
+  - 交互能力扩展（新增）：已支持 `preview_hover`、`preview_press_key`、`preview_drag`，并继续受 `Enable interaction tools` 开关统一控制。
+  - 结构优化（新增）：交互工具拆分到 `browser/ui-afw-agent-tools-interaction.js`，主工具文件保持 < 300 行可维护规模。
+  - 脚本化旅程（新增）：已支持 `run_ui_journey`（steps + assertions + evidence report），可执行可重复 UI 旅程与断言校验，失败可自动抓图。
+  - 断言精度升级（新增）：`run_ui_journey` 已支持 `assert_selector_exists` 与 `assert_selector_text`（可 `exact` 比对），用于 selector 级精确校验。
+  - 核心文件：`browser/ui-afw-agent-tools-journey.js`、`tests/ui_afw_journey_tool.test.js`。
+  - Chat 可读性（新增）：`ui-afw-chat.js` 已为 `preview_hover/preview_press_key/preview_drag`（以及 click/type/scroll/reload/viewport）输出结构化摘要，减少阅读 raw JSON 负担。
+  - Preview CSP（新增）：`ui-afw-preview-csp.js` 已移除 `frame-ancestors`（meta 下无效告警源），并放宽 `img/font/script/style` 允许 `http/https` 与 localhost 资源，减少 srcdoc 开发态资源拦截噪音。
+  - apply_patch 提示词加固（新增）：`ui-afw-routing.js` 已加入严格 patch 语法守卫，明确要求 `*** Begin Patch` / `*** End Patch`、删除必须用 `*** Delete File: <path>`，并显式禁止 `*** Begin Patch ***` 与 `! Delete: ...`。
+- AFW Done Gate（新增）：
+  - 前端改为按 turn-type 执行程序化 gate：
+    - `chat_turn`：跳过 Done Gate（仅记录轻量日志，不展示 gate 告警）。
+    - `ui_task_turn`（出现 `run_ui_journey` 或 `preview_*` 工具）：执行完整 gate（console/runtime/screenshot/perf/journey）。
+  - turn-type 与 gate 收口已抽到 `browser/ui-afw-chat-turn-gate.js`，便于单测与后续扩展工具前缀规则。
+  - 结果会以 PASS/FAIL 追加到聊天，并写入 Execution Console 的 gate 时间线。
+  - 统一验收出口（新增）：若本轮执行了 `run_ui_journey`，其结果会自动并入 Done Gate；journey 失败会追加 `journey_failed:*` 并导致 gate FAIL。
+  - summary 新增 `journey(...)` 字段（未运行显示 `journey=not_run`），便于单行判断“功能验收+稳定性验收”。
+  - 规则修正（新增）：
+    - 当 `collectScreenshot=false` 时，不再计入 `screenshot_missing`。
+    - 当截图 API 不可用时，降级为 warning（`screenshot_api_unavailable`），不直接 FAIL。
+    - 当截图检查开启且 API 可用时，缺图会先自动重试 1 次；重试后仍缺图则降级 warning（`screenshot_missing:*`），不直接 FAIL。
+    - gate 增加 `loaded` 感知：每个 viewport 首次 `reloadPreview.loaded=false` 时会自动重试一次；若仍未 loaded，记录 warning `preview_reload_unloaded:<viewport>` 再继续判定。
+    - warning 可视化（新增）：`preview_reload_unloaded:*` 现在会在 Chat 与 Execution Console 以黄色 warning badge/tag 显示，便于快速区分“加载未就绪”与“功能失败”。
+  - 核心文件：`browser/ui-afw-done-gate.js`、`browser/ui-afw-execution-console.js`、`browser/ui-afw-chat.js`。
+- AFW 研究工具挂载（新增）：
+  - 已接入 `searxng_query` + `read_url`，直接复用 `browser/skills/*/tools.mjs`。
+  - 现有 AFW agent 可同时进行：文件改动 + 预览验证 + Web 检索/URL 阅读。
+  - 核心文件：`browser/ui-afw-agent-tools.js`、`browser/ui-afw-agent-runtime.js`。
+- AFW 场景工具挂载（新增）：
+  - 已加入：`worldtime_now`、`onemap_postcode_lookup`、`open_meteo_current`。
+  - AFW 当前具备：代码改动 + 预览验证 + 研究检索 + 时间/地理/天气场景工具能力。
+
+### 测试基线（Node + Browser）
+- `npm test`：通过（以最近一次为准）。
+- `npm run build:browser`：通过（更新 `browser/standalone-built.html`）。
+- 绝对路径修复回归：`npm test && npm run build:browser` 通过；`rg -n "/Users/yapweijun/Documents/GitHub/agents-js/0_development/agents-js/agents-js/memory/episodic-memory.jsonl" . --glob '!node_modules/**'` 无命中。
+- 绝对路径防回归单测：`npx vitest run tests/rag_default_path_portability.test.js` 通过（2 passed）。
+- `setopt nonomatch; npx vitest run tests/*rag* tests/*memory* tests/*browser*`：通过（10 files / 13 tests）。
+- UI 单测基建：最小 fake DOM 在 `tests/helpers/fake_dom.js`（无 jsdom/happy-dom 依赖）。
+- 安全基线（S70）：`npx vitest run tests/security.test.js` 已全绿（15 passed）。
+- Knowledge 图片参考回归：`npx vitest run tests/ui_knowledge_references.test.js tests/browser_runtime_tool_toggle.test.js tests/ui_thought_logger_toolaware.test.js` 已通过（7 passed）。
+- Memory-first 回归：`npx vitest run tests/memory_first_policy.test.js tests/ui_knowledge_references.test.js tests/rag_built_in_tools.test.js tests/browser_runtime_tool_toggle.test.js` 已通过（10 passed）。
+- Gallery 回归：`npx vitest run tests/ui_knowledge_references.test.js tests/browser_runtime_tool_toggle.test.js tests/ui_thought_logger_toolaware.test.js && npm run build:browser` 已通过。
+- Citation/Selection 回归：`npx vitest run tests/knowledge_selection_event.test.js tests/citation_guard.test.js tests/ui_knowledge_references.test.js tests/memory_first_policy.test.js` 已通过（13 passed）。
+- UI Agent E2E Gate 回归：`npx vitest run tests/ui_agent_reference_citation_gate.test.js` 已通过（2 passed）。
+- UI Agent E2E Gate 补充：新增“citation id 不在 selected 集合时不展示图”断言，`npx vitest run tests/ui_agent_reference_citation_gate.test.js` 已通过（3 passed）。
+- Auto 预检选择回归：`npx vitest run tests/memory_first_policy.test.js tests/knowledge_selection_event.test.js tests/ui_agent_reference_citation_gate.test.js` 已通过（8 passed）。
+- Gallery 交互回归：`npx vitest run tests/ui_knowledge_references.test.js tests/ui_agent_reference_citation_gate.test.js tests/citation_guard.test.js && npm run build:browser` 已通过。
+- References 样式优化（新增）：单图场景改为紧凑布局（`Reference (1)` + 限宽卡片 + 固定比例缩略图），多图保持网格一致性，减少单图大面积空白观感。
+- Gemini schema 回归：`npx vitest run tests/gemini_schema_sanitize.test.js tests/ui_afw_journey_tool.test.js` 已通过（4 passed）。
+- Gemini 声明全量回归（新增）：`tests/gemini_function_declarations_array_items.test.js` 已覆盖 AFW 实际导出到 Gemini 的 functionDeclarations，递归断言所有 `type=array` 均含 `items`；与 `tests/gemini_schema_sanitize.test.js`、`tests/ui_afw_journey_tool.test.js` 联跑已通过（5 passed）。
+- Done Gate 截图策略回归（新增）：`tests/ui_afw_done_gate.test.js` 已覆盖“截图失败重试一次 + 仍失败降级 warning 不阻断”；联跑 `tests/ui_afw_warning_badge.test.js` 已通过（9 passed）。
+- 自主决策策略回归（新增）：`tests/memory_first_policy.test.js` 已新增“`memoryFirst=false` 不拦截 web 工具”断言；联跑 `tests/rag_config_env.test.js` 已通过（5 passed）。
+- AFW turn-type gate 路由回归（新增）：`tests/ui_afw_chat_turn_gate_routing.test.js` 已覆盖“`chat_turn` 跳过 Done Gate、`ui_task_turn` 执行 Done Gate”两条主路径。
+
+### 关键回归测试（新增）
+- S54 边界：`tests/logic_boundary_guard.test.js`
+- S64 稳定性：`tests/ui_state_machine_stress.test.js`
+- S64 分组与增量：`tests/ui_*group*_render.test.js`、`tests/ui_*thought*_incremental.test.js`、`tests/ui_step_out_of_order_tool_call_group.test.js`
+- CLI 稳定性：`tests/cli_args.test.js`、`tests/cli_killswitch.test.js`、`tests/cli_user_input.test.js`（参数解析 / Esc 语义 / user_input queue 串行）
+- S70 安全绕过：`tests/security.test.js` 覆盖 `| env sh`、`env bash -c`、`python -c os.system` 三个拦截断言（已通过）。
+- S70 误报保护：`tests/security.test.js` 覆盖 `env ... bash -lc "echo"`、`python -c "print"`、`node -e "console.log"`（已通过）。
+- 可移植性守卫：`tests/rag_default_path_portability.test.js` 覆盖默认 episodic 路径非绝对路径（防止提交本机路径回归）。
+
+### 下一步
+- S55：Replay-from-Trace PoC 已支持输出“摘要 + 文本版 timeline”（`scripts/trace_replay_poc.js`，模块在 `scripts/trace_replay/`）；下一步可把 timeline 与 S64 的 UI 事件命名进一步对齐（含 tool.call 分组与 step 关联）。
+- S57：与 codex-main / opencode-main 对齐差距清单（输出必做/可选）。
+- S70：已完成（包装器/解释器绕过已修复并回归通过）。
+
+### 历史细节
+- 旧版完整记录已归档：`agents-js/memory-archive.md`
+- 任务完成历史请看：`agents-js/task-archive.md`
+- AFW 与 Browser 标准对齐（新增）：
+  - AFW runtime 已改为复用 `createBrowserToolset().ensureToolsReady({ includeMcp: true })`，不再手工拼 skills。
+  - `ui-afw-agent-tools.js` 现在仅保留 AFW 宿主工具（workspace/preview/ui）；标准 skills + MCP 由 browser toolset 统一提供。
+  - 合并策略：AFW host tools 优先，再合并 browser tools（按 name 去重），避免重名冲突。
+  - 构建验证：`npm run build:browser` 已通过。
+- AFW 截图证据（新增）：
+  - Agent 执行 `preview_screenshot` 工具后，截图会即时显示在 chatlog。
+  - Done Gate 跑完后，会把 desktop/mobile 的截图证据追加到 chatlog。
+  - `addChat` 已支持 text+image 消息结构，便于后续扩展富证据输出。
+- AFW 动作可见性（新增）：
+  - Chatlog 现可展示 Agent 的调试动作轨迹（run tool / result summary / done/fail / done-gate 每视口检查）。
+  - 新增 preview 交互工具：`preview_click`、`preview_type`、`preview_scroll`（由 Control Switch `Enable interaction tools` 控制）。
+  - 用户可在 chat 中同时看到“动作日志 + 截图证据”。
+- AFW UI 精简（新增）：已移除右侧 Run/Pause/Step/Stop runbar；对应 JS 绑定与 CSS 已清理，避免空节点监听报错。
+- AFW Preview Sandbox 加固（新增）：`afwPreviewFrame` 已移除 `allow-same-origin`，仅保留 `allow-scripts allow-forms allow-modals`，修复浏览器关于 “allow-scripts + allow-same-origin 可逃逸 sandbox” 的高风险告警。
+- AFW Preview CSP 加固（新增）：
+  - `buildPreviewHtml` 现会向 `srcdoc` 注入 CSP meta，默认 `default-src 'none'`，并显式 `connect-src 'none'` 阻断外联请求。
+  - 为兼容 AFW 现有 inline 注入链路，保留 `script-src/style-src 'unsafe-inline'`；`driver bootstrap` 与 `app.js` 继续可执行。
+  - 已补回归测试断言：校验 CSP 存在、`connect-src 'none'` 生效且 inline driver/app 注入未回归。
+- AFW Settings 表单语义修复（新增）：settings 区域已改为 `<form id="afwSettingsForm">`，`Save Settings` 改为 `type="submit"`，并由 `ui-afw-settings.js` 统一监听 `submit` 持久化配置，消除 password 输入框不在 form 的 DOM 告警。
+- AFW Preview 资源外链去重（新增）：`buildPreviewHtml` 现在会预处理 `index.html`，移除 `style.css` 与 `app.js` 的外链标签（含 `./`、`/`、query/hash 变体），统一使用 AFW inline 注入，避免 `about:srcdoc` 下重复加载与 404 噪音。
+- AFW Composer UI 与 Stop 交互（新增）：
+  - 新增 `ui-afw-composer.css`，将右侧输入区调整为卡片式输入布局（圆角容器、分层底部区、运行态按钮视觉）。
+  - `ui-afw-chat.js` 已移除提交后对 send 按钮的强制 `disabled`；进入 busy 后立即切换 `Send -> Stop` 且保持可点击，确保可随时中止当前 agent 回合。
+- AFW Working Indicator（新增）：
+  - Header `#afwRunState` 现在会随着 `chatBusy` 在 `idle/working` 间实时切换。
+  - `working` 状态显示绿色脉冲点（轻量 CSS 动画）并设置 `aria-busy=true`，便于可视化与可访问性。
+- AFW Workspace Section Toggle（新增）：
+  - 左侧 `Workspace` 区块已新增 Show/Hide toggle，且默认 `collapsed=true`（首次进入默认隐藏）。
+  - 收起时仅保留 toggle 按钮，文件操作按钮与列表区域隐藏；展开后恢复原有 Workspace 操作。
+  - 折叠状态持久化到 `localStorage`（key: `afw_workspace_panel_v1`）。
+  - 修复：收起状态改为隐藏整个左栏与左侧 splitter（不再只隐藏内容），中间 IDE 区域可回收宽度。
+  - 交互位置调整：Workspace toggle 已移动到 Header（Settings 按钮旁），文案为 `Show/Hide Workspace`。
+  - 扩展：Header 新增 `Agent Panel` toggle，可独立收合右侧面板；与 Workspace 可同时收合（仅保留中间 IDE 区）。
+- AFW Theme Toggle（新增）：
+  - Header 新增 `Theme` 切换按钮（`Theme: Light / Theme: Dark`）。
+  - 默认主题改为 `Light`（首访或无缓存时）。
+  - 主题偏好持久化到 `localStorage`（key: `afw_theme_v1`），刷新后保持上次选择。
+  - 核心文件：`browser/ui-afw-theme.js`、`browser/ui-afw.css`、`browser/ui-afw.js`、`browser/agent-frontend-worker.html`。
+- AFW Theme in Settings（新增）：
+  - Settings 新增 `Appearance > Theme`，支持 `Light / Dark / Follow system`。
+  - 新增主题模式存储键 `afw_theme_mode_v1`（保留 `afw_theme_v1` 作为兼容与已解析主题回写）。
+  - 当 mode=system 时会监听系统主题变化并实时切换页面主题。
+  - `ui-afw-settings.js` 已与 theme API 打通：保存 Settings 时同步应用主题模式。
+  - 回归测试（新增）：`tests/ui_afw_theme.test.js` 已覆盖“点击主题按钮后刷新（rebind）仍保持上次主题”。
+- AFW Theme Token 收敛（二阶段，新增）：
+  - `ui-afw.css` 已扩展语义 token：覆盖 badge/run-state/watchdog、chat、segment、modal、settings、execution/controls、composer、scroll button。
+  - `ui-afw-layout-fixes.css`、`ui-afw-composer.css`、`ui-afw-settings.css`、`ui-afw-chat-scroll.css` 已切换为 token 引用，降低 light 模式下暗色残留。
+  - 动画色值已 token 化：`afwRunPulse`、`afwStopButtonPulse` 与 running 状态配色随主题变化。
+- AFW Preview 点击隔离（新增）：
+  - 新增 `ui-afw-preview-isolation.js`，在 iframe 元素层拦截 click/pointer/touch/wheel 事件传播。
+  - 目标是确保点击/滚动 preview 时不会触发主页面交互链路（host 事件不被误触发）。
+- AFW Screenshot Tainted Canvas 处理（新增）：
+  - 根因：当 preview 页面包含跨源资源（常见是外链图片/字体/CSS 资源）时，`canvas.toDataURL()` 会触发 `SecurityError: Tainted canvases may not be exported`。
+  - 修复：`ui-afw-preview-driver.js` 的 screenshot 导出已加 `try/catch`，失败时记录 `ScreenshotError` 并返回 `null`，不再抛未捕获异常中断流程。
+  - 诊断增强：`preview_screenshot` 失败时会检查 runtime error，若命中 tainted 场景，返回 `hint=tainted_canvas_cross_origin_assets`。
+  - 稳定性增强：当 PNG 导出路径失败（含 image.onerror / tainted / 无 2D context）时，改回退返回 `data:image/svg+xml` 截图，避免 done gate 出现 `screenshots=0/2` 的空证据场景。
+- AFW Screenshot 质量与 Modal 居中修复（新增）：
+  - screenshot 序列化前会清理跨域外链（`http/https` 的 script/link/src/href 与 CSS `url()`/`@import`），降低 tainted 导致的“只剩背景”失真。
+  - Screenshot modal 图片改为真正居中显示（`justify-items:center` + 图片 `max-width/max-height + object-position:center`），避免预览偏左。
+- AFW Modal 响应式与截图稳定性增强（新增）：
+  - 图片 modal 现在使用 viewport 居中布局（flex + `96vw` + `100dvh`），移动端单独压缩 padding/radius，避免弹窗偏位或超出视口。
+  - screenshot 前会先回到顶部并等待两帧渲染后再抓图，降低“截到错位中间态”的概率。
+- AFW Preview/截图同步可观测性（新增）：
+  - `UI API.reloadPreview` 现在等待 iframe `load` 事件再返回，并提供 `loaded` 标记（超时会返回 `loaded=false`）。
+  - `reload` 等待阈值已从 `1200ms` 提升到 `2500ms`，降低慢页面超时误报。
+  - `preview_reload` 工具结果已透出 `loaded`，便于判断“截图有数据但预览空白”是否来自 reload 未完成/超时。
+- AFW Bridge Timeout 修复（新增）：
+  - Preview bridge 超时改为按方法分级：`screenshot` 6s、`getDOM` 3.5s、其他维持 1.8s。
+  - `screenshot` 超时会自动重试一次（短暂延迟后），降低 done gate 偶发 `screenshot_missing`。
+  - preview driver 截图过程新增 `screenshot start/done` 日志，便于定位“桥超时 vs 渲染慢”。
+- AFW Preview Watchdog（新增）：
+  - 新增 `ui-afw-preview-watchdog.js`，统一维护 preview 连续失败计数、短时熔断与恢复状态。
+  - `UI API.reloadPreview` 现支持：load 超时后自动 `rebuildPreviewFrame` 并重试一次；连续失败会短时 blocked，避免无限重载。
+  - bridge timeout（如 `screenshot/getDOM`）会触发 watchdog trip，并尝试重建 iframe 自愈。
+  - `__AFW_UI_API__` 新增 `getPreviewWatchdogStatus()`，可读取 blocked 与 failure 计数。
+  - 新增回归测试：`tests/ui_afw_preview_watchdog.test.js`（recover、block、bridge-timeout hook）。
+  - 更新：blocked 窗口已改为指数退避（`base * 2^(level-1)`，带最大上限），并在 `noteSuccess()` 后回退到基础窗口。
+  - `getPreviewWatchdogStatus()` 与 `trip()` 结果新增 `backoffLevel`、`blockMs` 字段，便于 UI 与日志观测退避级别。
+  - 并发风暴防护（新增）：`enqueuePreviewBridge` 在队列执行点新增 blocked 检查，避免“请求已入队后仍继续超时重试”导致重建风暴。
+  - 新增高频场景回归：并发触发多次 `preview_screenshot` timeout，验证重建次数与 `postMessage` 次数被限制（不会风暴）。
+  - 双保险硬上限（新增）：watchdog 新增 `maxRebuildPerWindow` + `rebuildWindowMs`，默认 `30s` 内最多 `2` 次重建。
+  - 状态观测增强：`getPreviewWatchdogStatus()` 新增 `rebuildsInWindow`、`maxRebuildPerWindow`、`rebuildWindowMs`。
+  - 回归测试新增：窗口内第 3 次重建被拦截，窗口过后可恢复重建。
+- AFW Watchdog UI 可观测性（新增）：
+  - Header 新增 watchdog badge：`healthy / recovering / blocked` 三态可视化。
+  - 新增 `ui-afw-watchdog-badge.js`，低频轮询 `getPreviewWatchdogStatus()`（默认 1.2s）更新徽标状态，避免高频 UI 开销。
+  - 新增测试 `tests/ui_afw_watchdog_badge.test.js`，覆盖三态映射与 class 切换。
+- AFW 截图黑底修复（新增）：
+  - screenshot 尺寸从整页改为当前 viewport（`innerWidth/innerHeight`），避免截到页面下方未填充区域。
+  - 导出前会依据 `body/html` 计算背景色，SVG 与 canvas 都先铺底色，避免透明区在预览/聊天中显示为黑条。
+- AFW Preview 布局修复（新增）：
+  - Preview 区域改为 `overflow-x/y: auto`，并将视口切换统一为固定尺寸（desktop/tablet/mobile）。
+  - 解决 desktop 下 `100%` 伸展导致的空白观感，用户可通过滚动查看完整预览内容。
+  - 更新：按用户要求，desktop 视口已恢复为流式（`100% x 100%`），tablet/mobile 保持固定尺寸，便于做响应式测试切换。
+- AFW Stop 按钮工作态动效（新增）：
+  - 在 `composer.is-running` 下，`Stop` 按钮增加轻量脉冲与状态点闪烁，强化“正在执行中”的可见性。
+  - 增加 `prefers-reduced-motion` 降级，减少动画对敏感用户的影响。
+- AFW Chatlog 回到底部按钮（新增）：
+  - 新增 chatlog 浮动按钮（向下箭头），用户在非底部阅读历史消息时可一键回到底部。
+  - 新消息到达时：若用户已在底部则自动跟随；若不在底部则显示按钮，不强制打断阅读位置。
+  - 更新：按钮图标已改为内联 SVG，位置固定在 chatlog 底部中央（接近 ChatGPT 布局），不再跟随消息流漂移。
+  - 定位修复：按钮改为挂载到 `document.body` + `fixed` 定位，并按 chat 区域 `getBoundingClientRect()` 实时计算坐标，避免在长消息中段错位。
+- AFW 表单与 modal 回焦点修复（新增）：
+  - `afwSettingModel` 已补 `autocomplete="off"` 与 `spellcheck="false"`，消除输入框 autocomplete 警告。
+  - `closeImageModal` 回焦点逻辑改为先快照 `previousFocus` 再异步 focus，修复 `Cannot read properties of null (reading 'focus')`。
+- AFW 可访问性告警修复（新增）：
+  - Settings `Base URL` 输入框改为 `type="url"` + `autocomplete="url"`，消除 autocomplete 告警。
+  - 图片 modal 关闭流程补上焦点管理：若焦点仍在 modal 内，先 blur 再 `aria-hidden=true`，并恢复到触发元素，避免 `aria-hidden` 焦点冲突告警。
+- AFW Chat 文本溢出修复（新增）：
+  - 新增 `ui-afw-chat-overflow.css`，针对聊天气泡与元信息增加 `min-width:0`、`overflow-wrap:anywhere`、`word-break:break-word`。
+  - 聊天容器增加 `overflow-x:hidden`，避免长 JSON/URL/token 触发横向溢出。
+- Controls UI 优化（新增）：Control Switches 文字已缩小、每项加入简短 icon（PA/AT/CL/SS/IT/SC），并支持 hover/focus tooltip 显示功能说明。
+- Execution Console 修复（新增）：
+  - 根因是 CSS 选择器优先级冲突（`#afwExecList { display:flex }` 覆盖 `.hidden`）。
+  - 已通过 `.afw-exec.collapsed #afwExecList { display:none!important; }` 修复折叠状态。
+  - 高度策略改为 `clamp(...)`，减少 max-height 在窄屏/中屏下占位异常。
+- Compact 模式增强（新增）：在 `max-width:1100px` 与低高度场景下，右栏（chat/execution/controls/composer）已整体压缩一档，适配窄宽窗口与 DevTools 并排场景。
+- Screenshot 体验增强（新增）：chatlog 图片可点击弹出 modal 预览；`preview_screenshot` 在截图前会先切 preview 并 reload，减少“3ms failed”场景。
+- Composer 按钮交互（新增）：`Send` 按钮已改为双态 `Send/Stop`；运行中可直接 Stop 当前 agent 回合（调用 `agent.stop()`）。
+- Chatlog 样式升级（新增）：消息气泡已改为 WhatsApp 逻辑（AI 左、Me 右），并在每条消息显示时间戳与身份标识。
+- AFW 截图可见性热修（S88，新增）：
+  - A：当 `preview_reload` 成功后，chatlog 自动追加一张预览截图证据（受 `collectScreenshot` 开关控制）。
+  - B：Done Gate“每轮必跑”策略已在 S119 被替换为 turn-type 路由（仅 `ui_task_turn` 执行），以避免 chat 回合噪音告警。
+  - 核心文件：`browser/ui-afw-chat.js`、`browser/ui-afw-done-gate.js`。
+- AFW Preview Bridge（S89，新增）：
+  - 已将预览 driver 访问从 `contentWindow.__AFDW_DRIVER__` 直连切换为 `postMessage` bridge（parent request -> iframe response）。
+  - `__AFW_PREVIEW_API__` 对上层保持兼容（接口不变），内部改为带 timeout 的异步 pending map 调度。
+  - 核心文件：`browser/ui-afw-automation.js`、`browser/ui-afw-preview-driver.js`。
+- AFW Preview Bridge Queue（S90，新增）：
+  - `ui-afw-automation.js` 已新增 per-window 异步串行队列（WeakMap），确保 preview bridge 请求按顺序执行，避免并发时序抖动。
+  - 失败路径补充 method 级日志，便于定位 timeout/bridge 异常。
+- AFW Preview Bridge 回归测试（S91，新增）：
+  - 新增 `tests/ui_afw_preview_driver.test.js` bridge 场景用例：在无 `__AFDW_DRIVER__` 直连（仅 postMessage 响应）时，`__AFW_PREVIEW_API__.screenshot()` 仍可返回图片数据。
+- AFW Workspace Grep（S92，新增）：
+  - `ui-afw-automation.js` 新增 `__AFW_WORKSPACE_API__.grepInWorkspace`，在浏览器端扫描 `state.files`（无 Node 依赖）。
+  - `ui-afw-agent-tools.js` 新增 `grep_in_workspace` 工具（pattern/flags/include/max_matches）。
+  - `ui-afw-chat.js` 新增 grep 结果摘要（`matches/files`）显示，便于 chatlog 快速确认搜索结果规模。
+- AFW Partial Replace（S93，新增）：
+  - `ui-afw-automation.js` 新增 `__AFW_WORKSPACE_API__.replaceInFile`，支持 `pattern` 正则替换与 `line_start/line_end` 行段替换。
+  - `ui-afw-agent-tools.js` 新增 `replace_in_file` 工具，参数覆盖 path/pattern/flags/replacement/line range/max replacements。
+  - `ui-afw-chat.js` 新增替换结果摘要（changed/replacements/range），并新增回归测试覆盖 scoped replace。
+- AFW Edit Routing（S94，新增）：
+  - 新增 `ui-afw-edit-tools.js`，提供 `edit`（literal replace）与 `apply_patch`（codex-style update hunks）工具实现。
+  - `ui-afw-agent-tools.js` 已接入双路径工具。
+  - `ui-afw-agent-runtime.js` 已按 provider/model 注入路由提示：
+    - OpenAI GPT（非 gpt-4 / 非 oss）优先 `apply_patch`。
+    - 其他模型优先 `edit`。
+  - `ui-afw-chat.js` 新增 `edit/apply_patch` 工具结果摘要显示。
+  - `tests/ui_afw_preview_driver.test.js` 新增 `edit/apply_patch` 成功路径回归用例。
+- AFW Apply Patch 扩展（S95，新增）：
+  - `apply_patch` 已支持 `Add File / Delete File / Move to` 语法，不再局限于 `Update File`。
+  - 执行采用 shadow 预演（先模拟全部操作，成功后统一提交），降低部分写入风险。
+  - 回归测试已覆盖 Add/Delete/Move 三类操作。
+- AFW Edit Dry-Run + Diff 预览（S96，新增）：
+  - `edit` 新增 `dry_run` 与 `preview_lines` 参数；`dry_run=true` 时不写文件，仅返回预览结果。
+  - 新增 `ui-afw-diff-preview.js`，输出逐行 `- / +` 的 `diff_preview.lines`，降低误改风险。
+  - 回归测试新增 dry-run 断言：返回 diff 预览且原文件内容保持不变。
+- AFW 路由行为回归（S97，新增）：
+  - 新增 `ui-afw-routing.js`，把 provider/model 的 `apply_patch/edit` 倾向判定与提示文本构建抽成纯函数。
+  - `ui-afw-agent-runtime.js` 改为复用该模块，避免策略散落且便于单测。
+  - 新增 `tests/ui_afw_routing.test.js`，覆盖 openai/gemini 与 gpt-5/gpt-4.1/gpt-oss/gemini-2.5-pro 路由提示与倾向断言。
+
+- AFW apply_patch 兼容止血（2026-02-14，新增）：
+  - 根因确认：`ui-afw-edit-tools.js` 仅接受 codex-style patch，`Delete:` 与 `---/+++ /dev/null` 会触发 `Invalid patch: no operations found`。
+  - 已实现：
+    - 新增 `browser/ui-afw-patch-normalize.js`，兼容删除头语法归一化。
+    - 新增 `browser/ui-afw-patch-parser.js`，拆分 parser，保持单文件 <300 行。
+    - `apply_patch` 增加格式错误 `hint` 与 `rewrites` 诊断字段。
+    - `ui-afw-routing.js` 增补“patch 语法错优先修语法重试，不切换 skill”提示。
+    - `agent-self-heal.js` 新增 `patch_format_error` 分类与对应建议。
+  - 新增测试：
+    - `tests/ui_afw_apply_patch_compat.test.js`
+    - `tests/agent_self_heal_patch_format.test.js`
+    - `tests/ui_afw_routing.test.js`（补断言）
+  - 验证结果：
+    - `npx vitest run tests/ui_afw_apply_patch_compat.test.js tests/ui_afw_routing.test.js tests/agent_self_heal_patch_format.test.js` -> 3 passed / 6 tests passed
+    - `npx vitest run tests/ui_afw_preview_driver.test.js -t "apply_patch supports Delete File"` -> passed
+
+- AFW 文档同步（2026-02-14，新增）：
+  - 已新增 `docs/afw-workspace-behavior.md`，明确：
+    - AFW 删除最后一个文件后会自动补回 `index.html`（不保持空目录）。
+    - 这是系统设计约束，不是模型幻觉。
+    - 删除场景结果应看 `deleted`，不能只看 `file_count`。
+  - `docs/architecture.md` 已新增 AFW Workspace 不变量入口并链接该文档，便于团队统一认知。
+
+- Docs 骨架升级（2026-02-14，新增）：
+  - 新增 `docs/README.md`：作为文档总入口，定义分层（Foundation/Workflow/AFW Domain）与文档门槛。
+  - 新增 `docs/contributing.md`：规范交付流程、验证命令、PR 必填项、安全约束。
+  - 新增 `docs/cookbook/afw-common-flows.md`：沉淀 AFW 常见流程与排障手册（chat_turn/ui_task_turn、Done Gate、apply_patch、index.html 回补规则）。
+
+- Runbook 补齐（2026-02-14，新增）：
+  - 新增 `docs/runbook/incident-response.md`，建立事故响应标准模板（分级、止损、诊断、恢复验证、回滚、复盘）。
+  - `docs/README.md` 已加入 runbook 导航入口与分层归类。
+
+- Docs 扩展（2026-02-14，新增）：
+  - 新增 `docs/glossary.md`，统一关键术语（turn/chat_turn/ui_task_turn/done gate 等）。
+  - 新增 `docs/cookbook/add-new-tool.md`，沉淀新增工具标准流程（实现、风险、测试、文档）。
+  - `docs/README.md` 已更新导航，新增 glossary 与 cookbook 入口。
+
+- Docs 扩展（2026-02-14，新增）：
+  - 新增 `docs/cookbook/add-new-skill.md`，标准化 skill 交付流程（结构、实现、验证、DoD）。
+  - 新增 `docs/cookbook/release-checklist.md`，标准化发布前后检查与 stop-ship 条件。
+  - 根 `README.md` 已增加 `Docs Start Here`，降低新成员文档发现成本。

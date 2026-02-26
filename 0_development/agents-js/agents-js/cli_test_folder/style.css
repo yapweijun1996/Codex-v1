@@ -1,0 +1,214 @@
+:root {
+    --nav-height: 44px;
+    --nav-bg: rgba(251, 251, 253, 0.8);
+    --nav-text: #1d1d1f;
+    --hero-text-dark: #1d1d1f;
+    --hero-text-light: #f5f5f7;
+    --link-color: #0066cc;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #fff;
+    color: #1d1d1f;
+    line-height: 1.47059;
+    font-weight: 400;
+    letter-spacing: -0.022em;
+}
+
+#globalnav {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    height: var(--nav-height);
+    background-color: var(--nav-bg);
+    backdrop-filter: saturate(180%) blur(20px);
+    z-index: 9999;
+    transition: background-color 0.5s ease;
+}
+
+#globalnav.scrolled {
+    background-color: rgba(255, 255, 255, 0.98);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.nav-content {
+    max-width: 1024px;
+    margin: 0 auto;
+    height: 100%;
+}
+
+.nav-list {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    list-style: none;
+    height: 100%;
+    padding: 0 22px;
+}
+
+.nav-link {
+    text-decoration: none;
+    color: var(--nav-text);
+    font-size: 12px;
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+}
+
+.nav-link:hover {
+    opacity: 1;
+}
+
+.nav-link-apple::before {
+    content: "";
+    font-size: 18px;
+}
+
+.nav-link-search::before {
+    content: "🔍";
+    font-size: 14px;
+}
+
+.nav-link-bag::before {
+    content: "👜";
+    font-size: 14px;
+}
+
+/* Hero Sections */
+.hero {
+    height: 100vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 55px;
+    background-size: cover;
+    background-position: center;
+    text-align: center;
+    overflow: hidden;
+}
+
+.hero-iphone-15-pro {
+    background-color: #000;
+    color: var(--hero-text-light);
+    background-image: url('https://www.apple.com/v/home/be/images/heroes/iphone-15-pro/hero_iphone15pro__i70z9cn3u462_large.jpg');
+}
+
+.hero-iphone-15 {
+    background-color: #fafafa;
+    color: var(--hero-text-dark);
+    background-image: url('https://www.apple.com/v/home/be/images/heroes/iphone-15/hero_iphone15_announce__uuemhtwgl62e_large.jpg');
+}
+
+.hero-watch-series-9 {
+    background-color: #000;
+    color: var(--hero-text-light);
+    background-image: url('https://www.apple.com/v/home/be/images/heroes/apple-watch-series-9/hero_apple_watch_series_9_order__96u8s89l8f6q_large.jpg');
+}
+
+.hero-headline {
+    font-size: 56px;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.hero-subheadline {
+    font-size: 28px;
+    font-weight: 400;
+    margin-bottom: 12px;
+}
+
+.hero-cta {
+    display: flex;
+    gap: 20px;
+}
+
+.cta-link {
+    font-size: 21px;
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.cta-link:hover {
+    text-decoration: underline;
+}
+
+/* Grid Sections */
+.grid-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    padding: 12px;
+}
+
+.grid-item {
+    height: 580px;
+    background-color: #f5f5f7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 55px;
+    text-align: center;
+    background-size: cover;
+    background-position: center;
+}
+
+.item-vision-pro {
+    background-color: #000;
+    color: #fff;
+    background-image: url('https://www.apple.com/v/home/be/images/promos/apple-vision-pro/promo_apple_vision_pro__f4v4zp0sfm6u_large.jpg');
+}
+
+.item-macbook-air {
+    background-image: url('https://www.apple.com/v/home/be/images/promos/macbook-air-m3/promo_macbook_air_m3__662btv6p9e6u_large.jpg');
+}
+
+.grid-headline {
+    font-size: 40px;
+    font-weight: 600;
+}
+
+.grid-subheadline {
+    font-size: 21px;
+    font-weight: 400;
+    max-width: 300px;
+    margin: 0 auto 10px;
+}
+
+.grid-cta {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+/* Footer */
+#globalfooter {
+    background-color: #f5f5f7;
+    padding: 20px 0;
+    text-align: center;
+}
+
+.footer-legal {
+    font-size: 12px;
+    color: #6e6e73;
+}
+
+@media (max-width: 734px) {
+    .grid-container {
+        grid-template-columns: 1fr;
+    }
+    .hero-headline {
+        font-size: 32px;
+    }
+    .hero-subheadline {
+        font-size: 19px;
+    }
+}

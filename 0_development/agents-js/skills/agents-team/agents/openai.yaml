@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agents Team"
+  short_description: "Ticket-first engineering team workflow on localhost"
+  default_prompt: "Use agents-team:"

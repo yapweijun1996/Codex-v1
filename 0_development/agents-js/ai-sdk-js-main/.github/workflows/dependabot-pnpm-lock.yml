@@ -1,0 +1,35 @@
+name: Update pnpm-lock.yaml for Dependabot PRs
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+    paths:
+      - '**/package.json'
+    branches:
+      - main
+      - v1-main
+  workflow_dispatch:
+
+jobs:
+  update-lockfile:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' }}
+
+    steps:
+      - name: Setup Environment
+        uses: sap/ai-sdk-js/.github/actions/setup@main
+        with:
+          ref: ${{ github.head_ref }}
+          node-version: ${{ vars.DEFAULT_NODE_VERSION }}
+          pnpm-install-args: --lockfile-only
+          token: ${{ secrets.GH_CLOUD_SDK_JS_ADMIN_WRITE_TOKEN }}
+
+      - name: Commit and push if changed
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git config --global user.email "cloud-sdk-js@github.com"
+            git config --global user.name "cloud-sdk-js"  
+            git add pnpm-lock.yaml
+            git commit -m "chore: update pnpm-lock.yaml"
+            git push
+          fi

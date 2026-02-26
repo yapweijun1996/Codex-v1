@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Frontend Worker</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="./ui-afw.css">
+    <link rel="stylesheet" href="./ui-afw-layout-fixes.css">
+    <link rel="stylesheet" href="./ui-afw-preview-layout.css">
+    <link rel="stylesheet" href="./ui-afw-chat-scroll.css">
+    <link rel="stylesheet" href="./ui-afw-composer.css">
+    <link rel="stylesheet" href="./ui-afw-workspace.css">
+    <link rel="stylesheet" href="./ui-afw-chat-overflow.css">
+    <link rel="stylesheet" href="./ui-afw-settings.css">
+</head>
+<body>
+    <div class="afw-app">
+        <header class="afw-header">
+            <div class="afw-brand">
+                <div class="afw-brand-mark">AFW</div>
+                <div>
+                    <h1>Agent Frontend Worker</h1>
+                    <p>Browser-based AI Frontend Dev Workspace (MVP UI Shell)</p>
+                </div>
+            </div>
+            <div class="afw-header-actions">
+                <span class="afw-badge" id="afwProviderBadge">gemini</span>
+                <span class="afw-badge" id="afwRunState" aria-live="polite" aria-busy="false">idle</span>
+                <span class="afw-badge is-healthy" id="afwPreviewWatchdog" aria-live="polite">healthy</span>
+                <button id="afwThemeToggle" type="button" class="afw-btn small">Theme: Light</button>
+                <button id="afwWorkspaceToggle" type="button" class="afw-btn small">Show Workspace</button>
+                <button id="afwAgentPanelToggle" type="button" class="afw-btn small">Hide Agent Panel</button>
+                <button id="afwSettingsButton" class="afw-btn small">Settings</button>
+                <a href="./index.html" class="afw-link">返回版本选择页</a>
+            </div>
+        </header>
+
+        <main class="afw-workspace" id="afwWorkspace">
+            <section class="afw-panel afw-left collapsed" id="afwLeftPanel" aria-label="Workspace">
+                <div class="afw-panel-head">
+                    <h2>Workspace</h2>
+                    <div class="afw-row-actions">
+                        <button id="afwFileNew" class="afw-btn small">New</button>
+                        <button id="afwFileRename" class="afw-btn small">Rename</button>
+                        <button id="afwFileDelete" class="afw-btn small danger">Delete</button>
+                    </div>
+                </div>
+                <div id="afwWorkspaceBody">
+                    <div class="afw-notice" id="afwNotice" aria-live="polite"></div>
+                    <ul class="afw-file-list" id="afwFileList"></ul>
+                </div>
+            </section>
+
+            <div class="afw-splitter" id="afwSplitterLeft" role="separator" aria-label="Resize left panel"></div>
+
+            <section class="afw-panel afw-center" aria-label="IDE and Preview">
+                <div class="afw-panel-head">
+                    <h2>Web IDE + Preview</h2>
+                    <div class="afw-row-actions">
+                        <div class="afw-segment" id="afwViewMode">
+                            <button data-view="code" class="active">Code</button>
+                            <button data-view="preview">Preview</button>
+                            <button data-view="log">Log</button>
+                        </div>
+                        <div class="afw-segment" id="afwViewport">
+                            <button data-size="desktop" class="active">Desktop</button>
+                            <button data-size="mobile">Mobile</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="afw-center-body">
+                    <div class="afw-code" id="afwCodePane">
+                        <div class="afw-code-head">
+                            <span id="afwFileLabel">index.html</span>
+                            <span id="afwCodeStatus">saved</span>
+                        </div>
+                        <textarea id="afwEditor" spellcheck="false"></textarea>
+                    </div>
+
+                    <div class="afw-preview hidden" id="afwPreviewPane">
+                        <div class="afw-preview-shell" id="afwPreviewShell">
+                            <iframe id="afwPreviewFrame" sandbox="allow-scripts allow-forms allow-modals"></iframe>
+                        </div>
+                    </div>
+
+                    <div class="afw-log hidden" id="afwLogPane">
+                        <ul id="afwLogList"></ul>
+                    </div>
+                </div>
+            </section>
+
+            <div class="afw-splitter" id="afwSplitterRight" role="separator" aria-label="Resize right panel"></div>
+
+            <section class="afw-panel afw-right" id="afwRightPanel" aria-label="Agent Panel">
+                <div class="afw-panel-head">
+                    <h2>Agent Panel</h2>
+                </div>
+
+                <div class="afw-chat" id="afwChatList"></div>
+
+                <div class="afw-exec" id="afwExecPanel">
+                    <div class="afw-exec-head">
+                        <h3>Execution Console</h3>
+                        <button id="afwExecToggle" type="button" class="afw-btn small">Show</button>
+                        <button id="afwExecClear" type="button" class="afw-btn small">Clear</button>
+                    </div>
+                    <ul id="afwExecList"></ul>
+                </div>
+
+                <div class="afw-controls" id="afwControls">
+                    <div class="afw-controls-head">
+                        <h3>Control Switches</h3>
+                        <button id="afwControlsToggle" type="button" class="afw-btn small">Hide</button>
+                    </div>
+                    <div id="afwControlsBody">
+                        <label class="afw-control-item" data-tip="Allow agent to apply file patch/write changes.">
+                            <span class="afw-control-label">
+                                <span class="afw-control-icon" aria-hidden="true">PA</span>
+                                <span>Allow patch apply</span>
+                            </span>
+                            <input id="afwCtlAllowPatch" data-key="allowPatchApply" type="checkbox" checked>
+                        </label>
+                        <label class="afw-control-item" data-tip="Run quick self-check after each patch to catch regressions early.">
+                            <span class="afw-control-label">
+                                <span class="afw-control-icon" aria-hidden="true">AT</span>
+                                <span>Auto test after patch</span>
+                            </span>
+                            <input id="afwCtlAutoTest" data-key="autoTestAfterPatch" type="checkbox" checked>
+                        </label>
+                        <label class="afw-control-item" data-tip="Collect preview console logs and expose them to agent/debug flow.">
+                            <span class="afw-control-label">
+                                <span class="afw-control-icon" aria-hidden="true">CL</span>
+                                <span>Collect console logs</span>
+                            </span>
+                            <input id="afwCtlCollectConsole" data-key="collectConsoleLogs" type="checkbox" checked>
+                        </label>
+                        <label class="afw-control-item" data-tip="Capture screenshots as visual evidence in testing and done gate.">
+                            <span class="afw-control-label">
+                                <span class="afw-control-icon" aria-hidden="true">SS</span>
+                                <span>Collect screenshot</span>
+                            </span>
+                            <input id="afwCtlCollectScreenshot" data-key="collectScreenshot" type="checkbox" checked>
+                        </label>
+                        <label class="afw-control-item" data-tip="Allow preview interaction actions: click, type and scroll.">
+                            <span class="afw-control-label">
+                                <span class="afw-control-icon" aria-hidden="true">IT</span>
+                                <span>Enable interaction tools</span>
+                            </span>
+                            <input id="afwCtlInteraction" data-key="enableInteractionTools" type="checkbox">
+                        </label>
+                        <label class="afw-control-item" data-tip="Restrict modifications to current selected file only.">
+                            <span class="afw-control-label">
+                                <span class="afw-control-icon" aria-hidden="true">SC</span>
+                                <span>Limit scope to current file</span>
+                            </span>
+                            <input id="afwCtlLimitScope" data-key="limitScopeCurrentFile" type="checkbox">
+                        </label>
+                    </div>
+                </div>
+
+                <form id="afwComposer" class="afw-composer">
+                    <div class="afw-composer-head">
+                        <span>Task Input</span>
+                        <small>Enter 发送 / Shift+Enter 换行</small>
+                    </div>
+                    <textarea
+                        id="afwInput"
+                        rows="3"
+                        maxlength="2000"
+                        aria-label="Agent task input"
+                        placeholder="描述你要 Agent Frontend Worker 做的前端任务..."
+                    ></textarea>
+                    <div class="afw-composer-foot">
+                        <small id="afwInputCount">0 / 2000</small>
+                        <button type="submit" class="afw-btn primary">Send</button>
+                    </div>
+                </form>
+            </section>
+        </main>
+    </div>
+
+    <div class="afw-modal-backdrop hidden" id="afwModalBackdrop" aria-hidden="true">
+        <div class="afw-modal" role="dialog" aria-modal="true" aria-labelledby="afwModalTitle">
+            <h3 id="afwModalTitle">Confirm</h3>
+            <p id="afwModalMessage"></p>
+            <input id="afwModalInput" class="afw-modal-input hidden" />
+            <div class="afw-modal-actions">
+                <button id="afwModalCancel" class="afw-btn">Cancel</button>
+                <button id="afwModalOk" class="afw-btn primary">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="afw-settings-backdrop hidden" id="afwSettingsBackdrop" aria-hidden="true">
+        <div class="afw-settings-modal" role="dialog" aria-modal="true" aria-labelledby="afwSettingsTitle">
+            <header class="afw-settings-head">
+                <div>
+                    <h2 id="afwSettingsTitle">Settings</h2>
+                    <p>Provider / Model / API 配置（Desktop / Tablet / Mobile 通用）</p>
+                </div>
+                <button id="afwSettingsClose" class="afw-btn">Close</button>
+            </header>
+
+            <form id="afwSettingsForm">
+                <div class="afw-settings-body">
+                    <section class="afw-settings-section">
+                        <h3>Provider</h3>
+                        <label class="afw-field">
+                            <span>Provider</span>
+                            <select id="afwSettingProvider">
+                                <option value="gemini">Google Gemini</option>
+                                <option value="openai">OpenAI Compatible</option>
+                            </select>
+                        </label>
+                        <label class="afw-field">
+                            <span>Model</span>
+                            <input id="afwSettingModel" type="text" autocomplete="off" spellcheck="false" placeholder="gemini-2.5-pro / gpt-5">
+                        </label>
+                        <label class="afw-field" id="afwSettingBaseUrlWrap">
+                            <span>Base URL</span>
+                            <input id="afwSettingBaseUrl" type="url" autocomplete="url" spellcheck="false" placeholder="https://api.openai.com/v1">
+                        </label>
+                    </section>
+
+                    <section class="afw-settings-section">
+                        <h3>Appearance</h3>
+                        <label class="afw-field">
+                            <span>Theme</span>
+                            <select id="afwSettingTheme">
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                                <option value="system">Follow system</option>
+                            </select>
+                        </label>
+                    </section>
+
+                    <section class="afw-settings-section">
+                        <h3>Auth</h3>
+                        <label class="afw-field">
+                            <span>API Key</span>
+                            <input id="afwSettingApiKey" type="password" autocomplete="current-password" placeholder="Paste your API key">
+                        </label>
+                        <label class="afw-check">
+                            <input id="afwSettingPersistKey" type="checkbox">
+                            <span>Persist API key in localStorage（仅本地开发）</span>
+                        </label>
+                    </section>
+                </div>
+
+                <footer class="afw-settings-foot">
+                    <button id="afwSettingsCancel" type="button" class="afw-btn">Cancel</button>
+                    <button id="afwSettingsSave" type="submit" class="afw-btn primary">Save Settings</button>
+                </footer>
+            </form>
+        </div>
+    </div>
+
+    <div class="afw-image-modal-backdrop hidden" id="afwImageModalBackdrop" aria-hidden="true">
+        <div class="afw-image-modal" role="dialog" aria-modal="true" aria-label="Screenshot Preview">
+            <button id="afwImageModalClose" class="afw-btn small" type="button">Close</button>
+            <img id="afwImageModalImg" alt="Screenshot preview">
+        </div>
+    </div>
+
+    <script type="module" src="./ui-afw.js"></script>
+</body>
+</html>

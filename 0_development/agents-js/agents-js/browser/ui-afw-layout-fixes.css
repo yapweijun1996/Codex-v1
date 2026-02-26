@@ -1,0 +1,425 @@
+.afw-right {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  overflow: hidden;
+}
+
+.afw-chat {
+  min-height: 0;
+  overflow: auto;
+}
+
+.afw-controls {
+  max-height: 34vh;
+  overflow: auto;
+  padding: 8px 10px;
+}
+.afw-exec {
+  border-bottom: 1px solid var(--line);
+  max-height: clamp(120px, 24vh, 260px);
+  display: flex;
+  flex-direction: column;
+  min-height: 84px;
+}
+.afw-exec.collapsed {
+  min-height: auto;
+  max-height: none;
+  border-bottom: 0;
+}
+.afw-exec.collapsed #afwExecList {
+  display: none !important;
+}
+
+.afw-exec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--exec-head-border);
+}
+
+.afw-exec-head h3 {
+  margin: 0;
+  font-size: 11px;
+  color: var(--exec-head-text);
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+}
+
+.afw-exec-head .afw-btn.small,
+.afw-controls-head .afw-btn.small {
+  padding: 3px 10px;
+  font-size: 11px;
+  line-height: 1.2;
+  border-radius: 12px;
+}
+
+#afwExecList {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 6px;
+  max-height: clamp(82px, 20vh, 220px);
+}
+
+.afw-exec-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  border: 1px solid var(--exec-item-border);
+  border-radius: 8px;
+  background: var(--exec-item-bg);
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.afw-exec-item .afw-exec-tag {
+  font-weight: 700;
+  color: var(--exec-item-tag);
+}
+
+.afw-exec-item .afw-exec-time {
+  color: var(--exec-item-time);
+  font-variant-numeric: tabular-nums;
+}
+
+.afw-exec-item .afw-exec-msg {
+  color: var(--exec-item-msg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.afw-exec-item.ok .afw-exec-tag { color: var(--status-ok-text); }
+.afw-exec-item.warn .afw-exec-tag { color: var(--status-warn-text); }
+.afw-exec-item.error .afw-exec-tag { color: var(--status-danger-text); }
+.afw-exec-item.working .afw-exec-tag { color: var(--notice-info); }
+
+.afw-controls-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.afw-controls-head h3 {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.35px;
+  color: var(--exec-head-text);
+}
+
+.afw-controls.collapsed {
+  padding-bottom: 8px;
+}
+
+.afw-control-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  margin-bottom: 5px;
+  border: 1px solid var(--control-item-border);
+  border-radius: 9px;
+  background: var(--control-item-bg);
+}
+
+.afw-control-item span {
+  color: var(--control-item-text);
+  font-size: 10.5px;
+  text-align: left;
+  line-height: 1.35;
+}
+
+.afw-control-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  justify-content: flex-start;
+}
+
+.afw-control-item > input[type="checkbox"] {
+  margin-left: auto;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.afw-control-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 6px;
+  border: 1px solid var(--control-icon-border);
+  background: var(--control-icon-bg);
+  color: var(--control-icon-text);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.afw-control-item {
+  position: relative;
+}
+
+.afw-control-item::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 10px;
+  bottom: calc(100% + 6px);
+  max-width: min(360px, 86vw);
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--tooltip-border);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 8px 22px var(--tooltip-shadow);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 6;
+}
+
+.afw-control-item:hover::after,
+.afw-control-item:focus-within::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.afw-control-item input[type="checkbox"] {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--switch-border);
+  background: var(--switch-bg);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.afw-control-item input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--switch-knob);
+  transition: transform 0.2s ease;
+}
+
+.afw-control-item input[type="checkbox"]:checked {
+  background: var(--switch-on-bg);
+  border-color: var(--switch-on-border);
+}
+
+.afw-control-item input[type="checkbox"]:checked::after {
+  transform: translateX(16px);
+}
+
+.afw-composer {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: end;
+  padding: 10px;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--composer-grad-start), var(--composer-grad-end));
+}
+
+.afw-composer-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--composer-head-text);
+  font-size: 12px;
+}
+
+.afw-composer-head small {
+  color: var(--composer-head-muted);
+  font-size: 11px;
+}
+
+@media (max-height: 900px) {
+  .afw-controls { max-height: 28vh; }
+  .afw-exec { max-height: clamp(110px, 22vh, 220px); }
+}
+
+@media (max-height: 760px) {
+  .afw-controls {
+    padding: 6px 8px;
+    max-height: 18vh;
+  }
+  .afw-controls label {
+    margin-bottom: 3px;
+    font-size: 10px;
+  }
+  .afw-composer {
+    padding: 6px 8px;
+    gap: 5px;
+  }
+}
+
+/* Compact mode: tuned for narrow desktop widths (e.g. with DevTools opened) */
+@media (max-width: 1100px) {
+  .afw-right {
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+  }
+
+  .afw-chat {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .afw-chat-msg {
+    margin-bottom: 6px;
+    padding: 7px 8px;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .afw-exec {
+    max-height: clamp(96px, 20vh, 180px);
+    min-height: 70px;
+  }
+
+  .afw-exec-head {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .afw-exec-head h3 {
+    font-size: 10.5px;
+  }
+
+  #afwExecList {
+    padding: 6px;
+    gap: 5px;
+    max-height: clamp(72px, 16vh, 140px);
+  }
+
+  .afw-exec-item {
+    padding: 5px 7px;
+    font-size: 10px;
+    gap: 6px;
+    border-radius: 7px;
+  }
+
+  .afw-controls {
+    padding: 6px 8px;
+    max-height: 20vh;
+  }
+
+  .afw-controls-head {
+    margin-bottom: 4px;
+  }
+
+  .afw-controls-head h3 {
+    font-size: 10.5px;
+  }
+
+  .afw-control-item {
+    padding: 5px 8px;
+    margin-bottom: 4px;
+    gap: 8px;
+    border-radius: 8px;
+  }
+
+  .afw-control-item span {
+    font-size: 10px;
+  }
+
+  .afw-control-icon {
+    min-width: 18px;
+    height: 15px;
+    font-size: 8px;
+  }
+
+  .afw-control-item input[type="checkbox"] {
+    width: 32px;
+    height: 18px;
+  }
+
+  .afw-control-item input[type="checkbox"]::after {
+    width: 12px;
+    height: 12px;
+    top: 2px;
+    left: 2px;
+  }
+
+  .afw-control-item input[type="checkbox"]:checked::after {
+    transform: translateX(14px);
+  }
+
+  .afw-composer {
+    padding: 6px 8px;
+    gap: 5px;
+  }
+
+  .afw-composer-head {
+    font-size: 11px;
+  }
+
+  .afw-composer-head small {
+    font-size: 10px;
+  }
+
+  #afwInput {
+    min-height: 74px;
+    max-height: 128px;
+    font-size: 11px;
+    padding: 7px;
+  }
+
+  .afw-composer-foot small {
+    font-size: 10px;
+  }
+}
+
+#afwInput {
+  min-width: 0;
+  width: 100%;
+  min-height: 92px;
+  max-height: 180px;
+  resize: vertical;
+}
+
+.afw-composer .afw-btn {
+  width: 100%;
+}
+
+.afw-composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.afw-composer-foot small {
+  color: var(--composer-foot-text);
+  font-size: 11px;
+}
+
+@media (max-width: 1280px) {
+  .afw-composer .afw-btn {
+    width: 100%;
+  }
+}

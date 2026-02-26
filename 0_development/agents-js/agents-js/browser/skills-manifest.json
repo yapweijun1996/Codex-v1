@@ -1,0 +1,465 @@
+[
+  {
+    "id": "agentic_rag",
+    "name": "AGENTIC RAG",
+    "path": "./skills/agentic_rag/SKILL.md",
+    "hasTools": false,
+    "toolsModule": null,
+    "tools": [],
+    "knowledgeFiles": [
+      "./skills/agentic_rag/knowledge/GLOBE3_ERP_MANUAL_2024_-_FINANCE_VERSION_2.1.jsonl",
+      "./skills/agentic_rag/knowledge/GLOBE3_ERP_MANUAL_2024_-_FIXED_ASSETS_VERSION_1.1.jsonl",
+      "./skills/agentic_rag/knowledge/GLOBE3_ERP_MANUAL_2024_-_G3_CENTRAL_VERSION_2.0.jsonl",
+      "./skills/agentic_rag/knowledge/GLOBE3_ERP_MANUAL_2024_-_INVENTORY_VERSION_2.0.jsonl",
+      "./skills/agentic_rag/knowledge/GLOBE3_ERP_MANUAL_2024_-_PURCHASE_VERSION_2.0.jsonl",
+      "./skills/agentic_rag/knowledge/GLOBE3_ERP_MANUAL_2024_-_SALES_VERSION_2.2.jsonl",
+      "./skills/agentic_rag/knowledge/TNO_Systems_Brochure.jsonl",
+      "./skills/agentic_rag/knowledge/default.jsonl"
+    ]
+  },
+  {
+    "id": "browser_js",
+    "name": "BROWSER JS",
+    "path": "./skills/browser_js/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/browser_js/tools.mjs",
+    "tools": [
+      {
+        "name": "run_javascript",
+        "description": "Executes JavaScript code directly in the browser. Use this to perform calculations, verify logic, or fetch data from public APIs (CORS enabled). The code runs in an async function context, so you can use 'await'. You MUST 'return' the final result. RECOMMENDED APIs: For Exchange Rates, use 'https://api.frankfurter.app/latest?from=USD&to=SGD'.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "The JavaScript code to execute. Example: 'const res = await fetch(\"https://api.frankfurter.app/latest?from=USD&to=SGD\"); return await res.json();'"
+            }
+          },
+          "required": [
+            "code"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "context7_mcp",
+    "name": "CONTEXT7 MCP",
+    "path": "./skills/context7_mcp/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/context7_mcp/tools.mjs",
+    "tools": [
+      {
+        "name": "context7_resolve_library_id",
+        "description": "Context7 MCP: resolve a library name to a Context7 libraryId (best-effort in Browser; full auth in Node via CONTEXT7_API_KEY).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "libraryName": {
+              "type": "string",
+              "description": "Library name to resolve (e.g. \"vitest\")."
+            },
+            "query": {
+              "type": "string",
+              "description": "Task/question to rank results."
+            },
+            "mcpUrl": {
+              "type": "string",
+              "description": "Override MCP URL (default https://mcp.context7.com/mcp)."
+            },
+            "apiKey": {
+              "type": "string",
+              "description": "Context7 API key (Node: also supports CONTEXT7_API_KEY env)."
+            }
+          },
+          "required": [
+            "libraryName",
+            "query"
+          ]
+        }
+      },
+      {
+        "name": "context7_query_docs",
+        "description": "Context7 MCP: query docs for a Context7 libraryId (best-effort in Browser; full auth in Node via CONTEXT7_API_KEY).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "libraryId": {
+              "type": "string",
+              "description": "Context7 libraryId (e.g. /vitest-dev/vitest)."
+            },
+            "query": {
+              "type": "string",
+              "description": "Question/task to fetch relevant documentation for."
+            },
+            "mcpUrl": {
+              "type": "string",
+              "description": "Override MCP URL (default https://mcp.context7.com/mcp)."
+            },
+            "apiKey": {
+              "type": "string",
+              "description": "Context7 API key (Node: also supports CONTEXT7_API_KEY env)."
+            }
+          },
+          "required": [
+            "libraryId",
+            "query"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "dictionaryapi_en",
+    "name": "DICTIONARYAPI EN",
+    "path": "./skills/dictionaryapi_en/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/dictionaryapi_en/tools.mjs",
+    "tools": [
+      {
+        "name": "dictionary_lookup",
+        "description": "Look up an English word using DictionaryAPI (works in Node and Browser).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "word": {
+              "type": "string",
+              "description": "Word to look up (if phrase, first token is used)."
+            },
+            "lang": {
+              "type": "string",
+              "description": "Language code (default: en).",
+              "default": "en"
+            },
+            "maxMeanings": {
+              "type": "number",
+              "description": "Max meanings/definitions to return (1-10).",
+              "default": 3
+            }
+          },
+          "required": [
+            "word"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "expert-coder",
+    "name": "EXPERT-CODER",
+    "path": "./skills/expert-coder/SKILL.md",
+    "hasTools": false,
+    "toolsModule": null,
+    "tools": [],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "file_tools",
+    "name": "FILE TOOLS",
+    "path": "./skills/file_tools/SKILL.md",
+    "hasTools": false,
+    "toolsModule": null,
+    "tools": [],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "frankfurter_fx",
+    "name": "FRANKFURTER FX",
+    "path": "./skills/frankfurter_fx/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/frankfurter_fx/tools.mjs",
+    "tools": [
+      {
+        "name": "frankfurter_fx_latest",
+        "description": "Get latest FX rate using Frankfurter API (works in Node and Browser).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "description": "Base currency (e.g. USD).",
+              "default": "USD"
+            },
+            "to": {
+              "type": "string",
+              "description": "Target currency (e.g. SGD).",
+              "default": "SGD"
+            }
+          },
+          "required": [
+            "from",
+            "to"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "mcp_tester",
+    "name": "MCP TESTER",
+    "path": "./skills/mcp_tester/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/mcp_tester/tools.mjs",
+    "tools": [
+      {
+        "name": "mcp_echo",
+        "description": "Return an MCP-shaped CallToolResult echoing the provided text.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Text to echo back in MCP content."
+            }
+          },
+          "required": [
+            "text"
+          ]
+        }
+      },
+      {
+        "name": "mcp_fail",
+        "description": "Return an MCP-shaped CallToolResult with isError=true.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string",
+              "description": "Error message to include in MCP content."
+            }
+          }
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "onemap_postcode",
+    "name": "ONEMAP POSTCODE",
+    "path": "./skills/onemap_postcode/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/onemap_postcode/tools.mjs",
+    "tools": [
+      {
+        "name": "onemap_postcode_lookup",
+        "description": "Resolve a Singapore 6-digit postcode to address and coordinates using OneMap (works in Node and Browser).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "postcode": {
+              "type": "string",
+              "description": "Singapore postcode (6 digits), e.g. 339511."
+            }
+          },
+          "required": [
+            "postcode"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "open_meteo_sg",
+    "name": "OPEN METEO SG",
+    "path": "./skills/open_meteo_sg/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/open_meteo_sg/tools.mjs",
+    "tools": [
+      {
+        "name": "open_meteo_current",
+        "description": "Get current weather from Open-Meteo using latitude/longitude (works in Node and Browser).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "latitude": {
+              "type": "number",
+              "description": "Latitude (e.g. 1.3521).",
+              "default": 1.3521
+            },
+            "longitude": {
+              "type": "number",
+              "description": "Longitude (e.g. 103.8198).",
+              "default": 103.8198
+            },
+            "timezone": {
+              "type": "string",
+              "description": "Timezone name or 'auto'.",
+              "default": "auto"
+            },
+            "currentVariables": {
+              "type": "array",
+              "description": "Open-Meteo current variables list. Default covers temp/humidity/wind/weather_code.",
+              "items": {
+                "type": "string"
+              },
+              "default": [
+                "temperature_2m",
+                "relative_humidity_2m",
+                "wind_speed_10m",
+                "weather_code"
+              ]
+            }
+          },
+          "required": [
+            "latitude",
+            "longitude"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "searxng_search",
+    "name": "SEARXNG SEARCH",
+    "path": "./skills/searxng_search/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/searxng_search/tools.mjs",
+    "tools": [
+      {
+        "name": "searxng_query",
+        "description": "Search the web via private instance. Returns results and infoboxes (Wikipedia/Wikidata).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query"
+            },
+            "category": {
+              "type": "string",
+              "description": "Optional category: general, news, it, science",
+              "default": "general"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "skill_manager",
+    "name": "SKILL MANAGER",
+    "path": "./skills/skill_manager/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/skill_manager/tools.mjs",
+    "tools": [
+      {
+        "name": "list_available_skills",
+        "description": "List all available skills (APIs/Knowledge) that you can learn from. Use this when you are unsure how to perform a task.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      },
+      {
+        "name": "read_skill_documentation",
+        "description": "Read the detailed documentation (SKILL.md) for a specific skill. This will teach you how to use the API (URL, parameters, etc) via run_javascript.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "skill_name": {
+              "type": "string",
+              "description": "The name of the skill to read (e.g. 'onemap_postcode')"
+            }
+          },
+          "required": [
+            "skill_name"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "url_reader",
+    "name": "URL READER",
+    "path": "./skills/url_reader/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/url_reader/tools.mjs",
+    "tools": [
+      {
+        "name": "read_url",
+        "description": "Fetch a URL and return a truncated text representation (works in Node and Browser; Browser may be CORS-limited).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "HTTP/HTTPS URL to fetch."
+            },
+            "method": {
+              "type": "string",
+              "description": "HTTP method (GET or HEAD).",
+              "default": "GET"
+            },
+            "headers": {
+              "type": "object",
+              "description": "Optional request headers (string values).",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "timeoutMs": {
+              "type": "number",
+              "description": "Timeout in milliseconds (default 10000).",
+              "default": 10000
+            },
+            "maxBytes": {
+              "type": "number",
+              "description": "Max bytes to read from response body (default 200000).",
+              "default": 200000
+            },
+            "mode": {
+              "type": "string",
+              "description": "auto|text|html_text|json (default auto).",
+              "default": "auto"
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  },
+  {
+    "id": "worldtime_tz",
+    "name": "WORLDTIME TZ",
+    "path": "./skills/worldtime_tz/SKILL.md",
+    "hasTools": true,
+    "toolsModule": "./skills/worldtime_tz/tools.mjs",
+    "tools": [
+      {
+        "name": "worldtime_now",
+        "description": "Get current time for a timezone (no external API; works in Node and Browser).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "timezone": {
+              "type": "string",
+              "description": "IANA timezone (e.g. Asia/Tokyo). Omit for local time."
+            },
+            "locale": {
+              "type": "string",
+              "description": "Locale for formatting.",
+              "default": "en-US"
+            }
+          },
+          "required": []
+        }
+      }
+    ],
+    "knowledgeFiles": []
+  }
+]

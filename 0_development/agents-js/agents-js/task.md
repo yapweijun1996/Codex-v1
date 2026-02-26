@@ -1,0 +1,1402 @@
+# Agents-JS task.md (Lean)
+
+## Context & Goal
+- 维护 `agents-js`（可修改），参考 `codex-main`（只读）。
+- 目标：稳定的 ReAct-Plus Agent（Node/Browser 双端一致），工具输出可序列化，并逐步对齐 MCP 与 IMDA MGF (2026)。
+
+Note: 长期历史与详细过程记录已归档到 `agents-js/task-archive.md` / `agents-js/memory-archive.md`，本文件只保留“下一步可执行”的内容。
+
+## Architectural Principles
+- Environment Agnostic: 核心逻辑避免 Node-only 依赖（`fs`, `child_process` 等仅出现在 Node 工具实现层）。
+- Stateless & Serializable: history / tool output 必须可 JSON round-trip（Gemini adapter 可 JSON.parse）。
+- ReAct-Plus: ReAct 循环 + Planning 可见性 + Context 裁剪 + 自愈。
+- File Size Guard: 单文件尽量 < 300 行，超标必须拆分。
+- UI UX: 浏览器端避免高 GPU/CPU 负载（减少重阴影/高频渲染）。
+
+## Dependency Tree
+- 基线：S58（Tool Registry）是审批/trace/UI intent 的单一事实来源。
+- UI：S63/S59（单轮单气泡 + Thought 草稿隔离）为 S64（Thought Timeline）提供稳定承载。
+- 稳定性：S54（Tool Output Compression）依赖已标准化的 tool result 格式化路径（当前在 `agents-js/utils/agent-tool-formatter.js`）。
+- 可观测/回放：S55（Replay-from-Trace）依赖 S47 trace 导出 + S58 registry snapshot。
+
+## Known Pitfalls
+- Gemini streaming: tool_calls chunk 常无 text。
+- Browser CORS: 需要清晰分类并停止盲目重试。
+- Serialization: history/tool result 必须可 JSON round-trip。
+- Approval: 审批必须先于 tool_call_begin。
+- File Size Guard: 单文件尽量 < 300 行（当前 `agents-js/browser/ui-agent.js` 为 299 行，后续新增逻辑优先继续拆分到独立模块）。
+
+## Active Tasks
+
+### S57. Alignment Review (codex-main / opencode-main)
+- Context & Goal: 确认 agents-js 与 codex-main / opencode-main 的关键约束对齐，输出差距与后续行动计划。
+- Technical Spec:
+  - Logic: 以 IMDA 治理、工具注册、审批与 trace 规则为主线，核对风格约束与文件规模约束。
+  - Interface: `agents-js/task.md`、`agents-js/memory.md` 记录结论；必要时拆分超 300 行文件。
+- DoD: 形成清晰的差距清单（必做/可选），并进入执行队列。
+- Security & Constraints: 只修改 `agents-js`；不触碰 `codex-main` / `opencode-main`。
+- Verification: `rg -n "S57" agents-js/task.md`。
+
+### S70. run_command Sandbox Bypass Tests (Security)
+- Context & Goal: 先以测试锁定 `run_command` 过滤绕过，避免修复前后产生误判或回归。
+- Technical Spec:
+  - Logic: 在 `tests/security.test.js` 增加绕过样例：`| env sh`、`env bash -c ...`、`python -c os.system(...)`。
+  - Interface: `agents-js/tests/security.test.js`
+- DoD:
+  - 三个样例有明确断言（期望被拦截）。
+  - S70 修复后 `tests/security.test.js` 全绿，且全量测试无回归。
+- Security & Constraints: 与 S70 修复联动，仅改命令解析与危险 token 检测，不变更审批语义。
+- Verification: `cd agents-js && npx vitest run tests/security.test.js && npm test`。
+
+### S64. Browser Thought Timeline (UI)
+- Context & Goal: Thought 折叠不只显示 “Step started”，而是展示每步语义化事件（Step/Tool intent/Approval/Execute/Done），并严格区分 logs 与 draft。
+- Technical Spec:
+  - Logic: Thought UI 分离为 logs（结构化事件行）与 draft（未验证流式文本）；tool args 预览默认 redaction + 截断；事件行消费 registry 生成的 `intent`。
+  - Interface:
+    - `agents-js/browser/ui-thought-logger.js`
+    - `agents-js/browser/ui-dom-streaming-assistant.js`
+    - `agents-js/browser/ui-chat-extras.css`
+- DoD:
+  - Thought 内可读地显示 Step/Tool/Approval/Executing/Done；不再出现日志与正文粘连。
+  - 不全量替换 message DOM（保留折叠状态 + 避免倒计时/流式频繁重绘）。
+- Security & Constraints: 仅 UI 层；不新增依赖；Node/Browser 兼容；日志中 args 需脱敏与截断。
+- Verification: `cd agents-js && npm test && npm run build:browser`，打开 `agents-js/browser/standalone-built.html` 验证。
+
+  - Progress: thought logs 支持结构化行（tag + kind class），覆盖 `turn.started`、`context.truncated`、`tool.result`、`tool.error`、`exec_command.*`，并对 exec output 做采样避免刷屏。
+  - Progress: 性能策略：`thought-logs` 增量 append；draft/final 在 source 未变时跳过 re-render（减少 marked.parse 与 innerHTML churn）。
+  - Progress: 多工具可读性：`tool.call`/`approval.required` 支持可折叠 group（summary + children），args 使用 tool-aware 摘要（query/url/path/cmd/codeChars…）。
+  - Progress: 回归测试已覆盖 UI 乱序/高频/分组与 S54 guard 边界（见 `agents-js/tests/ui_*thought*`、`agents-js/tests/ui_*group*`、`agents-js/tests/ui_state_machine_stress.test.js`、`agents-js/tests/logic_boundary_guard.test.js`）。
+  - Done: group summary 增加 maxRisk + Tier2/Tier3 count（tool.call 与 batch approval），并补测试；用户不展开也能预判风险。
+
+### S55. Replay-from-Trace PoC
+- Context & Goal: 验证 S47 导出的 trace 能用于重建时间线与摘要统计。
+- Technical Spec:
+  - Logic: 提供一个脚本读取 trace JSON，输出摘要（turns/tools/risk/tokens）与事件计数。
+  - Interface: `scripts/trace_replay_poc.js`（或 `tests/trace_replay_poc.test.js`）。
+- DoD: 脚本能对真实 trace 文件输出可读摘要，不产生副作用。
+- Security & Constraints: 只读解析；不触发工具调用。
+- Verification: `node scripts/trace_replay_poc.js <trace.json>`。
+
+  - Progress: 已实现只读脚本 `scripts/trace_replay_poc.js`（底层模块在 `scripts/trace_replay/`），并新增单测 `tests/trace_replay_poc.test.js` 覆盖 maxRisk/Tier2/Tier3/截断统计。
+  - Done: 脚本默认输出“摘要 + 有界 timeline”（接近 S64 Thought Timeline 文本版），并支持 `--timeline-all` 展开；`npm test` 已覆盖核心统计逻辑。
+
+### S56. CSS Optimization (GPU Load)
+- Context & Goal: 降低浏览器端渲染负载，减少阴影/动画带来的 GPU 压力。
+- Technical Spec:
+  - Logic: 清理重阴影与高频动画；统一过渡时长并避免大面积 blur。
+  - Interface: `browser/ui-base.css`、`browser/ui-chat.css`、`browser/ui-sidebar.css`。
+- DoD: 页面滚动/输入保持流畅，无明显 GPU 峰值。
+- Security & Constraints: 仅 UI 层改动；无新依赖。
+- Verification: 打开 `browser/standalone.html`，观察滚动与输入性能。
+
+### S71. Browser Sidebar Section Collapse
+- Context & Goal: Browser 左侧栏项目过多，需支持分区级别 show/hide，降低扫描成本并保持整栏收起能力。
+- Technical Spec:
+  - Logic: 在 `ui.js` 初始化时为每个 `.sidebar-section` 注入折叠按钮；点击 header 或按钮切换折叠；状态保存到 localStorage；首次加载默认全隐藏。
+  - Interface: `browser/ui.js`、`browser/ui-sidebar.css`
+- DoD:
+  - 每个 sidebar section 都可 Show/Hide。
+  - 首次加载默认全隐藏。
+  - 刷新页面后保留各 section 折叠状态。
+  - 不影响原有 `#sidebarToggle` 整栏收起。
+- Security & Constraints: 仅 UI 层；不引入新依赖；保持 Node/Browser 兼容。
+- Verification: `cd agents-js && npm run build:browser && npm test`
+
+## Recently Completed
+- S119. AFW Standard v1: Done Gate only for `ui_task` turns
+  - Result:
+    - `ui-afw-chat.js` 新增 turn-type 分流：
+      - 默认 `chat_turn`
+      - 仅当本轮出现 `run_ui_journey` 或 `preview_*` 工具时升级为 `ui_task_turn`
+    - Done Gate 触发改为仅 `ui_task_turn`：
+      - `chat_turn` 不再调用 `runAfwDoneGate`，仅写轻量日志 `Done Gate skipped: chat_turn`
+      - `ui_task_turn` 继续执行完整 Done Gate（保留硬失败/告警分级语义）
+    - 新增回归测试 `tests/ui_afw_chat_turn_gate_routing.test.js`：
+      - `chat_turn` -> 不调用 Done Gate
+      - `ui_task_turn` -> 调用 Done Gate 并显示 summary
+  - Files:
+    - `agents-js/browser/ui-afw-chat-turn-gate.js`
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/tests/ui_afw_chat_turn_gate_routing.test.js`
+    - `agents-js/task.md`
+    - `agents-js/memory.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_chat_turn_gate_routing.test.js`
+    - `cd agents-js && npx vitest run tests/ui_afw_done_gate.test.js`
+    - `cd agents-js && npx vitest run tests/ui_afw_journey_tool.test.js tests/ui_afw_interaction_tools.test.js`
+
+- S118. Remove hard memory-first flow defaults (agent decides by itself)
+  - Result:
+    - 取消默认硬规则：不再默认执行自动 memory 预检；不再默认拦截“先 web 后 memory”。
+    - 新增显式开关（默认均为 `false`）：
+      - `rag.autoMemoryPrecheck=true` 才会在每轮开始自动触发 `maybeAutoMemoryLookup`。
+      - `rag.memoryFirst=true` 才会启用 memory-first guard（拦截 web 工具并提示先查 memory）。
+    - 兼容性：功能未删除，改为 opt-in。
+  - Files:
+    - `agents-js/utils/config.js`
+    - `agents-js/utils/agent-setup.js`
+    - `agents-js/agents.js`
+    - `agents-js/utils/agent-tool-flow.js`
+    - `agents-js/tests/memory_first_policy.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/memory_first_policy.test.js tests/rag_config_env.test.js`
+
+- S117. AFW Done Gate screenshot non-blocking policy (retry + warning downgrade)
+  - Result:
+    - Done Gate 截图采集改为“每个 viewport 失败先重试 1 次”。
+    - 重试后仍缺图时，`screenshot_missing:*` 改为 warning，不再计入 issues（不阻断 PASS）。
+    - `console_errors` / `runtime_errors` / `journey_failed` 仍保持硬失败语义不变。
+    - `done_gate.viewport.checked` 新增 `screenshotRetried` 字段，便于排障。
+  - Files:
+    - `agents-js/browser/ui-afw-done-gate.js`
+    - `agents-js/tests/ui_afw_done_gate.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_done_gate.test.js tests/ui_afw_warning_badge.test.js`
+
+- S116. Gemini declarations regression test (`array.items` invariant)
+  - Result:
+    - 新增回归测试：按 AFW 实际导出路径（`browser toolset + AFW host tools`）构建 Gemini `functionDeclarations`。
+    - 对每个 declaration 的 `parameters` 递归校验：凡 `type='array'` 必须存在 `items`（not null / not undefined）。
+    - 覆盖目标是“导出给 Gemini 的真实声明集合”，防止后续新增工具 schema 回归。
+  - Files:
+    - `agents-js/tests/gemini_function_declarations_array_items.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/gemini_function_declarations_array_items.test.js tests/gemini_schema_sanitize.test.js tests/ui_afw_journey_tool.test.js`
+
+- S114. `bootstrap.mjs` size guard refactor (split MCP HTTP loader)
+  - Result:
+    - 将 MCP HTTP 工具加载逻辑从 `browser/bootstrap.mjs` 拆分到 `browser/mcp-http-tools.mjs`：
+      - `normalizeHeaders`
+      - `jsonRpcPost`
+      - `loadMcpHttpToolsFromConfig`
+    - `bootstrap.mjs` 保留对外接口并 re-export `loadMcpHttpToolsFromConfig`，行为保持不变。
+    - 文件规模回归：
+      - `browser/bootstrap.mjs`: 247 行（<= 300）
+  - Files:
+    - `agents-js/browser/bootstrap.mjs`
+    - `agents-js/browser/mcp-http-tools.mjs`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js tests/ui_afw_done_gate.test.js tests/ui_afw_journey_tool.test.js tests/ui_afw_routing.test.js tests/ui_afw_interaction_tools.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S115. Gemini array schema hardening (`array.items` fallback)
+  - Result:
+    - 修复 AFW `run_ui_journey` 参数 schema：`steps/assertions` 数组字段补齐 `items`。
+    - 双端兜底：`sanitizeGeminiSchema`（Node + Browser）新增 `type='array' && items missing -> items={}`，避免后续工具 schema 再触发 Gemini 400 `INVALID_ARGUMENT`。
+  - Files:
+    - `agents-js/browser/ui-afw-agent-tools-journey.js`
+    - `agents-js/browser/gemini-helpers.mjs`
+    - `agents-js/utils/gemini-helpers.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/gemini_schema_sanitize.test.js tests/ui_afw_journey_tool.test.js`
+
+- S113. AFW Gemini 400 handling hardening (retry classification + stream fallback)
+  - Result:
+    - `browser/retry.mjs`：浏览器重试策略新增可重试判定，不再对 400/INVALID_ARGUMENT 盲重试，避免同一错误连续刷屏。
+    - `browser/bootstrap.mjs`：Gemini `generateContentStream` 触发 400 时自动回退到非流式 `chat`，提升 preview 模型兼容性。
+    - `browser/ui-afw-agent-runtime.js`：Gemini 400 报错增加可读提示（模型权限/参数/建议模型），降低排障成本。
+  - Files:
+    - `agents-js/browser/retry.mjs`
+    - `agents-js/browser/bootstrap.mjs`
+    - `agents-js/browser/gemini-stream-fallback.mjs`
+    - `agents-js/browser/ui-afw-agent-runtime.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js tests/ui_afw_journey_tool.test.js tests/ui_afw_done_gate.test.js tests/ui_afw_routing.test.js tests/ui_afw_interaction_tools.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S112. AFW warning badge for `preview_reload_unloaded:*` (Chat + Execution Console)
+  - Result:
+    - Chat：当 done gate 命中 `preview_reload_unloaded:<viewport>` 时，追加黄色 `Warning` badge 消息。
+    - Execution Console：同类事件映射为 `warn` 级别（黄色 tag），并直接显示 `preview_reload_unloaded:<viewport>`。
+    - done gate completed 若包含 reload warning，也会优先输出 warning 行，避免被 PASS/FAIL 摘要淹没。
+    - UI 新增 `afw-chat-badge.warn` 样式；warning 解析逻辑抽离到 `ui-afw-warning-utils.js` 便于复用与测试。
+  - Files:
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/browser/ui-afw-execution-console.js`
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/browser/ui-afw.css`
+    - `agents-js/browser/ui-afw-warning-utils.js`
+    - `agents-js/tests/ui_afw_warning_badge.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_warning_badge.test.js tests/ui_afw_done_gate.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_routing.test.js`
+
+- S111. AFW watchdog hard cap: `maxRebuildPerWindow`
+  - Goal: 在指数退避之外增加“窗口内最大重建次数”硬上限，进一步阻断极端重建风暴。
+  - Implementation:
+    - `browser/ui-afw-preview-watchdog.js`
+      - 新增参数：`rebuildWindowMs`（默认 30000）、`maxRebuildPerWindow`（默认 2）。
+      - `trip({ autoRebuild:true })` 在触发重建前先检查窗口内次数，超过上限则跳过重建并记录 `rebuildSkippedByLimit=true`。
+      - `getStatus()` 新增：`rebuildsInWindow/maxRebuildPerWindow/rebuildWindowMs`。
+    - `tests/ui_afw_preview_watchdog.test.js`
+      - 新增回归：窗口内第 3 次重建被拦截；窗口过后可恢复重建。
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_watchdog.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_watchdog_badge.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S110. AFW preview CSP tuning for srcdoc dev assets
+  - Result:
+    - 修复 `about:srcdoc` 下无效告警来源：从 preview CSP meta 中移除 `frame-ancestors`（该指令在 meta 交付时会被浏览器忽略）。
+    - 放宽 AFW preview CSP 以支持常见本地/外链开发资源：
+      - `script-src 'unsafe-inline' 'self' http://localhost:5500 https: http:`
+      - `style-src 'unsafe-inline' https: http:`
+      - `img-src data: blob: https: http:`
+      - `font-src data: https: http:`
+    - 新增回归测试锁定 CSP 字符串，防止后续回退。
+  - Files:
+    - `agents-js/browser/ui-afw-preview-csp.js`
+    - `agents-js/tests/ui_afw_preview_csp.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_csp.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_done_gate.test.js tests/ui_afw_journey_tool.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S109. AFW e2e guard: high-frequency `preview_screenshot` timeout no rebuild storm
+  - Goal: 增加高频超时场景验证，确保 watchdog + bridge 队列在压力下不会触发 iframe 重建风暴。
+  - Implementation:
+    - `browser/ui-afw-automation.js`
+      - `enqueuePreviewBridge` 增加队列执行点 blocked 检查（不仅在入队前检查）。
+      - blocked 错误路径快速返回，不再进入 timeout/重试链路。
+    - `tests/ui_afw_preview_watchdog.test.js`
+      - 新增并发高频 `preview_screenshot` timeout 场景，断言：
+        - 重建次数受限（<=2）
+        - `postMessage` 次数受限（<=2）
+        - watchdog 最终进入 blocked
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_watchdog.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_watchdog_badge.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S108. Unified acceptance: merge `run_ui_journey` result into Done Gate
+  - Result:
+    - `ui-afw-chat.js`：当轮工具事件中捕获 `run_ui_journey` 最新结果，并在回合结束调用 Done Gate 时透传 `journeyResult`。
+    - `ui-afw-done-gate.js`：新增 journey 归一化与并入规则：
+      - `journey.detected=true` 且 `journey.pass=false` 时，追加 issue `journey_failed:<n>` 并使 Done Gate FAIL。
+      - summary 新增 `journey(...)` 字段，统一输出验收结论（不再分散在 debug 行）。
+      - 未执行 journey 时显示 `journey=not_run`，不影响既有 gate 语义。
+    - 回归测试新增两条：
+      - journey fail -> gate fail
+      - journey pass -> gate pass
+  - Files:
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/browser/ui-afw-done-gate.js`
+    - `agents-js/tests/ui_afw_done_gate.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_done_gate.test.js tests/ui_afw_journey_tool.test.js tests/ui_afw_interaction_tools.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_routing.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S107. AFW watchdog blocked exponential backoff
+  - Goal: 将 preview watchdog blocked 窗口从固定时长升级为指数退避，降低连续故障时的重试风暴风险。
+  - Implementation:
+    - `browser/ui-afw-preview-watchdog.js`
+      - 新增 `maxBlockMs` 上限参数（默认 60s）。
+      - blocked 窗口改为 `baseBlockMs * 2^(backoffLevel-1)`，并受 `maxBlockMs` 限制。
+      - `noteSuccess()` 时重置 backoffLevel/blockMs。
+      - `trip()/getStatus()` 增加 `backoffLevel` 与 `blockMs` 字段。
+    - `tests/ui_afw_preview_watchdog.test.js`
+      - 新增回归：验证退避窗口递增（1x -> 2x）且成功后回落到基础窗口。
+      - 调整定时器推进方式，避免链式重试场景下测试挂住。
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_watchdog.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_watchdog_badge.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S106. AFW done gate load-aware retry + reload timeout tuning
+  - Result:
+    - `ui-afw-automation.js` 将 `PREVIEW_RELOAD_TIMEOUT_MS` 从 `1200` 提升到 `2500`，降低慢页面 reload 假超时。
+    - Done Gate 现在按 viewport 检查 `reloadPreview().loaded`：
+      - 首次未 loaded 时会自动重试一次再采证判定。
+      - 二次仍未 loaded 则记录 warning：`preview_reload_unloaded:<viewport>`，不直接 FAIL。
+    - `done_gate.viewport.checked` 事件新增 `loaded` 与 `reloadRetried` 字段，便于执行日志定位。
+    - 新增单测覆盖“重试后恢复”与“重试后仍未 loaded”两条路径。
+  - Files:
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/browser/ui-afw-done-gate.js`
+    - `agents-js/tests/ui_afw_done_gate.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_done_gate.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_routing.test.js`
+
+- S105. Journey selector assertions (`assert_selector_exists` / `assert_selector_text`)
+  - Result:
+    - `run_ui_journey` 新增两种 selector 级断言，提升 UI 自动化验证精度：
+      - `assert_selector_exists`
+      - `assert_selector_text`（支持 `exact=true/false`）
+    - selector 解析策略：
+      - Browser 环境优先 `DOMParser + querySelector`。
+      - 无 DOMParser 时回退轻量 HTML probe（`#id` / `.class` / `tag`）。
+    - 回归测试新增 mismatch 场景，确保失败路径稳定返回结构化 assertion 结果。
+  - Files:
+    - `agents-js/browser/ui-afw-agent-tools-journey.js`
+    - `agents-js/tests/ui_afw_journey_tool.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_journey_tool.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S104. AFW watchdog status badge in header (healthy/recovering/blocked)
+  - Goal: 将 preview watchdog 状态直接可视化到 header，提升故障可见性与排障速度。
+  - Implementation:
+    - `browser/agent-frontend-worker.html`
+      - 新增 watchdog badge：`#afwPreviewWatchdog`。
+    - `browser/ui-afw.css`
+      - 新增 `is-healthy / is-recovering / is-blocked` 三态样式。
+    - `browser/ui-afw-watchdog-badge.js`
+      - 新增独立绑定模块，低频轮询 `__AFW_UI_API__.getPreviewWatchdogStatus()` 并更新 badge。
+    - `browser/ui-afw.js`
+      - 在 automation 初始化后挂载 watchdog badge 绑定。
+    - `tests/ui_afw_watchdog_badge.test.js`
+      - 新增三态映射回归测试。
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_watchdog_badge.test.js tests/ui_afw_preview_watchdog.test.js tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S103. AFW Done Gate screenshot policy hardening (warning downgrade)
+  - Result:
+    - Done Gate 规则更新：
+      - 当 `collectScreenshot=false` 时，不再计入 `screenshot_missing`。
+      - 当截图 API 不可用（无 `previewApi.screenshot`）时，降级为 `warnings=screenshot_api_unavailable`，不直接判 FAIL。
+      - 仅在“截图检查开启且 API 可用”时，才对缺图计入 `screenshot_missing`。
+    - Summary 增加 `warnings=` 字段，便于在 chat/execution console 快速识别降级告警。
+    - 新增单测覆盖三条语义（关闭截图/截图 API 不可用/截图可用但缺图）。
+  - Files:
+    - `agents-js/browser/ui-afw-done-gate.js`
+    - `agents-js/tests/ui_afw_done_gate.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_done_gate.test.js tests/ui_afw_routing.test.js tests/ui_afw_preview_driver.test.js`
+
+- S102. AFW apply_patch prompt hardening (syntax guard + delete example)
+  - Result:
+    - 在 AFW runtime prompt 中加入 `apply_patch` 严格语法规则，明确：
+      - 必须使用 `*** Begin Patch` / `*** End Patch`（不允许 `*** Begin Patch ***`）。
+      - 删除文件必须使用 `*** Delete File: <path>`。
+      - 明确禁止旧写法 `! Delete: <path>`。
+    - 增加标准删除示例，降低模型输出非法 patch 的概率。
+    - 路由回归测试补断言，锁定规则不回退。
+  - Files:
+    - `agents-js/browser/ui-afw-routing.js`
+    - `agents-js/tests/ui_afw_routing.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_routing.test.js`
+
+- S101. AFW preview watchdog (reload timeout self-heal + fuse)
+  - Result:
+    - 新增 `rebuildPreviewFrame(reason)`：重建 `afwPreviewFrame` 后自动重新绑定 preview isolation，并重载 `srcdoc`。
+    - `reloadPreview` 接入 watchdog 状态机：
+      - 首轮 `load` 超时后自动 `rebuild + retry` 一次。
+      - 连续失败触发短时 blocked（熔断），避免死循环 reload。
+    - bridge timeout 接入 watchdog：`callDriver` 超时会触发 `trip` 并尝试自愈重建。
+    - `__AFW_UI_API__` 新增 `getPreviewWatchdogStatus()`，可读 blocked/failure 计数。
+  - Files:
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/browser/ui-afw-preview-watchdog.js`
+    - `agents-js/tests/ui_afw_preview_watchdog.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_watchdog.test.js tests/ui_afw_preview_driver.test.js`
+
+- S100. AFW chat debug summary readability for interaction tools
+  - Result:
+    - `ui-afw-chat.js` 的 `summarizeResult` 已补充 AFW 交互工具结果摘要，聊天日志现在可直接读到动作与关键参数：
+      - `preview_reload`（loaded）
+      - `preview_set_viewport`（size）
+      - `preview_click`（selector）
+      - `preview_hover`（selector）
+      - `preview_type`（selector + chars）
+      - `preview_press_key`（key）
+      - `preview_drag`（from -> to）
+      - `preview_scroll`（y）
+    - 改动仅在 UI 摘要层，不影响工具执行语义。
+  - Files:
+    - `agents-js/browser/ui-afw-chat.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_journey_tool.test.js tests/ui_afw_interaction_tools.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_routing.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S99. AFW scripted user journey + assertion layer (`run_ui_journey`)
+  - Result:
+    - 新增 AFW 工具 `run_ui_journey`，支持以 `steps + assertions` 执行可重复前端 E2E 流程。
+    - 已支持步骤动作：
+      - `reload` / `set_viewport` / `wait`
+      - `click` / `hover` / `type` / `press_key` / `drag` / `scroll`
+      - `capture_dom` / `capture_console` / `capture_runtime` / `capture_perf` / `capture_screenshot`
+    - 已支持断言类型：
+      - `dom_includes` / `dom_not_includes`
+      - `console_errors_max` / `runtime_errors_max`
+      - `perf_metric_max`
+      - `screenshot_captured`
+      - `step_ok`
+    - 失败策略：支持 `stop_on_failure`、`screenshot_on_failure`，返回结构化报告（pass/fail、step/assertion 统计、evidence）。
+    - UI 可读性：chat debug 摘要已增加 `run_ui_journey` 结果概览。
+  - Files:
+    - `agents-js/browser/ui-afw-agent-tools-journey.js`
+    - `agents-js/browser/ui-afw-agent-tools.js`
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/tests/ui_afw_journey_tool.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_journey_tool.test.js tests/ui_afw_interaction_tools.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_routing.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S98. AFW interaction tools expansion (`hover` / `press_key` / `drag`)
+  - Result:
+    - Preview driver 新增人类交互方法：`hover(selector)`、`pressKey(key)`、`drag(fromSelector, toSelector)`。
+    - AFW host tools 新增：
+      - `preview_hover`
+      - `preview_press_key`
+      - `preview_drag`
+    - 交互工具模块拆分到 `ui-afw-agent-tools-interaction.js`，保持主工具文件规模可维护（< 300 行）。
+    - 新增回归测试覆盖：
+      - interaction switch 关闭时拦截调用
+      - 开启时正确转发 method/args 到 preview bridge
+  - Files:
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/browser/ui-afw-agent-tools.js`
+    - `agents-js/browser/ui-afw-agent-tools-interaction.js`
+    - `agents-js/tests/ui_afw_interaction_tools.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_interaction_tools.test.js tests/ui_afw_preview_driver.test.js tests/ui_afw_routing.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S97. AFW routing behavior regression test (openai/gemini)
+  - Result:
+    - 新增 `ui-afw-routing.js` 纯函数模块，集中 provider/model 的路由倾向与提示文本构建。
+    - `ui-afw-agent-runtime.js` 改为复用路由模块，保持原策略不变。
+    - 新增回归测试：模拟 `openai/gemini` + `gpt-5/gpt-4.1/gpt-oss/gemini-2.5-pro`，验证提示文本与工具倾向（apply_patch vs edit）。
+  - Files:
+    - `agents-js/browser/ui-afw-routing.js`
+    - `agents-js/browser/ui-afw-agent-runtime.js`
+    - `agents-js/tests/ui_afw_routing.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_routing.test.js`
+
+- S96. AFW `edit` dry-run + diff preview
+  - Result:
+    - `edit` 工具新增 `dry_run` 与 `preview_lines` 参数。
+    - 当 `dry_run=true` 时不落盘，返回 `diff_preview`（逐行 `- / +` 预览）用于先审后改。
+    - 保留原有实际写入路径（`dry_run=false`）不变。
+    - chat 摘要增加 `dryRun` 状态展示。
+    - 新增回归测试覆盖 dry-run 预览且文件未写入场景。
+  - Files:
+    - `agents-js/browser/ui-afw-edit-tools.js`
+    - `agents-js/browser/ui-afw-diff-preview.js`
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/tests/ui_afw_preview_driver.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S95. AFW `apply_patch` syntax expansion (Add/Delete/Move)
+  - Result:
+    - `ui-afw-edit-tools.js` 的 `apply_patch` 从仅 `Update File` 扩展为支持：
+      - `*** Add File: ...`
+      - `*** Delete File: ...`
+      - `*** Move to: ...`（在 `Update File` 区块内）
+    - 执行策略改为“shadow 预演后提交”，避免半途失败导致部分落盘。
+    - 回归测试新增 Add/Delete/Move 三条用例。
+  - Files:
+    - `agents-js/browser/ui-afw-edit-tools.js`
+    - `agents-js/tests/ui_afw_preview_driver.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S94. AFW model-aware edit routing (`apply_patch` / `edit`)
+  - Result:
+    - AFW host tools 新增 `edit` 与 `apply_patch` 双路径，支持 codex 风格 patch（`*** Begin Patch` + `*** Update File` + hunks）。
+    - 新增独立模块 `ui-afw-edit-tools.js`（避免主工具文件超 300 行）。
+    - AFW runtime 新增 provider/model 路由提示：
+      - OpenAI + GPT（非 `gpt-4`/非 `oss`）优先 `apply_patch`，fallback `edit`。
+      - 其他模型优先 `edit`，fallback `apply_patch`。
+    - chatlog 增加 `edit/apply_patch` 结果摘要，便于调试。
+    - 新增回归测试覆盖 `edit` 与 `apply_patch` 成功路径。
+  - Files:
+    - `agents-js/browser/ui-afw-edit-tools.js`
+    - `agents-js/browser/ui-afw-agent-tools.js`
+    - `agents-js/browser/ui-afw-agent-runtime.js`
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/tests/ui_afw_preview_driver.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S93. AFW `replace_in_file` partial edit tool
+  - Result:
+    - 在 `__AFW_WORKSPACE_API__` 增加 `replaceInFile`，支持两种局部改法：
+      - `pattern + flags (+ max_replacements)` 正则替换（可配行范围）。
+      - `line_start + line_end + replacement` 行段替换（无 pattern 时）。
+    - 在 AFW host tools 暴露 `replace_in_file`，替代“整文件重写”作为默认局部编辑能力。
+    - Chat debug summary 增加 `replace_in_file` 结果摘要（changed/replacements/range）。
+    - 新增回归测试覆盖 scoped regex 替换行为。
+  - Files:
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/browser/ui-afw-agent-tools.js`
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/tests/ui_afw_preview_driver.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S92. AFW `grep_in_workspace` tool (frontend-only, low-cost)
+  - Result:
+    - 在 `__AFW_WORKSPACE_API__` 增加 `grepInWorkspace`：扫描 `state.files` 内存文件，支持 `pattern/flags/include/max_matches`。
+    - 在 AFW host tools 暴露 `grep_in_workspace`，Agent 可直接做前端工作区文本搜索，无需 Node `run_command`。
+    - Chat debug summary 增加 `grep_in_workspace` 的 `matches/files` 可读摘要。
+    - 新增回归测试覆盖 grep 结果与 include 过滤。
+  - Files:
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/browser/ui-afw-agent-tools.js`
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/tests/ui_afw_preview_driver.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S91. AFW Preview Bridge C3 (no same-origin screenshot regression test)
+  - Result:
+    - 新增最小回归测试，模拟“无 `__AFDW_DRIVER__` 直连，仅 `postMessage` bridge 可用”的场景。
+    - 断言 `__AFW_PREVIEW_API__.screenshot()` 可成功返回 base64 data URL。
+  - Files:
+    - `agents-js/tests/ui_afw_preview_driver.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S90. AFW Preview Bridge C2 (async queue)
+  - Result:
+    - 在 `ui-afw-automation.js` 引入同窗口串行队列（WeakMap tail chain），将 preview bridge 调用改为 request/response 顺序执行。
+    - 保留 pending+timeout 机制，并补充 bridge 失败日志（含 method 名称），便于排障。
+    - `__AFW_PREVIEW_API__` 对外接口保持不变。
+  - Files:
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S89. AFW Preview Bridge C1 (postMessage)
+  - Result:
+    - 将 AFW 预览驱动调用从 `contentWindow.__AFDW_DRIVER__` 直连改为 `postMessage` request/response bridge。
+    - iframe 端新增 bridge handler：接收 `method/args`，调用 driver 后回传 `ok/result` 或 `ok=false/error`。
+    - 父页端新增 pending map + timeout 机制，`__AFW_PREVIEW_API__` 保持原接口不变（`screenshot/getDOM/getConsoleLogs/...`）。
+  - Files:
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S88. AFW Screenshot Visibility Hotfix (A+B)
+  - Result:
+    - A: 在 chat 事件流中，当 `preview_reload` 成功后自动抓取一张预览截图并插入 chatlog（受 `collectScreenshot` 开关控制）。
+    - B: `runAfwDoneGate` 改为每轮都执行，不再依赖 assistant 文案命中 “done/completed” 关键词。
+    - 保留原有 `preview_screenshot` 与 Done Gate 截图展示链路，形成“工具截图 + 自动截图 + gate 截图”三层证据。
+  - Files:
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/browser/ui-afw-done-gate.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S84. AFW Preview Sandbox Hardening (P1)
+  - Result:
+    - 移除 `afwPreviewFrame` 的 `allow-same-origin`，避免与 `allow-scripts` 组合导致 sandbox 逃逸风险告警。
+    - 预览 iframe 权限收敛为：`allow-scripts allow-forms allow-modals`。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && rg -n "afwPreviewFrame|sandbox=\"allow-scripts allow-forms allow-modals\"" browser/agent-frontend-worker.html`
+    - `cd agents-js && npm run build:browser`
+
+- S85. AFW Settings Form Submit Wiring (P2)
+  - Result:
+    - Settings 弹窗主体改为 `<form id="afwSettingsForm">`，`Save Settings` 改为 `type="submit"`，`Cancel` 固定为 `type="button"`。
+    - `ui-afw-settings.js` 改为监听 `form.submit` 进行配置收集与保存，保持现有保存行为不变。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/browser/ui-afw-settings.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && rg -n "afwSettingsForm|type=\"submit\"|type=\"button\"|addEventListener\\('submit'" browser/agent-frontend-worker.html browser/ui-afw-settings.js`
+    - `cd agents-js && npm run build:browser`
+
+- S86. AFW Preview External Asset Ref Strip (P3)
+  - Result:
+    - 在 `buildPreviewHtml` 增加预处理：移除 `index.html` 中指向 `style.css` / `app.js` 的外链标签，避免 srcdoc 场景重复加载与 404。
+    - 保留 AFW 既有 inline 注入策略（`<style>...</style>` + inline `<script>`），功能行为不变。
+    - 新增回归测试覆盖该行为，防止后续回归。
+  - Files:
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/tests/ui_afw_preview_driver.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S87. AFW Composer Card UI + Stop Button Responsiveness
+  - Result:
+    - 新增 `ui-afw-composer.css`，将 AFW composer 调整为卡片式输入布局（更接近目标参考图风格）。
+    - 修复运行态交互：提交后不再强制禁用 submit 按钮；busy 时立即切换为 `Stop` 并保持可点击，确保可以中止 agent。
+    - `ui-afw-chat.js` 增加 `composer.is-running` / `composer.has-text` 状态 class，供视觉状态联动。
+  - Files:
+    - `agents-js/browser/ui-afw-chat.js`
+    - `agents-js/browser/ui-afw-composer.css`
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S88. AFW Agent Working Indicator
+  - Result:
+    - Header `afwRunState` 与 `chatBusy` 打通：agent 执行时显示 `working`，完成后回到 `idle`。
+    - 新增轻量状态视觉（绿色脉冲点）与 `aria-busy` 同步，提升“agent 正在工作”可见性。
+  - Files:
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/browser/ui-afw.css`
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S89. AFW Workspace Toggle (Default Hidden)
+  - Result:
+    - 左侧 `Workspace` 新增 `Show/Hide` toggle，默认收起（hidden）。
+    - 收起状态下隐藏 Workspace body 与文件操作按钮，仅保留 toggle 控件，减少视觉干扰。
+    - 折叠状态持久化（`afw_workspace_panel_v1`），刷新后保持用户选择。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/browser/ui-afw-workspace-panel.js`
+    - `agents-js/browser/ui-afw-workspace.css`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S90. AFW Preview Click Isolation
+  - Result:
+    - 新增 preview 隔离绑定：iframe 上的 click/pointer/touch/wheel 事件不再向 host 页面传播。
+    - 降低“点击 preview 影响主页面”的误触风险，保持 preview 交互域与宿主 UI 事件域隔离。
+  - Files:
+    - `agents-js/browser/ui-afw-preview-isolation.js`
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S91. AFW Screenshot Tainted-Canvas Guard + Hint
+  - Result:
+    - 修复 screenshot 导出阶段的未捕获 `SecurityError`（tainted canvas）问题：导出失败改为可控返回，不再污染控制台异常栈。
+    - `preview_screenshot` 在失败时增加根因 hint：若 runtime errors 命中 tainted canvas 关键词，返回 `tainted_canvas_cross_origin_assets`。
+  - Files:
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/browser/ui-afw-agent-tools.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S92. AFW Chat Text Overflow Fix
+  - Result:
+    - 修复 Agent Panel 聊天气泡在长 JSON/参数文本下的溢出问题。
+    - 新增独立样式文件，对消息正文/元信息启用强制断词，并禁止聊天区横向溢出。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/browser/ui-afw-chat-overflow.css`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S93. AFW Screenshot Fallback (PNG -> SVG Data URL)
+  - Result:
+    - 修复 done gate 截图“无异常但返回空”问题：当 PNG 路径失败时，screenshot 改回退返回 SVG data URL。
+    - 覆盖场景：canvas tainted、image.onerror、2D context 不可用，确保聊天与 done gate 至少能拿到可展示图像证据。
+  - Files:
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S94. AFW Workspace True Collapse (Hide Panel, Not Just Content)
+  - Result:
+    - 修复 Workspace toggle 语义错误：`collapsed` 时不再仅隐藏内容，而是收合整个左 panel 与左 splitter。
+    - 收合后中间区域可回收宽度，布局符合“隐藏左栏”预期。
+  - Files:
+    - `agents-js/browser/ui-afw-workspace-panel.js`
+    - `agents-js/browser/ui-afw-workspace.css`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S95. AFW Screenshot Modal Center + Cross-Origin Asset Sanitization
+  - Result:
+    - 修复 Screenshot modal 视觉：图片在弹窗中居中显示，不再偏左或拉伸失衡。
+    - 修复 screenshot 质量问题：截图序列化前清理跨域资源引用，降低 tainted/cross-origin 导致的失真（仅剩背景）概率。
+  - Files:
+    - `agents-js/browser/ui-afw.css`
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S96. Workspace Toggle Relocated to Header
+  - Result:
+    - `Workspace` toggle 按钮移到 Header（`Settings` 旁），保持原有折叠行为。
+    - 按钮文案更新为 `Show Workspace` / `Hide Workspace`，减少语义歧义。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/browser/ui-afw-workspace-panel.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S97. AFW Accessibility Warning Cleanup (Autocomplete + Modal Focus)
+  - Result:
+    - `afwSettingBaseUrl` 改为 `type=url` 并补 `autocomplete=url`，修复输入框 autocomplete 警告。
+    - 修复 image modal 关闭时焦点仍在隐藏区域问题：关闭时先 blur，再设置 `aria-hidden=true`，并将焦点恢复到触发元素。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S98. Preview Modal Centering + Mobile Responsiveness
+  - Result:
+    - 修复 screenshot modal 定位偏移：改为 viewport 绝对居中，并限制最大宽高到 `96vw / 100dvh`。
+    - 移动端新增专属尺寸策略（更小 padding/radius + 更严格图片高度上限），避免弹窗越界与显示错位。
+    - screenshot 抓图前增加 `scrollTo(0,0)` + 双帧等待，减少“看起来未正确截取”的中间态画面。
+  - Files:
+    - `agents-js/browser/ui-afw.css`
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S99. Header Toggle for Agent Panel (Alongside Workspace)
+  - Result:
+    - Header 新增 `Agent Panel` toggle（与 `Workspace` toggle 并列），用户可独立控制右侧面板显示/隐藏。
+    - 右侧面板隐藏时会收合整个右栏与右 splitter，中间 IDE 区域自动回收宽度。
+    - 支持三种布局状态：仅左收合、仅右收合、左右同时收合。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/browser/ui-afw-workspace-panel.js`
+    - `agents-js/browser/ui-afw-workspace.css`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S100. Preview Reload Load-Ack (Fix Screenshot/Preview Desync)
+  - Result:
+    - `reloadPreview` 改为等待 iframe `load` 事件，返回 `{ ok, loaded }`，避免“reload 已回传但预览未就绪”的时序假象。
+    - `preview_reload` 工具结果增加 `loaded` 字段，便于在 chat/debug 日志中直接定位预览空白与截图不同步问题。
+  - Files:
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/browser/ui-afw-agent-tools.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S101. AFW Screenshot Black-Bottom Fix (Viewport + Background Fill)
+  - Result:
+    - screenshot 抓图范围改为视口尺寸，避免整页高度导致的底部黑区。
+    - SVG 与 canvas 导出都先填充页面背景色，透明区域不再显示为黑色条带。
+  - Files:
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S102. AFW Preview Overflow + Fixed Viewport Sizes
+  - Result:
+    - Preview 面板支持双向滚动（x/y auto），解决大尺寸页面在中间区域的可视范围限制。
+    - 视口切换改为固定尺寸（desktop/tablet/mobile），避免 desktop=100% 导致的空白拉伸感。
+  - Files:
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/browser/ui-afw-preview-layout.css`
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S103. Stop Button Working-State Animation
+  - Result:
+    - `Stop` 按钮在 agent 运行中增加动态状态反馈（按钮脉冲 + 状态点闪烁），提升“正在工作”可感知性。
+    - 支持 `prefers-reduced-motion`，在无动画偏好场景下自动禁用动效。
+  - Files:
+    - `agents-js/browser/ui-afw-composer.css`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S104. Preview Bridge Screenshot Timeout Hardening
+  - Result:
+    - 修复 `Preview bridge timeout: screenshot` 导致 done gate 截图缺失的问题。
+    - bridge 超时改为按方法分级，并对 `screenshot` 增加一次自动重试。
+    - 增加截图流程日志（start/done）辅助排查性能瓶颈。
+  - Files:
+    - `agents-js/browser/ui-afw-automation.js`
+    - `agents-js/browser/ui-afw-preview-driver.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S105. AFW Model Input Autocomplete + Modal Focus Null Guard
+  - Result:
+    - 修复 `afwSettingModel` 的 autocomplete 警告（补 `autocomplete=off` + `spellcheck=false`）。
+    - 修复 image modal 关闭时的空指针：回焦点改为引用快照，不再读到被置空的全局变量。
+  - Files:
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S106. Desktop Preview Viewport Back to Fluid Size
+  - Result:
+    - desktop 视口取消固定宽高，改为 `100% x 100%`（流式）；
+    - tablet/mobile 保持固定尺寸，继续支持响应式验证。
+  - Files:
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S107. Chatlog Scroll-Down Floating Button
+  - Result:
+    - 新增 chatlog 浮动下拉按钮（箭头），用于快速回到底部最新消息。
+    - 消息追加逻辑改为“底部跟随 + 非底部不强制跳动”，提升阅读历史消息体验。
+  - Files:
+    - `agents-js/browser/ui-afw-chat-scroll.js`
+    - `agents-js/browser/ui-afw-chat-scroll.css`
+    - `agents-js/browser/ui-afw.js`
+    - `agents-js/browser/agent-frontend-worker.html`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S108. Chatlog Scroll Button SVG + Bottom-Center Placement
+  - Result:
+    - 将 chatlog 回底按钮从文本箭头改为内联 SVG 图标。
+    - 按钮位置固定到 chat 区底部中央（absolute overlay），贴近 ChatGPT 的交互位置与视觉行为。
+  - Files:
+    - `agents-js/browser/ui-afw-chat-scroll.js`
+    - `agents-js/browser/ui-afw-chat-scroll.css`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S109. Chatlog Scroll Button Misposition Fix (Viewport Anchored)
+  - Result:
+    - 修复按钮落在消息中段的问题：按钮不再挂在滚动内容层，改为挂到 `document.body`。
+    - 定位改为 `fixed` + chat 区域实时坐标计算（scroll/resize/append 时重算），稳定贴在 chatlog 可视底部中央。
+  - Files:
+    - `agents-js/browser/ui-afw-chat-scroll.js`
+    - `agents-js/browser/ui-afw-chat-scroll.css`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm run build:browser`
+
+- S83. Default Episodic Path Regression Test
+  - Result:
+    - 新增可移植性回归测试，确保 RAG 默认 episodic memory 路径保持“非绝对路径”，避免未来再次引入本机硬编码路径。
+  - Files:
+    - `agents-js/tests/rag_default_path_portability.test.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/rag_default_path_portability.test.js`
+
+- S82. RAG Default Path Portability (Absolute Path Cleanup)
+  - Result:
+    - 移除 Node RAG episodic memory 默认值中的本机绝对路径，改为仓库相对路径 `memory/episodic-memory.jsonl`。
+    - 避免将本机用户名/目录结构硬编码进仓库，提升 GitHub 提交安全性与跨机器可运行性（Node/CI/容器）。
+    - 保持 Browser 侧 IndexedDB 存储路径逻辑不变。
+  - Files:
+    - `agents-js/utils/config.js`
+    - `agents-js/utils/rag/rag-config.js`
+    - `agents-js/memory.md`
+    - `agents-js/task.md`
+  - Verification:
+    - `cd agents-js && npm test`
+    - `cd agents-js && npm run build:browser`
+    - `cd agents-js && rg -n "/Users/yapweijun/Documents/GitHub/agents-js/0_development/agents-js/agents-js/memory/episodic-memory.jsonl" . --glob '!node_modules/**'`
+
+- S78. Knowledge Selection Audit + Citation Enforcement + Reference Hard Filter
+  - Result:
+    - 增加 `knowledge_selected` 事件链路（runtime -> async iterator -> trace -> thought/audit UI），可见每轮实际选择了哪些 knowledge IDs（含 auto precheck 的 `kb_search/memory_search` 命中）。
+    - 增加 citation 强校验：若本轮用了知识但 final answer 没有 `[source:#id p.n]`，guard 会强制重答（最多 2 次）。
+    - 增加 References 硬规则：只展示“被 `knowledge.selected` 选中且在 final answer 被 citation 引用”的图片；未引用不展示。
+  - Files:
+    - `agents-js/utils/agent-knowledge-selection.js`
+    - `agents-js/utils/knowledge-evidence.js`
+    - `agents-js/utils/agent-tool-flow.js`
+    - `agents-js/utils/agent-guards.js`
+    - `agents-js/utils/agent-setup.js`
+    - `agents-js/utils/agent-lifecycle.js`
+    - `agents-js/utils/agent-async-iterator.js`
+    - `agents-js/utils/agent-trace.js`
+    - `agents-js/browser/ui-agent.js`
+    - `agents-js/browser/ui-knowledge-references.js`
+    - `agents-js/browser/ui-thought-logger.js`
+    - `agents-js/browser/ui-audit.js`
+    - `agents-js/tests/knowledge_selection_event.test.js`
+    - `agents-js/tests/citation_guard.test.js`
+    - `agents-js/tests/ui_knowledge_references.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/knowledge_selection_event.test.js tests/citation_guard.test.js tests/ui_knowledge_references.test.js tests/memory_first_policy.test.js`
+    - `cd agents-js && npx vitest run tests/ui_thought_logger_toolaware.test.js tests/browser_runtime_tool_toggle.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S79. Browser E2E Gate Test (Citation -> References)
+  - Result: 新增 UI Agent 流程级测试，模拟 `knowledge.selected` + `turn.completed`，验证：
+    - 无 citation：不展示 References
+    - 有 citation（命中 selected id）：展示对应 References 图片
+    - citation 存在但 id 不在 selected 集合：不展示 References
+  - Files:
+    - `agents-js/tests/ui_agent_reference_citation_gate.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_agent_reference_citation_gate.test.js`
+
+- S80. Knowledge Gallery Zoom + Drag
+  - Result: References 图片 modal 支持滚轮缩放（1x~4x）与放大后鼠标拖拽平移（左右/上下）；并新增点击缩放切换（zoom-in 光标点击可直接放大，再点还原）；切图与关闭 modal 时自动重置缩放/位移。
+  - Files:
+    - `agents-js/browser/ui-knowledge-gallery.js`
+    - `agents-js/browser/ui-knowledge-references.css`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_knowledge_references.test.js tests/ui_agent_reference_citation_gate.test.js tests/citation_guard.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S81. References Single-Image Layout Refresh
+  - Result: 优化单图 References 区块布局（不再拉满整行导致视觉空洞）；标题增加数量显示；卡片比例与间距统一，单图更紧凑、多图更整齐。
+  - Files:
+    - `agents-js/browser/ui-dom-messages.js`
+    - `agents-js/browser/ui-knowledge-references.css`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_knowledge_references.test.js tests/ui_agent_reference_citation_gate.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S77. Knowledge References Modal Gallery
+  - Result: chat `References` 图片支持点击放大浏览，提供 `Prev/Next`、`Esc`、背景点击关闭，以及 caption/counter 显示。
+  - Files:
+    - `agents-js/browser/ui-knowledge-gallery.js`
+    - `agents-js/browser/ui-dom-messages.js`
+    - `agents-js/browser/ui-knowledge-references.css`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_knowledge_references.test.js tests/browser_runtime_tool_toggle.test.js tests/ui_thought_logger_toolaware.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S76. References Visibility Gate (Knowledge Actually Used)
+  - Result: References 图片收集改为“模型已进入显式工具调用后才启用”；自动 memory 预检命中不再直接触发展示，减少未使用知识时的误显示。
+  - Files:
+    - `agents-js/browser/ui-agent.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_knowledge_references.test.js tests/browser_runtime_tool_toggle.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S75. Memory-First Retrieval + Reference Relevance
+  - Result: 新增 memory-first 运行时守卫（先 `kb_search/memory_search`，后 `searxng_query/read_url`）；自动预检改为 `kb_search` 优先（fixed）再 `memory_search`，并收紧自动检索分数阈值；References 图片命中增加 score 过滤以降低错图。
+  - Files:
+    - `agents-js/utils/agent-tool-flow.js`
+    - `agents-js/utils/agent-tool-flow-helpers.js`
+    - `agents-js/utils/agent-lifecycle.js`
+    - `agents-js/utils/agent-setup.js`
+    - `agents-js/utils/config.js`
+    - `agents-js/agent-factory.js`
+    - `agents-js/browser/system-instruction.mjs`
+    - `agents-js/browser/ui-knowledge-references.js`
+    - `agents-js/tests/memory_first_policy.test.js`
+    - `agents-js/tests/ui_knowledge_references.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/memory_first_policy.test.js tests/ui_knowledge_references.test.js tests/rag_built_in_tools.test.js tests/browser_runtime_tool_toggle.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S74. Browser Knowledge Image References (RAG Hit -> UI)
+  - Result: 命中知识后，assistant 消息下方可显示关联图片参考；图片仅在 UI 呈现，不进入 agent 上下文。
+  - Files:
+    - `agents-js/browser/ui-knowledge-references.js`
+    - `agents-js/browser/ui-knowledge-references.css`
+    - `agents-js/browser/ui-dom-messages.js`
+    - `agents-js/browser/ui-dom.js`
+    - `agents-js/browser/ui-agent.js`
+    - `agents-js/browser/standalone.html`
+    - `agents-js/browser/standalone-built.html`
+    - `agents-js/tests/ui_knowledge_references.test.js`
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_knowledge_references.test.js tests/browser_runtime_tool_toggle.test.js tests/ui_thought_logger_toolaware.test.js`
+    - `cd agents-js && npm run build:browser`
+
+- S73. Preview Port Lock + Chat Markdown Layout
+  - Result: `npm run preview` 固定到 `5500`，启动前自动释放占用端口进程；同时优化 chat assistant 区域 Markdown 排版（标题层级、列表缩进、引用与代码可读性）。
+  - Files:
+    - `agents-js/scripts/preview.js`
+    - `agents-js/package.json`
+    - `agents-js/browser/ui-chat.css`
+    - `agents-js/memory.md`
+  - Verification:
+    - `cd agents-js && node scripts/preview.js --dry-run`
+    - `cd agents-js && npx vitest run tests/browser_runtime_tool_toggle.test.js`
+
+- S72. Agentic RAG (Node + Browser, JSONL Immutable)
+  - Result: 完成 Agentic RAG 工程化接入（tools 为核心能力、skill 为编排），支持 episodic memory + fixed knowledge 双源检索，且 `.jsonl` 原始格式保持不变。
+  - Added:
+    - `agents-js/utils/rag/*.js`
+    - `agents-js/browser/rag/*.js`
+    - `agents-js/skills/agentic_rag/SKILL.md`
+    - `agents-js/skills/agentic_rag/knowledge/default.jsonl`
+    - `agents-js/memory/episodic-memory.jsonl`
+    - `agents-js/tests/rag_*.test.js`
+  - Updated:
+    - `agents-js/utils/built-in-tools.js`（新增 `memory_search` / `kb_search` / `memory_save` / `memory_read_graph` + `memory__*` 兼容别名）
+    - `agents-js/utils/config.js`（新增 `agent.rag.*` 默认值与 `AGENTS_RAG_*` 覆盖）
+    - `agents-js/utils/agent-tool-flow.js`（RAG 预检 + autosave）
+    - `agents-js/agent-factory.js`、`agents-js/agents.js`、`agents-js/utils/agent-setup.js`
+    - `agents-js/browser/bootstrap.mjs`、`agents-js/build-browser.js`
+  - Verification:
+    - `cd agents-js && npm test`
+    - `cd agents-js && npm run build:browser`
+    - `cd agents-js && setopt nonomatch; npx vitest run tests/*rag* tests/*memory* tests/*browser*`
+  - Constraints:
+    - fixed memory 全只读（写入直接结构化拒绝）
+    - 仅接受 `Xenova/all-MiniLM-L6-v2` + 384 维向量参与检索
+    - 保持审批/trace 语义兼容（`memory_save` 为 LOW 风险）
+
+- S54. Tool Output Compression (Context Guard)
+  - Result: 工具输出在进入 history/trace/UI 前被压缩成结构化摘要，避免上下文爆炸；`tool_result` 事件也输出 guard 后的结果。
+  - Files: `agents-js/utils/agent-tool-output-guard.js`, `agents-js/utils/agent-tool-formatter.js`, `agents-js/utils/agent-tool-exec.js`
+  - Verification: `cd agents-js && npm test && npm run build:browser`
+  - Follow-up: 支持通过 `AGENTS_CONFIG.agent.toolOutputLimits` / `AGENTS_TOOL_OUTPUT_LIMITS_JSON` 调整阈值。
+  - Follow-up: `tool_result` 覆盖 special + failure paths（`run_command`/`request_user_input`/tool_not_found/abort/exception）。
+- S44b. Finish Line-Count Compliance (agent-tool-exec)
+  - Result: `agents-js/utils/agent-tool-exec.js` 已降至 260 行；审批语义保持“approval 在 tool_call_begin 之前”。
+  - Verification: `wc -l agents-js/utils/agent-tool-exec.js`。
+- S58. Tool Registry (IMDA 4.2.1)
+  - Result: `agents-js/utils/agent-tools-registry.js` 统一 risk/meta/schema/permissions/rateLimit/audit + `intentTemplate`；trace 导出包含 `toolRegistrySnapshot`；UI/事件可直接消费 intent。
+  - Verification: `npx vitest agents-js/tests/imda_registry.test.js`。
+- S59. Browser Thought Draft (UI)
+  - Result: 工具调用前草稿只进入 Thought 折叠；屏蔽 synthetic tool plan；不污染 session history。
+- S63. Browser Single-Bubble Turn (UI)
+  - Result: 单轮单气泡；Thought-first streaming；修复无输出时 thought 气泡缺失导致的审批链路不稳定。
+- S60. Audit Trace Copy Button (Browser)
+  - Result: Browser 侧边栏提供 Copy Trace（复制完整 trace JSON）。
+- S61/S62
+  - Result: trace redaction 保留 token 可观测性并补齐 modelName；Gemini streaming 缺 thoughtSignature 时做一次非流式重试与安全降级。
+- S50/S51/S52
+  - Result: 审批 modal 可读性与勾选稳定性修复；防重复发送；避免同轮重复 assistant 答案与草稿闪烁。
+- S47/S45/S44/S53
+  - Result: trace 导出可重放；全局 kill switch；重文件拆分 < 300 行；Browser 布局对齐基线完成。
+
+- S65. Approval Execution Policy (Codex-style)
+  - Result: 支持 `approvalPolicy` + `trustedTools`，并新增 `approval.skipped` 事件用于审计；Trace 回放/Timeline/CLI/UI 已对齐。
+  - Files: `agents-js/utils/imda-policy.js`, `agents-js/utils/agent-tool-approval-*.js`, `agents-js/utils/agent-trace.js`, `agents-js/utils/config.js`, `agents-js/agents.js`
+  - Verification: `cd agents-js && npm test && npm run build:browser`
+- S66. CLI Esc Prompt Safety
+  - Result: CLI 的 Esc 仅在“当前无活跃 prompt”时触发 `agent.stop`；审批/输入 prompt 阶段 Esc 只执行 prompt cancel。
+  - Files: `agents-js/cli.js`
+  - Verification: `cd agents-js && npm test`
+- S67. CLI Approval Bypass Flag
+  - Result: 新增 `--app-never`，CLI 启动时自动设置 `AGENTS_APPROVAL_POLICY=never`，可用 `agents-js --app-never` 简化无审批运行。
+  - Files: `agents-js/cli.js`
+  - Verification: `cd agents-js && node cli.js --help && npm test`
+- S68. CLI Entry Refactor (File Split)
+  - Result: `cli.js` 按职责拆分为 `cli-args/cli-killswitch/cli-helpers/cli-user-input`；主入口仅保留装配流程，行为与命令兼容（含 `--app-never`）。
+  - Files: `agents-js/cli.js`, `agents-js/utils/cli-args.js`, `agents-js/utils/cli-killswitch.js`, `agents-js/utils/cli-helpers.js`, `agents-js/utils/cli-user-input.js`
+  - Verification: `cd agents-js && wc -l cli.js utils/cli-*.js && node cli.js --help && npm test`
+- S69. CLI Regression Tests
+  - Result: 新增 CLI 单测覆盖参数解析、Esc kill switch 语义、`user_input_requested` 串行队列，防止重构后交互回归。
+  - Files: `agents-js/tests/cli_args.test.js`, `agents-js/tests/cli_killswitch.test.js`, `agents-js/tests/cli_user_input.test.js`
+  - Verification: `cd agents-js && npx vitest run tests/cli_args.test.js tests/cli_killswitch.test.js tests/cli_user_input.test.js && npm test`
+- S70. run_command Sandbox Bypass Fix
+  - Result: 阻断 `| env sh`、`env bash -c ...` 与解释器内联 `os.system('rm -rf ...')` 绕过路径。
+  - Files: `agents-js/utils/command-parser.js`, `agents-js/utils/command-danger-zone.js`, `agents-js/tests/security.test.js`
+  - Verification: `cd agents-js && npx vitest run tests/security.test.js && npm test`
+  - Follow-up: 新增误报保护测试，确认 `env FOO=bar bash -lc "echo hello"`、`python -c "print(...)"`、`node -e "console.log(...)"` 不被误拦截。
+- S71. Browser Sidebar Section Collapse
+  - Result: 增加 sidebar 分区级 Show/Hide 折叠，支持状态持久化，缓解长列表阅读压力。
+  - Files: `agents-js/browser/ui.js`, `agents-js/browser/ui-sidebar.css`
+  - Note: 默认行为已调整为首次加载全隐藏（state key: `agents_sidebar_section_state_v2`）。
+  - Verification: `cd agents-js && npm run build:browser && npm test`
+- S73. AFW Align to Browser Standard Toolset (skills + MCP)
+  - Goal: Agent Frontend Worker 对齐 browser mode agents-js 标准链路，不再手工拼接部分 skills。
+  - Implementation:
+    - `browser/ui-afw-agent-runtime.js`
+      - 接入 `createBrowserToolset()`（来自 `browser/bootstrap.mjs`）
+      - 统一 `ensureToolsReady({ includeMcp: true })`
+      - 新增 `mergeTools()`：AFW host tools 优先，之后合并标准 browser tools（去重）
+    - `browser/ui-afw-agent-tools.js`
+      - 删除手工 import 的 `searxng/url_reader/worldtime/onemap/open_meteo`
+      - 改为仅输出 AFW 宿主工具（workspace/preview/ui）
+  - Result:
+    - AFW 现在继承 browser mode 的 skills、MCP、RAG、control tools 装载逻辑；行为标准与 browser mode 保持同源。
+  - Verification:
+    - `cd agents-js && npm run build:browser`（通过）
+- S74. AFW Chat Evidence Screenshots
+  - Goal: 在聊天记录中直接展示 Agent 看到的预览截图，便于人工核验。
+  - Implementation:
+    - `browser/ui-afw-chat.js`：监听 `tool.result` 中 `preview_screenshot`，即时插入截图消息；Done Gate 完成后展示 viewport 截图证据。
+    - `browser/ui-afw-done-gate.js`：结果新增 `captures`（desktop/mobile image）。
+    - `browser/ui-afw.js`：`addChat` 支持图片消息（text + image）。
+    - `browser/ui-afw.css`：新增聊天截图样式。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S75. AFW Visible Agent Testing/Debug Actions in Chatlog
+  - Goal: 让用户在 chatlog 直接看到 Agent 的网页测试/调试动作（不仅看最终回复）。
+  - Implementation:
+    - `browser/ui-afw-agent-tools.js` 新增互动工具：`preview_click` / `preview_type` / `preview_scroll`。
+    - 互动工具受 `Enable interaction tools` 控制开关约束，关闭时返回明确错误。
+    - `browser/ui-afw-chat.js` 将 `tool.call.begin/tool.result/tool.call.end/tool.error/done_gate.viewport.checked` 映射为 chatlog 可读动作行。
+    - 保留 `preview_screenshot` 的图片消息展示，形成“动作 + 证据”链路。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S76. Remove AFW Runbar (Run/Pause/Step/Stop)
+  - Goal: 简化右侧面板，移除不必要的 runbar 按钮区。
+  - Implementation:
+    - 删除 `browser/agent-frontend-worker.html` 中 `.afw-runbar` 区块。
+    - 删除 `browser/ui-afw.js` 的 `bindRunControls()` 与其初始化调用。
+    - 清理 `browser/ui-afw.css` 与 `browser/ui-afw-layout-fixes.css` 的 runbar 样式残留。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S77. Control Switches UI/UX Polish
+  - Goal: 控制开关区提升可读性（更小文字 + 图标 + hover 说明）。
+  - Implementation:
+    - `browser/agent-frontend-worker.html`：每个 control item 增加 icon 文案块与 `data-tip` 说明。
+    - `browser/ui-afw-layout-fixes.css`：文本下调至 11px；新增 icon 样式；新增 tooltip（hover/focus-within 显示说明）。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S78. Execution Console max-height/collapse fix
+  - Problem: Execution Console 在 `collapsed` 状态仍显示列表（`#afwExecList` 选择器覆盖 `.hidden`），且 max-height 在部分窗口下占用过高。
+  - Fix:
+    - `browser/ui-afw-layout-fixes.css`
+      - `.afw-exec.collapsed #afwExecList { display: none !important; }`
+      - `.afw-exec` 与 `#afwExecList` 改为 `clamp(...)` 高度策略
+      - 小屏高场景 `max-height` 同步下调
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S79. AFW Compact mode (narrow-width tuned)
+  - Goal: 右侧 Agent Panel 在窄宽窗口下再压一档，减少挤压与遮挡。
+  - Implementation:
+    - `browser/ui-afw-layout-fixes.css`
+      - 新增 `@media (max-width: 1100px)` 紧凑规则：chat/exec/controls/composer 全面缩小间距、字号、控件尺寸。
+      - execution console 高度进一步收紧：`clamp(96px, 20vh, 180px)`；list `clamp(72px, 16vh, 140px)`。
+      - controls 与 input 区域高度/字号同步压缩，适配窄宽场景。
+      - `@media (max-height:760px)` 再降一档，避免低高度溢出。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S80. Screenshot Evidence UX + Reliability
+  - Goal: chatlog 中可直接看截图，并支持点击放大 modal；同时降低 `preview_screenshot failed` 频率。
+  - Implementation:
+    - `browser/ui-afw-agent-tools.js`
+      - `preview_screenshot` 前强制切到 preview + reload + 短等待，再截图。
+      - 失败时返回 `hint` 字段便于定位。
+    - `browser/agent-frontend-worker.html`
+      - 新增截图预览 modal 结构。
+    - `browser/ui-afw.css`
+      - 新增 chat 截图点击态与 modal 样式。
+    - `browser/ui-afw.js`
+      - `addChat` 图片点击打开 modal；支持 backdrop/Close/Esc 关闭。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S81. Composer Send/Stop single-button mode
+  - Goal: 聊天发送按钮改为单按钮双态（Send/Stop）。
+  - Implementation:
+    - `browser/ui-afw-agent-runtime.js` 新增 `stopAfwAgentTurn()` 调用当前 `agent.stop()`。
+    - `browser/ui-afw-chat.js`：busy 时按钮显示 `Stop` + danger 样式，点击触发 stop；空闲时为 `Send` 提交。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S82. Chatlog WhatsApp-style layout
+  - Goal: 聊天区改为“AI 在左、Me 在右，并显示时间戳”的可读布局。
+  - Implementation:
+    - `browser/ui-afw.js`
+      - `addChat()` 新增 metadata（`AI/Me • HH:MM`）。
+      - 新增 `formatChatTime()`。
+    - `browser/ui-afw.css`
+      - chat 容器改为纵向气泡流。
+      - user 气泡右对齐，agent 气泡左对齐。
+      - 新增气泡 meta 时间样式。
+  - Verification: `cd agents-js && npm run build:browser`（通过）
+- S83. AFW Preview `srcdoc` CSP Hardening (network restricted)
+  - Goal: 在不破坏 AFW inline 预览执行链路的前提下，收敛 `srcdoc` 网络能力，降低外链脚本/连接域名风险。
+  - Implementation:
+    - `browser/ui-afw-preview-csp.js`
+      - 新增 `PREVIEW_CSP` 与 `withPreviewCspMeta()`，统一注入 `<meta http-equiv="Content-Security-Policy" ...>`。
+    - `browser/ui-afw-preview-driver.js`
+      - 在 `buildPreviewHtml` 集成 `withPreviewCspMeta(stripManagedAssetRefs(...))`。
+      - 策略为：`default-src 'none'`、`script-src/style-src 'unsafe-inline'`、`connect-src 'none'`，同时收敛 `object/base-uri/form-action/frame-ancestors`。
+    - `tests/ui_afw_preview_driver.test.js`
+      - 新增断言：输出 HTML 含 CSP meta、含 `connect-src 'none'`，且 inline `app.js`/driver 注入仍保留。
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js`
+
+- S120. AFW apply_patch 兼容止血（Delete 语法漂移）
+  - Context & Goal:
+    - 背景：AFW 在 `delete all files` 场景出现 `Invalid patch: no operations found`，模型输出 `Delete:` / `--- ... +++ /dev/null` 未被 parser 接受。
+    - 目标：在不放宽安全边界的前提下，提高 `apply_patch` 对常见删除语法漂移的容错，避免无意义失败后转去无关 skills。
+  - Technical Spec:
+    - Logic:
+      - 新增 `browser/ui-afw-patch-normalize.js`：把 `Delete:` / `! Delete:` / `--- path` + `+++ /dev/null` 归一到 `*** Delete File: <path>`。
+      - 新增 `browser/ui-afw-patch-parser.js`：拆分 patch 解析与 hunk 应用，保持单文件可维护。
+      - `browser/ui-afw-edit-tools.js`：
+        - `apply_patch` 先 normalize，再 parse。
+        - parse 失败返回结构化 `hint`（明确“修补 patch 语法并重试 apply_patch，不要切到 skills”）。
+        - 成功结果新增 `rewrites` 诊断字段（记录是否做了兼容归一化）。
+      - `browser/ui-afw-routing.js`：系统提示新增“patch 语法错时优先修语法重试，不调用 skill discovery”。
+      - `utils/agent-self-heal.js`：
+        - 新增 `patch_format_error` 分类（`apply_patch` + invalid patch）。
+        - 自愈建议改为“继续用 apply_patch 修语法，不要切 skill”。
+    - Interface:
+      - 新增导出：`normalizeAfwPatchInput(input)`、`parseAfwPatch(input)`、`applyAfwParsedPatch(content, hunks)`。
+      - `apply_patch` 返回可能包含：`rewrites?: string[]`、`hint?: string`。
+  - Definition of Done (DoD):
+    - `Delete:` 与 `---/+++ /dev/null` 删除头在 AFW `apply_patch` 可执行成功。
+    - 语法错误时返回可执行的修复提示，不再只给裸错误。
+    - `ui-afw-edit-tools.js` 拆分后维持 `<300` 行。
+  - Security & Constraints:
+    - 不扩展到任意 unified diff；仅兼容删除头最小子集，降低误解析风险。
+    - 不改动 Node mode patch 解析行为；改动限定在 AFW browser patch 路径。
+  - Verification:
+    - `cd agents-js && npx vitest run tests/ui_afw_apply_patch_compat.test.js tests/ui_afw_routing.test.js tests/agent_self_heal_patch_format.test.js`
+      - 预期：3 files passed, 6 tests passed。
+    - `cd agents-js && npx vitest run tests/ui_afw_preview_driver.test.js -t "apply_patch supports Delete File"`
+      - 预期：目标测试通过（其余按过滤被 skip）。
+
+- S121. AFW 文档补充：删除到空自动补 `index.html`
+  - Context & Goal:
+    - 背景：用户在 AFW 中执行“delete all files”后，Agent 文案称“folder empty”，但 `list_files` 仍返回 `index.html`，造成理解偏差。
+    - 目标：在 `docs/` 明确这是一条系统不变量（非模型幻觉），统一产品、工程、测试口径。
+  - Technical Spec:
+    - 新增文档 `docs/afw-workspace-behavior.md`，覆盖：
+      - 空目录兜底规则：删除最后一个文件后自动补回 `index.html`。
+      - 设计目的：预览入口稳定。
+      - Agent 回答规范：不得宣称 folder truly empty。
+      - `apply_patch` 删除场景结果解读：`file_count` vs `deleted`。
+    - 更新 `docs/architecture.md`，新增 AFW Workspace 不变量节并链接该文档。
+  - Definition of Done (DoD):
+    - docs 中可直接定位“自动补 `index.html`”规则与代码责任边界。
+    - 新同事只看 `docs/architecture.md` 也能发现该约束入口。
+  - Security & Constraints:
+    - 仅文档更新，不改运行时逻辑。
+  - Verification:
+    - 检查文件存在与可读：
+      - `docs/afw-workspace-behavior.md`
+      - `docs/architecture.md`（含该文档引用）
+
+- S122. Docs 基础骨架升级（README + Contributing + Cookbook）
+  - Context & Goal:
+    - 背景：现有 `docs/` 缺少单一入口与工程贡献规范，新人需要在多份文档中来回查找。
+    - 目标：建立可执行文档骨架，覆盖“文档导航、贡献流程、AFW 常见操作食谱”。
+  - Technical Spec:
+    - Logic:
+      - 新增 `docs/README.md` 作为 docs 入口索引，定义分层与文档质量门槛。
+      - 新增 `docs/contributing.md`，统一提交流程、验证清单、PR 必填项与安全约束。
+      - 新增 `docs/cookbook/afw-common-flows.md`，沉淀 chat/ui_task、Done Gate、apply_patch、删除回补 `index.html` 等高频流程。
+    - Interface:
+      - 无运行时代码接口变更，仅文档资产新增。
+  - Definition of Done (DoD):
+    - `docs/` 有可发现入口（`docs/README.md`）。
+    - 有独立贡献规范（`docs/contributing.md`）。
+    - 有 AFW 实操食谱（`docs/cookbook/afw-common-flows.md`）。
+  - Security & Constraints:
+    - 仅文档改动，不改执行逻辑。
+    - 文档中命令必须为当前项目可执行命令（无 TODO 占位）。
+  - Verification:
+    - 手工检查以下文件存在且内容可读：
+      - `docs/README.md`
+      - `docs/contributing.md`
+      - `docs/cookbook/afw-common-flows.md`
+
+- S123. Runbook 补齐：Incident Response
+  - Context & Goal:
+    - 背景：docs 已有基础索引与 cookbook，但缺少“故障分级 + 止损 + 回滚 + 复盘”的标准 runbook。
+    - 目标：沉淀一份可执行的事故响应手册，降低生产/联调期间处置不一致风险。
+  - Technical Spec:
+    - 新增 `docs/runbook/incident-response.md`，覆盖：
+      - 严重度分级（P0-P3）
+      - 前 10 分钟处置清单
+      - 止损策略（Agent/Tool/High-Risk Paths）
+      - 诊断流程（日志字段与约束校对）
+      - 恢复验证命令与回滚策略
+      - 通知模板与复盘模板
+    - 更新 `docs/README.md`：
+      - Start Here 增加 runbook 入口
+      - 分层新增 Runbook 分组
+  - Definition of Done (DoD):
+    - `docs/runbook/incident-response.md` 存在且可直接用于值班/故障处理。
+    - `docs/README.md` 可直接导航到该 runbook。
+  - Security & Constraints:
+    - 仅文档改动，不改运行逻辑。
+  - Verification:
+    - 手工检查：
+      - `docs/runbook/incident-response.md`
+      - `docs/README.md`（含 runbook 链接）
+
+- S124. Docs 扩展：Glossary + Add New Tool Cookbook
+  - Context & Goal:
+    - 背景：docs 已有入口、贡献规范与 AFW cookbook，但术语未统一，新增工具流程也缺少标准操作模板。
+    - 目标：降低跨角色沟通成本，并让“新增工具”流程可复制、可验收。
+  - Technical Spec:
+    - 新增 `docs/glossary.md`：
+      - 统一关键术语：turn/chat_turn/ui_task_turn/done gate/tool registry/workspace invariant 等。
+    - 新增 `docs/cookbook/add-new-tool.md`：
+      - 提供从需求到实现、测试、文档更新的标准步骤与 DoD 清单。
+    - 更新 `docs/README.md`：
+      - Start Here 增加 glossary 与 add-new-tool 入口。
+      - 文档分层新增 Cookbook 与 Glossary 分类。
+  - Definition of Done (DoD):
+    - 可通过 `docs/README.md` 直接跳转到 glossary 与新增工具食谱。
+    - 新同事可按 cookbook 完成新增工具的最小闭环。
+  - Security & Constraints:
+    - 仅文档改动，不改运行时代码。
+  - Verification:
+    - 手工检查：
+      - `docs/glossary.md`
+      - `docs/cookbook/add-new-tool.md`
+      - `docs/README.md`（含上述链接）
+
+- S125. Docs 扩展：Add New Skill + Release Checklist + Root README 入口
+  - Context & Goal:
+    - 背景：docs 已具备 add-new-tool 与 glossary，但 skill 交付流程与发布门禁尚未标准化；根 README 也缺少 docs 快速入口。
+    - 目标：补齐“新增 skill 流程”和“发布检查流程”，并在根 README 暴露 docs 入口。
+  - Technical Spec:
+    - 新增 `docs/cookbook/add-new-skill.md`：
+      - 规范 skill 目录、`SKILL.md`、工具实现、discovery 验证、DoD 清单。
+    - 新增 `docs/cookbook/release-checklist.md`：
+      - 规范 pre-release、必跑命令、smoke checks、rollback、stop-ship 条件。
+    - 更新 `docs/README.md`：
+      - 增加 `add-new-skill` 与 `release-checklist` 导航。
+    - 更新根 `README.md`：
+      - 新增 `Docs Start Here: docs/README.md` 入口。
+  - Definition of Done (DoD):
+    - docs 索引可导航到新增 skill 与 release checklist。
+    - 根 README 可直接跳转 docs 入口。
+  - Security & Constraints:
+    - 仅文档改动，不改运行时代码。
+  - Verification:
+    - 手工检查：
+      - `docs/cookbook/add-new-skill.md`
+      - `docs/cookbook/release-checklist.md`
+      - `docs/README.md`（含新导航）
+      - `README.md`（含 Docs Start Here）

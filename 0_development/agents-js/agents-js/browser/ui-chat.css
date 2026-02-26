@@ -1,0 +1,299 @@
+.chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg);
+    position: relative;
+}
+
+.status-bar {
+    max-width: var(--content-max-width);
+    margin: 4px auto 4px auto;
+    padding: 0 var(--content-padding);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+    min-height: 24px;
+}
+
+.messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 0 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.token-bar {
+    margin-left: 8px;
+    padding: 2px 8px;
+    background: var(--bg-muted);
+    border-radius: 999px;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+}
+
+.token-label {
+    font-weight: 500;
+    color: var(--text);
+}
+
+.token-value {
+    font-variant-numeric: tabular-nums;
+}
+
+.message {
+    width: 100%;
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding: 0 var(--content-padding);
+    display: flex;
+    flex-direction: column;
+}
+
+.message-content {
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--text);
+}
+
+.message.user {
+    align-items: flex-end;
+}
+
+.message.user .message-content {
+    background: #f7f7f7;
+    color: #0d0d0d;
+    padding: 8px 16px;
+    border-radius: 18px;
+    /* Slightly more rounded */
+    max-width: 85%;
+    word-wrap: break-word;
+}
+
+.message.assistant {
+    align-items: flex-start;
+}
+
+.message.assistant .message-content {
+    background: transparent;
+    padding: 0;
+    width: 100%;
+    line-height: 1.6;
+    /* Better readability */
+}
+.message.assistant .message-content > * {
+    margin: 0 0 14px 0;
+}
+.message.assistant .message-content > *:last-child {
+    margin-bottom: 0;
+}
+.message.assistant .message-content h1,
+.message.assistant .message-content h2,
+.message.assistant .message-content h3,
+.message.assistant .message-content h4 {
+    line-height: 1.3;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 22px 0 12px 0;
+}
+.message.assistant .message-content h1 { font-size: 1.85rem; }
+.message.assistant .message-content h2 { font-size: 1.55rem; }
+.message.assistant .message-content h3 { font-size: 1.3rem; }
+.message.assistant .message-content h4 { font-size: 1.12rem; }
+.message.assistant .message-content ul,
+.message.assistant .message-content ol {
+    margin: 8px 0 14px 0;
+    padding-left: 28px;
+}
+.message.assistant .message-content li {
+    margin: 6px 0;
+}
+.message.assistant .message-content li > ul,
+.message.assistant .message-content li > ol {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+.message.assistant .message-content blockquote {
+    margin: 12px 0;
+    padding: 10px 14px;
+    border-left: 3px solid #d2d2d2;
+    background: #f8f8f8;
+    color: #3a3a3a;
+}
+.message.assistant .message-content hr {
+    border: 0;
+    border-top: 1px solid #e2e2e2;
+    margin: 18px 0;
+}
+.message.assistant .message-content :not(pre) > code {
+    font-size: 0.9em;
+    background: #f1f1f1;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    padding: 1px 6px;
+}
+.message.assistant .message-content pre code {
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+.message-content p {
+    margin: 0 0 10px 0;
+}
+
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message-content pre {
+    background: #0d0d0d;
+    color: #ffffff;
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 12px 0;
+}
+
+.message-content code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.9em;
+}
+
+.loading {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding: 0 var(--content-padding);
+    font-size: 14px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.loading::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 0.4;
+        transform: scale(0.8);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    100% {
+        opacity: 0.4;
+        transform: scale(0.8);
+    }
+}
+
+.empty-state {
+    max-width: var(--content-max-width);
+    margin: 80px auto 0 auto;
+    text-align: center;
+    color: var(--text-muted);
+    padding: 0 var(--content-padding);
+}
+
+.empty-title {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text);
+}
+
+.empty-subtitle {
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.composer {
+    padding: 16px 20px 24px 20px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, #ffffff 50%);
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+}
+
+.composer-inner {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 12px 8px 20px;
+    background: #f8f8f8;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: all 0.2s ease;
+}
+
+.composer-inner:focus-within {
+    background: #ffffff;
+    border-color: #cfcfcf;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+#messageInput {
+    flex: 1;
+    border: none;
+    resize: none;
+    font-size: 16px;
+    line-height: 1.5;
+    outline: none;
+    background: transparent;
+    max-height: 200px;
+    padding: 6px 0;
+}
+
+.send {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: #0d0d0d;
+    color: #ffffff;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 2px;
+    transition: transform 0.1s ease, background 0.2s ease;
+    padding: 0;
+}
+
+.send svg {
+    width: 18px;
+    height: 18px;
+}
+
+.send:active {
+    transform: scale(0.92);
+}
+
+.send:disabled {
+    background: #e5e5e5;
+    color: #ffffff;
+    cursor: not-allowed;
+    opacity: 0.6;
+}

@@ -1,0 +1,32 @@
+name: delete-dist-tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Dist tag to delete.'
+        type: string
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ vars.DEFAULT_NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - name: delete dist tag
+        run: |
+          npm dist-tag rm @sap-ai-sdk/ai-api ${{ inputs.tag }}
+          npm dist-tag rm @sap-ai-sdk/foundation-models ${{ inputs.tag }}
+          npm dist-tag rm @sap-ai-sdk/orchestration ${{ inputs.tag }}
+          npm dist-tag rm @sap-ai-sdk/core ${{ inputs.tag }}
+          npm dist-tag rm @sap-ai-sdk/document-grounding ${{ inputs.tag }}
+          npm dist-tag rm @sap-ai-sdk/langchain ${{ inputs.tag }}
+          npm dist-tag rm @sap-ai-sdk/prompt-registry ${{ inputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_ACCESS_TOKEN }}

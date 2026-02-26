@@ -1,0 +1,21 @@
+#afwPreviewPane {
+  overflow: auto;
+}
+
+.afw-preview {
+  overflow: auto;
+  place-items: start center;
+  padding: 10px;
+}
+
+.afw-preview-shell {
+  flex: 0 0 auto;
+  max-width: none;
+  max-height: none;
+}
+
+@media (max-width: 900px) {
+  .afw-preview {
+    padding: 8px;
+  }
+}

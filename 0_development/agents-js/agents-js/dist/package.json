@@ -1,0 +1,8 @@
+{
+  "name": "agents-js-dist",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "node agents.js"
+  },
+  "description": "Bundled Agent Framework"
+}

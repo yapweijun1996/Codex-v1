@@ -1,0 +1,39 @@
+.afw-chat-scroll-btn {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--scroll-btn-border);
+  background: var(--scroll-btn-bg);
+  color: var(--scroll-btn-text);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 16px var(--scroll-btn-shadow);
+  backdrop-filter: blur(3px);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.afw-chat-scroll-btn:hover {
+  border-color: var(--scroll-btn-hover-border);
+  background: var(--scroll-btn-hover-bg);
+  transform: translateX(-50%) translateY(-1px);
+}
+
+.afw-chat-scroll-btn:active {
+  transform: translateX(-50%) translateY(0);
+}
+
+.afw-chat-scroll-btn svg {
+  display: block;
+}
+
+.afw-chat-scroll-btn.hidden {
+  display: none !important;
+}

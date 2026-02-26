@@ -1,0 +1,49 @@
+.afw-left.collapsed #afwWorkspaceBody {
+  display: none !important;
+}
+
+.afw-left.collapsed .afw-row-actions > .afw-btn:not(#afwWorkspaceToggle) {
+  display: none;
+}
+
+#afwWorkspaceToggle {
+  min-width: 64px;
+}
+
+#afwWorkspace.left-collapsed {
+  grid-template-columns: 0 0 minmax(360px, 1fr) 6px minmax(260px, 28%) !important;
+}
+
+#afwWorkspace.right-collapsed {
+  grid-template-columns: minmax(180px, 22%) 6px minmax(360px, 1fr) 0 0 !important;
+}
+
+#afwWorkspace.both-collapsed {
+  grid-template-columns: 0 0 minmax(360px, 1fr) 0 0 !important;
+}
+
+#afwWorkspace.left-collapsed #afwLeftPanel {
+  min-width: 0;
+  border-right: 0;
+  overflow: hidden;
+}
+
+#afwWorkspace.left-collapsed #afwSplitterLeft {
+  width: 0;
+  min-width: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+#afwWorkspace.right-collapsed #afwRightPanel {
+  min-width: 0;
+  border-right: 0;
+  overflow: hidden;
+}
+
+#afwWorkspace.right-collapsed #afwSplitterRight {
+  width: 0;
+  min-width: 0;
+  pointer-events: none;
+  background: transparent;
+}

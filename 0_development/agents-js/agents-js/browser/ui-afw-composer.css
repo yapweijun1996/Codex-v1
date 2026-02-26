@@ -1,0 +1,124 @@
+.afw-composer {
+  margin: 8px;
+  padding: 12px;
+  border: 1px solid var(--composer-border);
+  border-radius: 22px;
+  background: var(--composer-bg);
+  box-shadow: var(--composer-shadow);
+  gap: 10px;
+}
+
+.afw-composer-head {
+  color: var(--composer-head-text);
+  font-size: 11px;
+}
+
+.afw-composer-head small {
+  color: var(--composer-head-muted);
+}
+
+#afwInput {
+  border-radius: 14px;
+  border: 1px solid var(--composer-input-border);
+  background: var(--composer-input-bg);
+  min-height: 88px;
+  padding: 12px;
+  color: var(--composer-input-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+#afwInput::placeholder {
+  color: var(--composer-placeholder);
+}
+
+.afw-composer-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.afw-composer-foot small {
+  color: var(--composer-foot-text);
+  font-size: 11px;
+}
+
+.afw-composer .afw-btn[type="submit"] {
+  min-width: 94px;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 600;
+}
+
+.afw-composer:not(.is-running) .afw-btn[type="submit"].primary:disabled {
+  border-color: var(--composer-disabled-border);
+  background: var(--composer-disabled-bg);
+  color: var(--composer-disabled-text);
+}
+
+.afw-composer.is-running .afw-btn[type="submit"] {
+  background: var(--composer-stop-bg);
+  border-color: var(--composer-stop-border);
+  color: var(--composer-stop-text);
+  position: relative;
+  padding-left: 30px;
+  animation: afwStopButtonPulse 1.2s ease-in-out infinite;
+}
+
+.afw-composer.is-running .afw-btn[type="submit"]::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--composer-stop-text);
+  transform: translateY(-50%);
+  animation: afwStopDotBlink 0.9s ease-in-out infinite;
+}
+
+.afw-composer.has-text:not(.is-running) .afw-btn[type="submit"] {
+  box-shadow: 0 0 0 1px var(--composer-focus-ring);
+}
+
+@media (max-width: 1100px) {
+  .afw-composer {
+    margin: 6px;
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  #afwInput {
+    min-height: 78px;
+    padding: 10px;
+    font-size: 12px;
+  }
+
+  .afw-composer .afw-btn[type="submit"] {
+    min-width: 84px;
+    padding: 7px 14px;
+  }
+}
+
+@keyframes afwStopButtonPulse {
+  0% { box-shadow: 0 0 0 0 var(--composer-pulse-shadow); }
+  70% { box-shadow: 0 0 0 5px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes afwStopDotBlink {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .afw-composer.is-running .afw-btn[type="submit"] {
+    animation: none;
+  }
+  .afw-composer.is-running .afw-btn[type="submit"]::before {
+    animation: none;
+  }
+}
