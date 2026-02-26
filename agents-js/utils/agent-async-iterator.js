@@ -1,7 +1,7 @@
 const { createAsyncEventQueue } = require('./async-event-queue');
 
 function runAsyncIterator(agent, userInput, options = {}) {
-    const { signal } = options;
+    const { signal, ...runOptions } = options;
     const q = createAsyncEventQueue();
 
     const on = (evt, fn) => agent.on(evt, fn);
@@ -25,10 +25,12 @@ function runAsyncIterator(agent, userInput, options = {}) {
         tool_error: (data) => q.push({ type: 'tool.error', tool: data && data.tool, error: data && data.error }),
         plan_updated: (data) => q.push({ type: 'plan.updated', ...data }),
         approval_required: (data) => q.push({ type: 'approval.required', ...data }),
+        run_policy_applied: (data) => q.push({ type: 'run.policy.applied', ...data }),
         approval_skipped: (data) => q.push({ type: 'approval.skipped', ...data }),
         user_input_requested: (data) => q.push({ type: 'user_input.requested', ...data }),
         user_input_response: (data) => q.push({ type: 'user_input.response', ...data }),
         approval_blocked: (data) => q.push({ type: 'approval.blocked', ...data }),
+        budget_fuse_triggered: (data) => q.push({ type: 'budget.fuse.triggered', ...data }),
         decision_trace: (data) => q.push({ type: 'decision_trace', ...data }),
         token_count: (data) => q.push({ type: 'token_count', info: data && data.info ? data.info : null }),
         exec_command_begin: (data) => q.push({ type: 'exec_command.begin', ...data }),
@@ -59,7 +61,7 @@ function runAsyncIterator(agent, userInput, options = {}) {
     }
 
     const runPromise = Promise.resolve()
-        .then(() => agent.run(userInput))
+        .then(() => agent.run(userInput, runOptions))
         .catch((err) => {
             const msg = err && err.message ? String(err.message) : String(err);
             q.push({ type: 'error', message: msg });

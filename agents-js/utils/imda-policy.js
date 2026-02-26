@@ -108,4 +108,6 @@ module.exports = {
     APPROVAL_EXEMPT_TOOLS,
     baselineRequiresApproval,
     getApprovalDecision,
+    normalizeApprovalPolicy,
+    normalizeTrustedTools,
 };

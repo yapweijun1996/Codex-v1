@@ -20,6 +20,8 @@ const { handleToolCalls, maybeAutoMemoryLookup, maybeAutoMemorySave } = require(
 const { applyTurnGuards } = require('./utils/agent-guards');
 const { maybeCompactAgentHistory } = require('./utils/history-compactor');
 const { createTraceCollector } = require('./utils/agent-trace');
+const { evaluateBudgetGovernor, bumpPromptTokenLedger } = require('./utils/budget-governor');
+const { normalizeRunPolicy, snapshotRuntimePolicy, applyRuntimePolicy, restoreRuntimePolicy } = require('./utils/run-policy');
 
 class Agent extends EventEmitter {
     constructor({
@@ -92,6 +94,10 @@ class Agent extends EventEmitter {
         return this.riskProfile;
     }
 
+    getRunPolicy() {
+        return this.runPolicy;
+    }
+
     _awaitUserInput(callId, timeoutMs) {
         return awaitUserInput(this, callId, timeoutMs);
     }
@@ -104,7 +110,29 @@ class Agent extends EventEmitter {
         return submitPendingInput(this, text);
     }
 
-    async run(userInput) {
+    async run(userInput, options = {}) {
+        const requestedPolicy = options && typeof options === 'object' ? options.policy : null;
+        const runtimeSnapshot = snapshotRuntimePolicy(this);
+        if (requestedPolicy) {
+            const normalizedPolicy = normalizeRunPolicy(requestedPolicy, {
+                tier: this.riskProfile && this.riskProfile.tier,
+                approvalMode: this.approvalPolicy,
+                maxTurns: this.maxTurns,
+                budget: this.runPolicy && this.runPolicy.budget,
+                trustedTools: this.trustedTools,
+                identity: this.identity,
+                traceLevel: this.runPolicy && this.runPolicy.traceLevel,
+            });
+            applyRuntimePolicy(this, normalizedPolicy);
+            this.emit('run_policy_applied', {
+                tier: normalizedPolicy.tier,
+                tenantId: normalizedPolicy.tenantId,
+                approvalMode: normalizedPolicy.approvalMode,
+                budget: normalizedPolicy.budget,
+                traceLevel: normalizedPolicy.traceLevel,
+            });
+        }
+
         const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         if (this._abortController && this._abortController !== controller && !this._abortController.signal?.aborted) {
             this._abortController.abort();
@@ -117,6 +145,7 @@ class Agent extends EventEmitter {
 
         const compactResult = await this._maybeCompactHistory({ signal });
         if (compactResult && this.debug) dbg('Compaction result', { compacted: Boolean(compactResult.compacted), originalLength: compactResult.originalLength, newLength: Array.isArray(this.history) ? this.history.length : 0 });
+        this._turnBudgetLedger = { promptTokens: 0 };
         let finalResponseText = "";
         let turnCount = 0;
         const MAX_TURNS = this.maxTurns;
@@ -187,6 +216,31 @@ class Agent extends EventEmitter {
 
                 const toolFlow = await handleToolCalls({ agent: this, currentStepResponse, turnCount });
                 dbg(`Step ${turnCount} tool flow`, { handled: toolFlow.handled, stopTurn: Boolean(toolFlow && toolFlow.stopTurn) });
+
+                if (toolFlow && toolFlow.handled && !toolFlow.stopTurn) {
+                    const budgetCheck = evaluateBudgetGovernor({
+                        agent: this,
+                        turnStartIndex,
+                    });
+                    if (budgetCheck && budgetCheck.exceeded) {
+                        this.emit('budget_fuse_triggered', {
+                            reason: budgetCheck.reason,
+                            limit: budgetCheck.limit,
+                            usage: budgetCheck.usage,
+                            promptTokensUsed: budgetCheck.usage && Number.isFinite(Number(budgetCheck.usage.promptTokens)) ? Number(budgetCheck.usage.promptTokens) : 0,
+                            promptTokensSource: budgetCheck.usage && budgetCheck.usage.promptTokensSource ? budgetCheck.usage.promptTokensSource : 'turn_ledger',
+                            policy: this.runPolicy,
+                            timestamp: new Date().toISOString(),
+                        });
+                        const content = sanitizeFinalResponse(budgetCheck.message || 'Soft budget fuse triggered.');
+                        const assistantEntry = { role: 'assistant', content };
+                        this.history.push(assistantEntry);
+                        finalResponseText = content;
+                        this.emit('response', { content: finalResponseText });
+                        break;
+                    }
+                }
+
                 if (!toolFlow.handled) {
                     const guard = applyTurnGuards({
                         agent: this,
@@ -212,6 +266,7 @@ class Agent extends EventEmitter {
                     const applied = applyUsageToEntry(assistantEntry, currentStepResponse._usage);
                     this.history.push(assistantEntry);
                     if (applied) {
+                        bumpPromptTokenLedger(this, assistantEntry._tokenUsagePrompt);
                         this.emit('token_count', buildTokenUsageInfo(this.history));
                     }
                     finalResponseText = cleaned;
@@ -265,6 +320,11 @@ class Agent extends EventEmitter {
         } finally {
             this._abortController = null;
             this._abortReason = null;
+            this._lastTurnBudgetLedger = this._turnBudgetLedger && typeof this._turnBudgetLedger === 'object'
+                ? { ...this._turnBudgetLedger }
+                : null;
+            this._turnBudgetLedger = null;
+            restoreRuntimePolicy(this, runtimeSnapshot);
         }
     }
 
@@ -293,7 +353,8 @@ class Agent extends EventEmitter {
             if (signal.aborted) this.stop('external_abort');
             else signal.addEventListener('abort', () => this.stop('external_abort'), { once: true });
         }
-        yield* runAgentAsyncIterator(this, userInput, { ...options, signal });
+        const forwardedOptions = { ...options, signal };
+        yield* runAgentAsyncIterator(this, userInput, forwardedOptions);
     }
 
     stop(reason = 'user_stop') {

@@ -341,3 +341,47 @@
   - 新增 `docs/cookbook/add-new-skill.md`，标准化 skill 交付流程（结构、实现、验证、DoD）。
   - 新增 `docs/cookbook/release-checklist.md`，标准化发布前后检查与 stop-ship 条件。
   - 根 `README.md` 已增加 `Docs Start Here`，降低新成员文档发现成本。
+
+## 2026-02-26（本轮）
+- 用户诉求：评审 `agents-js` 核心 agent 逻辑，并给出“要补哪些能力才能更强”的 Tech Lead 级方案。
+- 本轮产出：
+  - 新增主线任务文件：`agents-js/task.md`（按 Context/Spec/DoD/Constraints/Verification 结构化描述）。
+  - 新增评审报告：`agents-js/docs-agent-js-logic-review.md`。
+- 结论摘要：
+  - 内核主循环与工具治理基础已成熟，不建议重写。
+  - 下一阶段应优先补：`RunPolicy` 统一入口、`BudgetGovernor`、`PlanV2` 结构化约束、`PostToolValidator`、`AnswerContract`。
+  - 方向：在现有 `agents.js + utils/*` 上做策略层增强，保持 Node/Browser 双兼容。
+
+## 2026-02-26（RunPolicy 实装）
+- 已完成“先做 RunPolicy 统一入口”最小实现（不破坏旧接口）：
+  - 新增 `utils/run-policy.js`，统一 `tier/tenantId/approvalMode/budget/traceLevel/trustedTools` 归一化。
+  - `Agent.run(userInput, { policy })` 支持按次覆盖执行策略；turn 结束后自动恢复基线策略。
+  - 新增 `agent.getRunPolicy()`；新增事件 `run_policy_applied`。
+  - trace 新增 `run.policy.applied` 事件与 metadata.agent.runPolicy 快照。
+- 兼容性：旧调用 `agent.run(userInput)` 不受影响；审批与风险基线逻辑保持原有规则。
+- 测试：新增 `tests/run_policy.test.js`，并通过 IMDA 与 async iterator 回归测试。
+
+## 2026-02-26（BudgetGovernor 软熔断）
+- 用户追加指令：立刻实现 BudgetGovernor，要求“先软熔断，不改工具执行主流程”。
+- 已完成：
+  - 新增 `utils/budget-governor.js`：统计 turn 级 `toolCalls/failures/promptTokens` 并评估预算超限。
+  - `Agent.run` 在每轮 tool flow 后执行预算检查；超限则发出 `budget_fuse_triggered` 并友好终止当前回合。
+  - async iterator 增加 `budget.fuse.triggered`；trace 增加同名事件。
+  - 新增测试 `tests/budget_governor.test.js` 覆盖统计与软熔断路径。
+- 约束确认：未改 `agent-tool-exec*` 主执行链，仅在 agent 回合控制层新增守门。
+
+## 2026-02-26（BudgetGovernor Prompt Ledger 增量化）
+- 根据最新反馈，已将 `maxPromptTokens` 的预算来源从历史聚合切换为“本回合增量 ledger”。
+- 记账规则：
+  - 若 prompt token 采样单调递增（常见累计上报），按 `delta` 入账，避免重复累计。
+  - 若采样回退（可能是非累计上报），按当前值入账，保证兼容。
+- 已补回归测试：`tests/budget_governor.test.js` 新增累计采样场景（80→90→120）验证阈值行为。
+
+## 2026-02-26（BudgetGovernor 审计补强 + Tier 默认模板）
+- 已响应新增评论要求：
+  - `budget_fuse_triggered` 补充 `promptTokensUsed` 与 `promptTokensSource='turn_ledger'`。
+  - `trace.metadata.agent` 新增 `turnBudgetLedger`（turn 级 ledger 快照）用于线上排障。
+  - `maxPromptTokens` 新增边界测试：`=limit` 不触发，`limit+1` 触发。
+  - `maxFailures` 新增按工具失败分桶：`network` vs `logic`。
+  - `RunPolicy` 新增 tier 默认预算模板（Tier0~Tier3），统一默认上限策略。
+- 回归：BudgetGovernor / RunPolicy / async iterator / approval policy 全部通过。

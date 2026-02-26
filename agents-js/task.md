@@ -1400,3 +1400,81 @@ Note: 长期历史与详细过程记录已归档到 `agents-js/task-archive.md` 
       - `docs/cookbook/release-checklist.md`
       - `docs/README.md`（含新导航）
       - `README.md`（含 Docs Start Here）
+
+
+## 2026-02-26 Task Focus（Agent.js 能力升级蓝图）
+- Context & Goal: 评审 `agents.js` 当前主循环与治理能力，定义“更强且可控”的下一阶段升级方向（保持 Node+Browser 兼容）。
+- Technical Spec:
+  - Logic: 补齐统一 `RunPolicy`、`BudgetGovernor`、`PlanV2`、`PostToolValidator`、`AnswerContract`。
+  - Interface: 保持 `createAgent/createAgentAsync` 兼容，仅新增可选策略参数。
+- DoD:
+  - 产出能力差距清单与分阶段实施路线。
+  - 将结论同步到 `memory.md` 便于后续接续。
+- Security & Constraints:
+  - 仅修改 `agents-js`；不改外部仓。
+  - Tier2/Tier3 继续执行审批与审计链路。
+- Verification:
+  - `cd agents-js && node -e "console.log("task-note-updated")"`
+
+## 2026-02-26 RunPolicy Follow-up（实现）
+- Context & Goal: 将分散在 `maxTurns/approvalPolicy/trustedTools/riskProfile/identity` 的运行策略收敛为单一 `RunPolicy` 入口，支持按次运行覆盖且保持向后兼容。
+- Technical Spec:
+  - Logic: 新增 `utils/run-policy.js` 负责策略归一化、运行时应用、回合结束恢复。
+  - Interface: `agent.run(userInput, { policy })`（可选），`agent.getRunPolicy()`，并发出 `run_policy_applied` 事件。
+- Definition of Done:
+  - 运行时可按次覆盖 tier/tenant/approval/budget/trace/trustedTools。
+  - 回合结束后恢复 agent 基线策略，避免策略污染后续对话。
+  - trace 中可观察 `run.policy.applied` 事件与当前策略快照。
+- Security & Constraints:
+  - 不放宽 Tier2/Tier3 既有审批基线；仅新增统一入口与治理快照。
+  - Node/Browser 兼容（仅改共享核心模块）。
+- Verification:
+  - `cd agents-js && npx vitest run tests/run_policy.test.js tests/imda_foundation.test.js tests/imda_approval_policy.test.js tests/async_iterator.test.js`
+
+## 2026-02-26 BudgetGovernor Follow-up（软熔断）
+- Context & Goal: 在不改工具执行主流程前提下，增加预算守门，避免长链路任务失控消耗。
+- Technical Spec:
+  - Logic: 新增 `utils/budget-governor.js`，按 turn 统计 tool calls/failures/prompt tokens，并在超限时触发软熔断。
+  - Interface: 新事件 `budget_fuse_triggered`；trace 事件 `budget.fuse.triggered`；async iterator 透传同名事件。
+- Definition of Done:
+  - 超过 `runPolicy.budget.maxToolCalls/maxFailures/maxPromptTokens` 时返回友好终止说明（soft stop）。
+  - 不修改工具执行器主链路（`agent-tool-exec*` 不变）。
+- Security & Constraints:
+  - MUST 保持审批/风险基线不放宽。
+  - MUST Node/Browser 兼容（仅共享核心与测试）。
+- Verification:
+  - `cd agents-js && npx vitest run tests/budget_governor.test.js tests/run_policy.test.js tests/async_iterator.test.js tests/imda_approval_policy.test.js`
+
+## 2026-02-26 BudgetGovernor Prompt Ledger Fix（增量）
+- Context & Goal: 将 `maxPromptTokens` 预算统计从历史聚合改为本回合增量 ledger，降低累计型 token 回传造成的误差。
+- Technical Spec:
+  - Logic: 在 `bumpPromptTokenLedger` 中维护 `lastPromptSample`，若新采样递增则按增量记账（delta），若回退则按绝对值记账。
+  - Interface: 保持 `evaluateBudgetGovernor` 接口不变，仅切换 prompt token 数据源为 turn ledger。
+- Definition of Done:
+  - 累计型采样（80 -> 90）仅记账 +10，避免重复累计。
+  - `maxPromptTokens` 熔断判定仍可触发且保持软熔断语义。
+- Security & Constraints:
+  - 不改 `agent-tool-exec*` 主流程。
+  - Node/Browser 兼容。
+- Verification:
+  - `cd agents-js && npx vitest run tests/budget_governor.test.js tests/run_policy.test.js tests/async_iterator.test.js tests/imda_approval_policy.test.js`
+
+## 2026-02-26 BudgetGovernor Auditability & Tier Defaults（补强）
+- Context & Goal: 响应审计与边界评论，补齐预算事件可观测字段、prompt token 边界测试、failure 分桶、tier 默认预算模板。
+- Technical Spec:
+  - Logic:
+    - `budget_fuse_triggered` payload 补充 `promptTokensUsed` 与 `promptTokensSource='turn_ledger'`。
+    - `countBudgetUsage` 新增 `failureBuckets`（`network` / `logic`）。
+    - `run-policy` 新增按 risk tier 的默认预算模板（Tier0~Tier3）。
+  - Interface:
+    - trace metadata 增加 `turnBudgetLedger`（turn 级）。
+    - 新增/扩展测试覆盖 prompt token 边界（`=limit` 不触发、`limit+1` 触发）。
+- Definition of Done:
+  - 预算熔断事件与 trace 都可看见 prompt token 来源和本回合 ledger。
+  - maxFailures 统计可区分网络失败与逻辑失败。
+  - tier 默认预算模板生效且回归测试通过。
+- Security & Constraints:
+  - MUST 不改变 `agent-tool-exec*` 执行链。
+  - MUST 保持 Node/Browser 兼容。
+- Verification:
+  - `cd agents-js && npx vitest run tests/budget_governor.test.js tests/run_policy.test.js tests/async_iterator.test.js tests/imda_approval_policy.test.js`

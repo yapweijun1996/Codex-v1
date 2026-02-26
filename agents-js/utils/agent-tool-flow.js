@@ -1,5 +1,6 @@
 const { buildSyntheticToolPlan } = require('./agent-tool-runner');
 const { applyUsageToEntry, buildTokenUsageInfo } = require('./agent-usage');
+const { bumpPromptTokenLedger } = require('./budget-governor');
 const { emitDecisionTrace } = require('./decision-trace');
 const {
     buildMemoryQueries,
@@ -219,6 +220,7 @@ async function handleToolCalls({ agent, currentStepResponse, turnCount }) {
     const applied = applyUsageToEntry(assistantEntry, currentStepResponse._usage);
     agent.history.push(assistantEntry);
     if (applied) {
+        bumpPromptTokenLedger(agent, assistantEntry._tokenUsagePrompt);
         agent.emit('token_count', buildTokenUsageInfo(agent.history));
     }
 

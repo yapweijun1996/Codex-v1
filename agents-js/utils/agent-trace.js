@@ -87,6 +87,7 @@ function createTraceCollector(agent, options = {}) {
     }));
     on('decision_trace', 'decision.trace');
     on('approval_required', 'approval.required');
+    on('run_policy_applied', 'run.policy.applied');
     on('approval_skipped', 'approval.skipped');
     on('user_input_requested', 'user_input.requested');
     on('user_input_response', 'user_input.response');
@@ -100,6 +101,7 @@ function createTraceCollector(agent, options = {}) {
     on('context_compacted', 'context.compacted');
     on('state_changed', 'state.changed');
     on('turn_aborted', 'turn.aborted');
+    on('budget_fuse_triggered', 'budget.fuse.triggered');
     on('agent_turn_complete', 'turn.completed');
 
     const exportSessionTrace = (exportOptions = {}) => {
@@ -107,6 +109,8 @@ function createTraceCollector(agent, options = {}) {
         const identity = agent && agent.identity ? agent.identity : null;
         const riskProfile = agent && agent.riskProfile ? agent.riskProfile : null;
         const modelName = agent && agent.llm && agent.llm.modelName ? agent.llm.modelName : null;
+        const runPolicy = agent && agent.runPolicy ? agent.runPolicy : null;
+        const turnBudgetLedger = agent && agent._lastTurnBudgetLedger ? agent._lastTurnBudgetLedger : null;
         const usage = getTotalUsageFromHistory(agent && agent.history ? agent.history : []);
 
         const turnCount = events.filter((ev) => ev.type === 'turn.started').length;
@@ -152,6 +156,8 @@ function createTraceCollector(agent, options = {}) {
                     model: modelName,
                     tier: riskProfile && typeof riskProfile.tier === 'number' ? riskProfile.tier : null,
                     identity,
+                    runPolicy,
+                    turnBudgetLedger,
                 },
             },
             summary,

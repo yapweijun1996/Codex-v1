@@ -3,6 +3,7 @@ const { registerTools } = require('./agent-tools-registry');
 const { DEFAULT_TOOL_TIMEOUT_MS, DEFAULT_APPROVAL_TIMEOUT_MS } = require('./self-heal');
 const { getAgentConfig } = require('./config');
 const { RiskLevel, normalizeRiskLevel } = require('./imda-constants');
+const { normalizeRunPolicy } = require('./run-policy');
 
 function normalizeRagConfigLite(input) {
     const raw = (input && typeof input === 'object') ? input : {};
@@ -113,6 +114,15 @@ function initializeAgentState(agent, {
 
     const resolvedTier = normalizeRiskLevel(riskProfile && riskProfile.tier, RiskLevel.NONE);
     agent.riskProfile = Object.freeze({ tier: resolvedTier });
+
+    agent.runPolicy = Object.freeze(normalizeRunPolicy(null, {
+        tier: resolvedTier,
+        approvalMode: agent.approvalPolicy,
+        maxTurns: agent.maxTurns,
+        trustedTools: agent.trustedTools,
+        identity: resolvedIdentity,
+        traceLevel: 'standard',
+    }));
 
     agent.contextManager = new ContextManager();
 }
